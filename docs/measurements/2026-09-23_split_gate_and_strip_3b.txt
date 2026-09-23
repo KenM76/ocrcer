@@ -60,3 +60,16 @@ Shipped: Params::DEFAULT and model/params.tsv set to 1.09 (measured); cargo test
 r000022 single page, rebuilt binary: 1.15 -> CER 40.144 F1 29.947; 1.09 -> CER 40.144 F1 30.303
 (one more word right; page CER unchanged to three decimals).
 New controls for Part B: finfilings F1 74.047 / CER 16.932 / lm 16.843; pages-cov F1 77.429 / CER 6.089.
+
+PART B readings (architect; split gate 1.09 in the shipped model; --set lines.underline_strip=1):
+  finfilings (11:15-11:32):
+    end-to-end   CER 16.756%  WER 32.945%  recall 73.078%  precision 75.781%  F1 74.405%
+    line-matched CER 16.634%
+    vs control 16.932 / 16.843 / F1 74.047: better on all three. PASSES.
+    per page (end-to-end): r000583 54.66, r000022 37.32, r000055 32.49 (rule-2-without-3b: 57.005),
+    r000044 29.22 (rule-2-without-3b: 64.61).
+  pages-cov (11:33-11:43):
+    end-to-end CER 6.089%  F1 77.429%, line-matched 6.089 -- identical to control. PASSES.
+  lines.underline_strip flipped to 1 (measured) in Params::DEFAULT and params.tsv;
+  the default-off unit test replaced by one asserting the shipped default; cargo test --workspace
+  --release 304 passed 0 failed.

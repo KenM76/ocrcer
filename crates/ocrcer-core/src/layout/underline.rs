@@ -678,17 +678,11 @@ mod tests {
         assert_eq!((segs[1].x0, segs[1].x1, segs[1].y0, segs[1].y1), (10, 58, 16, 18));
     }
 
-    /// `underline_strip: false` must be byte-for-byte the pre-2026-09-23
-    /// behaviour: `strip_underlines` is never called, so a rule that would
-    /// otherwise be stripped survives whole.
+    /// The shipped default runs the strip (`ARCHITECTURE.md` section 11,
+    /// 2026-09-23, "Underline strip ships"); `lines.underline_strip=0` is the
+    /// off switch the pipeline branch honours.
     #[test]
-    fn the_toggle_off_leaves_the_default_pipeline_path_alone() {
-        // `Params::default()` ships `underline_strip: false`, so a caller
-        // that never calls `strip_underlines` at all -- the pipeline's own
-        // branch -- is what this asserts about, not a property of
-        // `strip_underlines` itself, which always strips when called
-        // directly. Documented here because the pipeline branch is what
-        // `underline_strip` actually gates.
-        assert!(!Params::default().underline_strip);
+    fn the_strip_ships_on_by_default() {
+        assert!(Params::default().underline_strip);
     }
 }

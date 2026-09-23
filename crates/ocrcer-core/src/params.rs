@@ -251,9 +251,8 @@ impl Params {
             // too close to the observed sliver (about 3.6-3.9 x h). See
             // `docs/measurements/2026-09-23_split_gate_and_strip_3b.txt`.
             thin_debris_heights: 3.4288,
-            // Guess: ships off pending the architect's read of the readings
-            // in the same measurement file.
-            underline_strip: 0,
+            // Measured, `ARCHITECTURE.md` section 11, 2026-09-23 ("Underline strip ships").
+            underline_strip: 1,
         },
         words: Words {
             min_gaps: 3,

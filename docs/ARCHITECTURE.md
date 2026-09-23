@@ -6030,3 +6030,24 @@ measured**.
 
 The new controls for later gates are finfilings F1 74.047, CER 16.932,
 line-matched 16.843, and pages-cov F1 77.429, CER 6.089.
+
+### 2026-09-23 — Underline strip ships (rule 2 with part 3b)
+
+These are readings, from `docs/measurements/2026-09-23_split_gate_and_strip_3b.txt`,
+all measured with the split gate at 1.09.
+
+- finfilings: CER 16.932 → **16.756**, line-matched 16.843 → **16.634**,
+  F1 74.047 → **74.405**.
+- pages-cov: 6.089 → 6.089, identical.
+- Pages the earlier strips had broken are back: r000044 went from 64.61
+  (rule 2 without 3b) to 29.22, and r000055 from 57.005 to 32.49.
+- `lines.thin_debris_heights` = 3.4288. The ink height is measured; the
+  ×1.5 headroom is a guess on chunk 8's tuning list.
+
+`lines.underline_strip` = 1, with provenance "measured". `strip_underlines`
+also returns the erased bands as `RuleSegment`s. That output is what the
+formatting direction (underlines in ALTO/hOCR) would consume. It is not
+yet surfaced in any output format.
+
+r000583 is now the worst page at 54.66. It was not examined in this
+round.
