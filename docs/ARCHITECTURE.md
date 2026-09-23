@@ -6201,3 +6201,33 @@ measured. Gates are unchanged against the current controls: finfilings
 13.161 / 12.290 (beat both), pages-cov ≤ 6.114. Checkbox glyphs are a charset
 question for later (a class for ☐/☑, or a declared "not text" drop). They are
 not bundled into this change.
+
+### 2026-09-23 — Cell pairing, first rule: large finfilings win, fails pages-cov; stays off
+
+Readings are in `docs/measurements/2026-09-23_cell_pairing.txt`, commit
+`fce36d1`. The truth convention is confirmed on all three pages: a wrapped
+label's lines come first, then the value as its own line.
+
+| measure | control | `cell_pairing=1` | gate |
+|---|---|---|---|
+| finfilings end-to-end | 13.161 | 12.968 | pass |
+| finfilings line-matched | 12.290 | **10.744** | pass |
+| pages-cov | 6.064 | 6.987 | ≤ 6.114, **fail** |
+
+Named failure: "wrap continuation" was decided from column overlap and
+steady line pitch alone. That cannot tell a wrapped label from the next,
+unrelated one-line label at the same margin and pitch. r000407 shows it
+(`ii. LEI, if any` got its value deferred past `iii. State…`), and so do
+pages-cov's two-column "twins" layouts.
+
+Decision: a continuation must pass two more tests, both standard line-wrap
+cues:
+- **The line before it must be full.** Its right edge must reach within
+  `cell_wrap_slack` × x-height of the left column's right extent in that
+  block. A line wraps because it ran out of room, so a short label like
+  `ii. LEI, if any` cannot be wrapped.
+- **The continuation must have no right-column fragment of its own row.** In
+  two-column prose every row has one, so nothing defers.
+
+`cell_wrap_slack` is a new guess, swept. The switch stays default 0 until
+both gates pass.
