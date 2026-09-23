@@ -499,3 +499,21 @@ pass both gates.
 
 Sources: https://research.google.com/pubs/archive/33418.pdf ;
 https://tesseract-ocr.github.io/docs/das_tutorial2016/4CharSegmentation.pdf
+
+## Addendum 2026-09-23: drop-fall cuts (queued behind atom merge by overlap fraction)
+
+Drop-fall simulates a droplet falling from the top (or bottom) of a touching
+pair and follows the contour, so the cut is not a straight vertical line.
+There are four variants (top-left, top-right, bottom-left, bottom-right
+start), and each gives a different candidate path. That fits OCRcer's lattice:
+every path becomes one more cut candidate, and the decoder chooses among them.
+Known weaknesses: picking the start point, and seeping straight down through
+a vertical stroke. The improved variants fix both with a start-point rule and
+modified dripping rules.
+
+This applies only to touching ink. r000583's letters are pixel-disjoint (see
+the worst-page note), so drop-fall does not address that page. Not measured.
+
+Sources:
+- Cao/Huang, "A new drop-falling algorithms segmentation touching character", IEEE 5552365: https://ieeexplore.ieee.org/document/5552365
+- "A novel drop-fall algorithm based on digital features for touching digit segmentation", IEEE 7746350: https://ieeexplore.ieee.org/document/7746350/
