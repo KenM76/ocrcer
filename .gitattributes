@@ -1,0 +1,6 @@
+# Keep LF everywhere: fixtures are compared byte-for-byte, and a checkout-time
+# CRLF rewrite would change their hashes.
+* text=auto eol=lf
+*.pbm binary
+*.png binary
+*.ocrw binary
