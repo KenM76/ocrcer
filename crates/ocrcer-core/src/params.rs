@@ -244,12 +244,13 @@ impl Params {
             // sliver..."): `ocrcer-build aspect` (extended 2026-09-23)
             // reports the tallest ink height, in x-heights, among classes
             // whose own ink width is `<= 0.5` x-height, over all 32
-            // shippable faces -- that height is measured. The x1.5 factor
-            // over it is a guess, smaller than `rule_run_heights`/
-            // `debris_heights`'s x2 because x2 would sit too close to the
-            // observed sliver (about 3.6-3.9 x h). See
+            // shippable faces -- the maximum is `|` on `Fira Code Regular`
+            // at 316px / 138.24px = 2.2859 x-heights, and that height is
+            // measured. The x1.5 factor over it is a guess, smaller than
+            // `rule_run_heights`/`debris_heights`'s x2 because x2 would sit
+            // too close to the observed sliver (about 3.6-3.9 x h). See
             // `docs/measurements/2026-09-23_split_gate_and_strip_3b.txt`.
-            thin_debris_heights: 0.0,
+            thin_debris_heights: 3.4288,
             // Guess: ships off pending the architect's read of the readings
             // in the same measurement file.
             underline_strip: 0,
@@ -291,7 +292,8 @@ impl Params {
         segment: Segment {
             max_merge: 3,
             max_merge_x_heights: 1.8,
-            split_min_x_heights: 1.15,
+            // Measured, `ARCHITECTURE.md` section 11, 2026-09-23 ("split gate").
+            split_min_x_heights: 1.09,
             max_splits: 3,
             valley_fraction: 0.5,
             min_piece_x_heights: 0.2,

@@ -6004,3 +6004,29 @@ cutting-technique problem, and drop-fall is not needed here.
 1.0, 0.85}. The gates are the same pair as above; finfilings runs first
 because the case comes from there. The narrowest value that passes both
 gates ships, with provenance "measured".
+
+### 2026-09-23 — Split gate: `segment.split_min_x_heights` 1.15 → 1.09, measured
+
+These are readings, from `docs/measurements/2026-09-23_split_gate_and_strip_3b.txt`.
+
+| value | finfilings CER / line-matched / F1 | pages-cov CER / F1 |
+|---|---|---|
+| 1.15 (control) | 17.064 / 16.942 / 73.615 | 6.127 / 77.392 |
+| 1.0 | 16.885 / 16.799 / 74.150 | **6.330** / 77.091 (fails) |
+| 0.85 | 16.908 / 16.822 / 74.090 | not run |
+| **1.09** | **16.932 / 16.843 / 74.047** | **6.089 / 77.429** |
+
+1.09 passes both gates and ships. 1.0 gains more on finfilings but costs
+pages-cov +0.203, which is over-segmentation on clean pages.
+
+1.09 rather than 1.10 because of the float path: f32 1.10 becomes
+1.1000000238 in f64, so a 10 px × 1.10 gate would still reject the 11 px
+`0$` atom under the strict `<`.
+
+Recognition-gated chopping is the recorded next step if more gain is
+wanted: offer cuts below the gate only when the whole atom matches poorly
+(addendum in `2026-09-22_research_classical_techniques.md`). It is **not
+measured**.
+
+The new controls for later gates are finfilings F1 74.047, CER 16.932,
+line-matched 16.843, and pages-cov F1 77.429, CER 6.089.

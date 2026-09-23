@@ -1,0 +1,62 @@
+Part A: segment.split_min_x_heights sweep on finfilings, per ARCHITECTURE.md
+section 11, 2026-09-23 ("Two mechanisms named"). Part B: lines.thin_debris_heights
+(underline-strip rule 2, part 3b).
+
+Controls (given):
+  finfilings: F1 73.615, CER 17.064, line-matched 16.942
+  pages-cov:  F1 77.392, CER 6.127,  line-matched 6.127
+
+Model:  model/out/ocrcer.ocrw
+Binary: target/release/ocr.exe
+
+===============================================================================
+PART A -- segment.split_min_x_heights sweep
+===============================================================================
+
+Command (each run):
+  ./target/release/ocr.exe model/out/ocrcer.ocrw <dir> --set segment.split_min_x_heights=<v> | grep -E "end-to-end|line-matched"
+
+Binary: target/release/ocr.exe  t=1790165484
+Model:  model/out/ocrcer.ocrw   t=1790165095  (187 classes, 32 faces, 29675 prototypes, lexicon 2477 nodes, bigrams 188 rows, confusions 76)
+
+finfilings (60 pages), run start/end:
+  control (no --set)         : 2026-09-23 (given)      F1 73.615  CER 17.064  line-matched 16.942
+  split_min_x_heights=1.0    : 09:50 start              F1 74.150  CER 16.885  line-matched 16.799
+  split_min_x_heights=0.85   : 09:51:01 -> 10:19:42      F1 74.090  CER 16.908  line-matched 16.822
+
+Both 1.0 and 0.85 beat control on both end-to-end and line-matched CER.
+1.0 is strictly better than 0.85 on every metric (F1, end-to-end CER, line-matched CER)
+-> per the stated rule ("whichever beats control ... or the better of the two, if both do"),
+   1.0 is the winner carried forward.
+
+pages-cov @ split_min_x_heights=1.0: run started 2026-09-23, KILLED by the harness
+due to system-wide low memory while idle (not a command failure -- see task b142zyzwo).
+NOT a measured result. Part A gate against pages-cov is therefore UNCONFIRMED pending a rerun.
+No code change has been made yet (Params::DEFAULT.segment.split_min_x_heights is still 1.15,
+model/params.tsv unchanged) because the pages-cov leg of the gate has not been measured.
+
+pages-cov @ segment.split_min_x_heights=1.0 (run by the architect, foreground, 10:25-10:37;
+binary target/release/ocr.exe 08:11, model 08:04):
+  end-to-end   CER 6.330%  WER 27.111%  recall 77.560%  precision 76.629%  F1 77.091%
+  line-matched CER 6.330%
+  vs control 6.127 / F1 77.392: CER +0.203 -> FAILS the pages-cov gate (no worse by 0.05).
+  1.0 does not ship. Next reading: 1.10 (the smallest step that admits the 11px `0$`
+  atom at h=10), pages-cov first because it is the binding gate.
+
+pages-cov @ segment.split_min_x_heights=1.09 (architect, 10:38-10:50, same binary/model):
+  end-to-end   CER 6.089%  WER 26.766%  recall 77.900%  precision 76.964%  F1 77.429%
+  line-matched CER 6.089%
+  vs control 6.127 / F1 77.392: better on both. Passes the pages-cov gate.
+  (1.09, not 1.10: f32 1.10 widens to 1.1000000238 in f64, so 10 px x 1.10 > 11 and the
+  11 px `0$` atom would still read NARROW under the strict `<` gate.)
+
+finfilings @ 1.09 (architect, 10:50-11:05):
+  end-to-end   CER 16.932%  WER 33.331%  recall 72.696%  precision 75.450%  F1 74.047%
+  line-matched CER 16.843%
+  vs control 17.064 / 16.942 / F1 73.615: better on all three. PASSES. 1.09 ships.
+
+Shipped: Params::DEFAULT and model/params.tsv set to 1.09 (measured); cargo test --workspace
+--release green (0 failed); model rebuilt 11:12, ocr.exe rebuilt after it.
+r000022 single page, rebuilt binary: 1.15 -> CER 40.144 F1 29.947; 1.09 -> CER 40.144 F1 30.303
+(one more word right; page CER unchanged to three decimals).
+New controls for Part B: finfilings F1 74.047 / CER 16.932 / lm 16.843; pages-cov F1 77.429 / CER 6.089.

@@ -474,3 +474,28 @@ erase only vertical runs ≤ measured rule thickness). (3) maps onto OCRcer's
 existing match margin: strip only if the stripped component's pieces match
 with better margins than the whole. Which of these separates the false hits is
 for the trace to show, not to be assumed.
+
+## Addendum 2026-09-23 — recognition-gated chopping (for the split-gate result)
+
+Context: lowering `segment.split_min_x_heights` from 1.15 to 1.0 helped
+finfilings (CER 17.064 → 16.885) but hurt pages-cov (6.127 → 6.330). On
+clean synthetic pages the extra cuts are mostly over-segmentation.
+
+Tesseract does not offer a chop just because a blob is wide enough. It
+chops the blob the classifier is *least* confident about, and only when the
+word result is unsatisfactory. It then undoes any chop that does not improve
+confidence, while keeping the piece for the associator's best-first search
+(Smith, "An Overview of the Tesseract OCR Engine", §4.3; DAS 2016 tutorial,
+part 4).
+
+The analogue here would be to offer interior cuts on narrow atoms (below
+the current width gate) only when the whole atom's own match margin is below
+the calibrated low-confidence point. Well-recognised narrow atoms (`m`,
+`w`, `rn`-prone shapes) then stay whole. This costs one extra match per
+narrow atom, which already happens for the unsplit path.
+
+This is **not measured**. It is a candidate if a plain width threshold cannot
+pass both gates.
+
+Sources: https://research.google.com/pubs/archive/33418.pdf ;
+https://tesseract-ocr.github.io/docs/das_tutorial2016/4CharSegmentation.pdf

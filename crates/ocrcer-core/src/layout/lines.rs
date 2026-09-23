@@ -2303,6 +2303,77 @@ mod tests {
         assert_eq!((seg.x0, seg.x1, seg.y0, seg.y1), (100, 130, 2, 4));
     }
 
+    /// A box's top-rule strip leaves its narrow vertical sides behind as a
+    /// tall/narrow sliver that survives `debris_heights` (too short) but not
+    /// `thin_debris_heights` -- the exact shape (3px wide, 51px tall)
+    /// observed on `filing__r000055`/`r000044` (`ARCHITECTURE.md` section
+    /// 11, 2026-09-23, "Two mechanisms named: the strip leaves a box-side
+    /// sliver that merges lines").
+    #[test]
+    fn a_narrow_box_side_survives_debris_heights_but_not_thin_debris_heights() {
+        let w = 60usize;
+        let hgt = 60usize;
+        let mut rows: Vec<String> = vec![".".repeat(w); hgt];
+
+        // Five 13px-tall letter blocks, clear of the box's x-range, set the
+        // page's median glyphish height -- matching the real h=13.000
+        // measured on filing__r000055.
+        for k in 0..5u32 {
+            let x0 = (2 + k * 5) as usize;
+            for y in 2..15usize {
+                rows[y].replace_range(x0..x0 + 4, "####");
+            }
+        }
+
+        // A box: a 2-row top edge 20px wide, and two 3px-wide vertical
+        // sides running 51 rows -- 3x51, the observed sliver shape.
+        for y in [2usize, 3] {
+            rows[y].replace_range(30..50, &"#".repeat(20));
+        }
+        for y in 2..53usize {
+            rows[y].replace_range(30..33, "###");
+            rows[y].replace_range(47..50, "###");
+        }
+
+        let rows_ref: Vec<&str> = rows.iter().map(String::as_str).collect();
+
+        // Without thin_debris_heights (0.0, the shipped-off value), the
+        // sliver survives: too narrow for furniture_fraction, too short for
+        // debris_heights (51 < 5.0 x 13 = 65).
+        let (mut mask_off, wu, hu) = mask_of(&rows_ref);
+        let p_off = Params {
+            min_area: 1,
+            furniture_fraction: 1.0,
+            rule_run_heights: 1.0,
+            debris_heights: 5.0,
+            thin_debris_heights: 0.0,
+            underline_strip: true,
+            ..Params::default()
+        };
+        let stripped_off = strip_underlines(&mut mask_off, wu, hu, &p_off);
+        assert!(
+            stripped_off.components.iter().any(|c| c.width() == 3 && c.height() == 51),
+            "without thin_debris_heights the 3x51 sliver survives"
+        );
+
+        // With thin_debris_heights set, the same sliver -- width 3 <= 0.5 x
+        // h (6.5) and height 51 > thin_debris_heights x h (3.5 x 13 = 45.5)
+        // -- is dropped, even though debris_heights alone would not catch
+        // it.
+        let (mut mask_on, _, _) = mask_of(&rows_ref);
+        let p_on = Params { thin_debris_heights: 3.5, ..p_off };
+        let stripped_on = strip_underlines(&mut mask_on, wu, hu, &p_on);
+        assert!(
+            stripped_on.components.iter().all(|c| !(c.width() <= 6 && c.height() > 45)),
+            "thin_debris_heights drops the narrow box-side sliver"
+        );
+        assert_eq!(
+            stripped_on.components.len(),
+            5,
+            "only the five letters survive; both box-side slivers are dropped"
+        );
+    }
+
     /// Every erased band is recorded as a rule segment on the strip's
     /// output, independent of whatever downstream consumes it
     /// (`ARCHITECTURE.md` section 11, 2026-09-23, "Keep what was stripped").
