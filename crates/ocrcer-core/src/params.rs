@@ -106,6 +106,7 @@ pub struct Segment {
     pub max_splits: u32,
     pub valley_fraction: f32,
     pub min_piece_x_heights: f32,
+    pub merge_overlap_frac: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -296,6 +297,14 @@ impl Params {
             max_splits: 3,
             valley_fraction: 0.5,
             min_piece_x_heights: 0.2,
+            // Measured, `ARCHITECTURE.md` section 11, 2026-09-23,
+            // "Worst page named": bbox chaining of pixel-disjoint serif
+            // letters. finfilings end-to-end CER 16.113% (< 16.756 gate),
+            // line-matched 16.068% (< 16.634 gate); pages-cov CER 6.057%
+            // (<= 6.139 gate, control 6.089%). All three gates passed at
+            // frac=0.3 out of {0.3, 0.5, 0.7} screened on the worst page.
+            // `docs/measurements/2026-09-23_atom_merge_overlap.txt`.
+            merge_overlap_frac: 0.3,
         },
         matching: Matching { top_k: 5 },
         confidence: Confidence { lm_floor: 0.8 },
@@ -411,6 +420,7 @@ impl Params {
             "segment.split_min_x_heights" => &mut self.segment.split_min_x_heights,
             "segment.valley_fraction" => &mut self.segment.valley_fraction,
             "segment.min_piece_x_heights" => &mut self.segment.min_piece_x_heights,
+            "segment.merge_overlap_frac" => &mut self.segment.merge_overlap_frac,
             "confidence.lm_floor" => &mut self.confidence.lm_floor,
             "decode.w_match" => &mut self.decode.w_match,
             "decode.char_bonus" => &mut self.decode.char_bonus,
@@ -460,7 +470,7 @@ impl Params {
 
     /// Every name this build understands, for a loader that wants to report
     /// which ones a file left at their defaults.
-    pub const NAMES: [&'static str; 62] = [
+    pub const NAMES: [&'static str; 63] = [
         "binarize.window",
         "binarize.k",
         "binarize.r",
@@ -502,6 +512,7 @@ impl Params {
         "segment.max_splits",
         "segment.valley_fraction",
         "segment.min_piece_x_heights",
+        "segment.merge_overlap_frac",
         "match.top_k",
         "confidence.lm_floor",
         "decode.w_match",
@@ -571,7 +582,7 @@ fn find_changed_u32(before: &Params, after: &Params) -> f32 {
     f32::NAN
 }
 
-fn f32_fields(p: &Params) -> [f32; 48] {
+fn f32_fields(p: &Params) -> [f32; 49] {
     [
         p.binarize.k,
         p.binarize.r,
@@ -603,6 +614,7 @@ fn f32_fields(p: &Params) -> [f32; 48] {
         p.segment.split_min_x_heights,
         p.segment.valley_fraction,
         p.segment.min_piece_x_heights,
+        p.segment.merge_overlap_frac,
         p.confidence.lm_floor,
         p.decode.w_match,
         p.decode.char_bonus,
@@ -708,6 +720,7 @@ impl Params {
             max_splits: self.segment.max_splits as usize,
             valley_fraction: self.segment.valley_fraction,
             min_piece_x_heights: self.segment.min_piece_x_heights,
+            merge_overlap_frac: self.segment.merge_overlap_frac,
         }
     }
 }

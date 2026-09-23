@@ -60,6 +60,16 @@ pub struct Params {
     /// **A guess, on chunk 8's tuning list.** A period is about a fifth of an
     /// x-height wide and is the narrowest thing in the charset.
     pub min_piece_x_heights: f32,
+    /// How much of the narrower participant's own width two components'
+    /// column overlap must cover before [`atoms`] glues them into one atom,
+    /// beyond the always-merge case of one being fully inside the other's
+    /// column range.
+    ///
+    /// **A guess, on chunk 8's tuning list.** `0` reproduces the legacy
+    /// any-overlap rule exactly (`ARCHITECTURE.md` section 11, 2026-09-23,
+    /// "Worst page named": serif crossbar/base-serif strokes chain
+    /// pixel-disjoint letters at this setting).
+    pub merge_overlap_frac: f32,
 }
 
 /// The shipped values, taken from the parameter block rather than restated.
@@ -113,6 +123,16 @@ pub struct Lattice {
     /// The labels belonging to this word. Ink from anything else in the
     /// cropping window is not this word's.
     pub labels: Vec<u32>,
+    /// Node index bracketing each atom: atom `k` occupies
+    /// `atom_boundary[k]..atom_boundary[k + 1]`. Length `atoms.len() + 1`,
+    /// empty for an empty word. [`crop`] uses this to find which atoms an
+    /// edge spans.
+    atom_boundary: Vec<usize>,
+    /// Each atom's own member labels, sorted, aligned with `atom_boundary`.
+    /// Kept separate from `labels` (the whole word) so [`crop`] can restrict
+    /// a piece to its own members rather than the whole word's ink — see
+    /// `crop`'s doc comment.
+    atom_labels: Vec<Vec<u32>>,
 }
 
 impl Lattice {
@@ -174,7 +194,7 @@ pub fn build_with(
     let mut word_labels: Vec<u32> = word.members.iter().map(|&i| components[i].label).collect();
     word_labels.sort_unstable();
 
-    let atoms = atoms(word, components);
+    let atoms = atoms(word, components, p.merge_overlap_frac);
     if atoms.is_empty() {
         return Lattice {
             positions: vec![word.x0, word.x1.max(word.x0 + 1)],
@@ -182,6 +202,8 @@ pub fn build_with(
             y0: line.y0,
             y1: line.y1,
             labels: word_labels,
+            atom_boundary: Vec::new(),
+            atom_labels: Vec::new(),
         };
     }
 
@@ -190,12 +212,16 @@ pub fn build_with(
     // and `boundary[k + 1]` its right node.
     let mut positions = vec![atoms[0].0];
     let mut boundary = vec![0usize];
+    let mut atom_labels: Vec<Vec<u32>> = Vec::with_capacity(atoms.len());
     for &(ax0, ax1, ref members) in &atoms {
         for x in interior_cuts(ax0, ax1, members, components, labels, page_width, line, p) {
             positions.push(x);
         }
         positions.push(ax1);
         boundary.push(positions.len() - 1);
+        let mut labs: Vec<u32> = members.iter().map(|&i| components[i].label).collect();
+        labs.sort_unstable();
+        atom_labels.push(labs);
     }
 
     let max_merge_w = f64::from(line.x_height) * f64::from(p.max_merge_x_heights);
@@ -235,28 +261,81 @@ pub fn build_with(
     edges.sort_by(|a, b| a.from.cmp(&b.from).then(a.to.cmp(&b.to)).then(a.x0.cmp(&b.x0)));
     edges.dedup_by(|a, b| a.from == b.from && a.to == b.to);
 
-    Lattice { positions, edges, y0: line.y0, y1: line.y1, labels: word_labels }
+    Lattice {
+        positions,
+        edges,
+        y0: line.y0,
+        y1: line.y1,
+        labels: word_labels,
+        atom_boundary: boundary,
+        atom_labels,
+    }
 }
 
 /// Groups a word's members into x-disjoint atoms.
 ///
 /// Components whose boxes overlap horizontally cannot be separated by a
-/// vertical cut, so they are one atom whatever they turn out to be: an `i`
-/// and its dot, a kerned pair whose boxes interleave. Returns
+/// vertical cut, so a real overlap has to become one atom -- an `i` and its
+/// dot, a kerned pair whose boxes interleave. But gluing on *any* overlap
+/// also chains pixel-disjoint neighbouring letters in a serif face whose
+/// crossbar and base-serif strokes cross another letter's column range by a
+/// few pixels while never touching in ink (`ARCHITECTURE.md` section 11,
+/// 2026-09-23, "Worst page named": `t`'s crossbar and `h`'s base serif
+/// overlap by 2 columns while sitting 12 rows apart). `merge_overlap_frac`
+/// narrows that to a fractional test -- see [`should_merge`] -- while an
+/// always-merge case stays: either component fully inside the other's
+/// column range (an `i`'s dot inside its stem, a `:` or `;`'s two dots, and
+/// `=`, whose two equal-width bars fully overlap). Returns
 /// `(x0, x1, members)` left to right.
-fn atoms(word: &WordSpan, components: &[Component]) -> Vec<(u32, u32, Vec<usize>)> {
+fn atoms(
+    word: &WordSpan,
+    components: &[Component],
+    merge_overlap_frac: f32,
+) -> Vec<(u32, u32, Vec<usize>)> {
     let mut out: Vec<(u32, u32, Vec<usize>)> = Vec::new();
     for &i in &word.members {
         let c = &components[i];
-        match out.last_mut() {
-            Some(a) if c.x0 < a.1 => {
-                a.1 = a.1.max(c.x1);
-                a.2.push(i);
-            }
-            _ => out.push((c.x0, c.x1, vec![i])),
+        let merge = match out.last() {
+            Some(a) => should_merge(a.0, a.1, c.x0, c.x1, merge_overlap_frac),
+            None => false,
+        };
+        if merge {
+            let a = out.last_mut().expect("just matched Some(a) above");
+            a.1 = a.1.max(c.x1);
+            a.2.push(i);
+        } else {
+            out.push((c.x0, c.x1, vec![i]));
         }
     }
     out
+}
+
+/// Whether an incoming component at columns `(c0, c1)` joins the running
+/// atom whose extent so far is `(a0, a1)`.
+///
+/// Compared against the atom's whole running extent, not only its most
+/// recently added member: that is what the legacy any-overlap rule compared
+/// `c.x0` against, so `frac = 0` reproduces it exactly (below, `overlap`
+/// reduces to `c.x0 < a.1` once `word.members` is x0-sorted, which every
+/// caller here guarantees -- `a.x0 <= c.x0` always holds, so the max in the
+/// overlap computation is always `c.x0`). It also does not need to be a
+/// last-member comparison in practice: the overlap is bounded by the
+/// extent's right edge and the new component's left edge, so widening the
+/// atom leftward (from an earlier merge) never changes the overlap or the
+/// narrower-of-the-two-widths figure the fraction is measured against.
+fn should_merge(a0: u32, a1: u32, c0: u32, c1: u32, frac: f32) -> bool {
+    if (c0 <= a0 && c1 >= a1) || (a0 <= c0 && a1 >= c1) {
+        return true; // one fully inside the other's column range
+    }
+    let overlap = a1.min(c1).saturating_sub(a0.max(c0));
+    if overlap == 0 {
+        return false;
+    }
+    let narrow = (a1 - a0).min(c1 - c0);
+    if narrow == 0 {
+        return true; // degenerate zero-width box; already excluded above otherwise
+    }
+    f64::from(overlap) >= f64::from(frac) * f64::from(narrow)
 }
 
 /// Interior cut positions inside one atom, ascending.
@@ -343,19 +422,51 @@ fn column_profile(
     out
 }
 
+/// The label set an edge may draw ink from: the union of the member labels
+/// of every atom the edge spans, found from [`Lattice::atom_boundary`] by
+/// interval overlap against `(from, to)`.
+///
+/// Restricted to the spanning atoms rather than the whole word's `labels`
+/// because, once atoms are allowed to keep overlapping column ranges without
+/// merging (`merge_overlap_frac > 0`), a plain column crop against every
+/// label in the word would still pick up a neighbouring un-merged atom's
+/// pixels that happen to fall in this edge's `x0..x1` window -- exactly the
+/// serif-kerning contamination named in `ARCHITECTURE.md` section 11,
+/// 2026-09-23 ("Worst page named"): a separated `t` cropped by column range
+/// alone would still carry `h`'s base-serif columns. At `merge_overlap_frac
+/// = 0`, atoms are x-disjoint by construction (as the legacy code already
+/// relied on), so this is provably identical to the old whole-word filter:
+/// no other atom's component can have ink inside this edge's `x0..x1`.
+fn edge_labels(lat: &Lattice, from: usize, to: usize) -> Vec<u32> {
+    if lat.atom_boundary.len() < 2 {
+        return lat.labels.clone();
+    }
+    let mut out: Vec<u32> = Vec::new();
+    for m in 0..lat.atom_boundary.len() - 1 {
+        let (b0, b1) = (lat.atom_boundary[m], lat.atom_boundary[m + 1]);
+        if b0 < to && b1 > from {
+            out.extend_from_slice(&lat.atom_labels[m]);
+        }
+    }
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
 /// Crops one edge into a tight glyph bitmap.
 ///
 /// `None` when the cut window holds no ink of this word — an edge that spans
 /// only a gap. The bitmap is `1` for ink and `0` for background, which is
 /// what [`crate::feature::extract`] takes.
 pub fn crop(lat: &Lattice, labels: &[u32], page_width: u32, e: &Edge) -> Option<Glyph> {
+    let allowed = edge_labels(lat, e.from, e.to);
     let w = page_width as usize;
     let (mut gx0, mut gy0, mut gx1, mut gy1) = (u32::MAX, u32::MAX, 0u32, 0u32);
     for y in lat.y0..lat.y1 {
         let row = y as usize * w;
         for x in e.x0..e.x1 {
             let l = labels[row + x as usize];
-            if l != 0 && lat.labels.binary_search(&l).is_ok() {
+            if l != 0 && allowed.binary_search(&l).is_ok() {
                 gx0 = gx0.min(x);
                 gy0 = gy0.min(y);
                 gx1 = gx1.max(x + 1);
@@ -373,7 +484,7 @@ pub fn crop(lat: &Lattice, labels: &[u32], page_width: u32, e: &Edge) -> Option<
         let row = y as usize * w;
         for x in gx0..gx1 {
             let l = labels[row + x as usize];
-            if l != 0 && lat.labels.binary_search(&l).is_ok() {
+            if l != 0 && allowed.binary_search(&l).is_ok() {
                 ink[(y - gy0) as usize * gw + (x - gx0) as usize] = 1;
             }
         }
@@ -584,5 +695,116 @@ mod tests {
         assert_eq!(cs.len(), 2);
         assert_eq!((cs[0].x0, cs[0].x1, cs[0].area), (0, 1, 2));
         assert_eq!((cs[1].x0, cs[1].x1, cs[1].area), (2, 3, 2));
+    }
+
+    // -- segment.merge_overlap_frac (`ARCHITECTURE.md` section 11,
+    // 2026-09-23, "Worst page named") ------------------------------------
+
+    /// An `i`'s dot inside its stem's column range merges regardless of the
+    /// overlap fraction -- even one no ordinary two-letter overlap could
+    /// ever satisfy.
+    #[test]
+    fn i_dot_merges_by_full_containment_regardless_of_overlap_fraction() {
+        assert!(should_merge(3, 8, 4, 6, 1.0), "dot inside stem");
+        assert!(should_merge(4, 6, 3, 8, 1.0), "stem inside dot, order-independent");
+    }
+
+    /// `=`'s two bars share the same column range exactly, which is "fully
+    /// inside" in both directions at once -- checked explicitly per the
+    /// task, since it is the one case where containment and equality
+    /// coincide.
+    #[test]
+    fn equals_sign_bars_merge_by_full_containment() {
+        assert!(should_merge(10, 20, 10, 20, 1.0));
+    }
+
+    /// The worked example from the worst-page diagnostic: `t` (43..53) and
+    /// `h` (51..67) overlap by 2 of `t`'s 10 columns (a 0.2 fraction).
+    /// Above that fraction they must not merge; at or below it, they still
+    /// do.
+    #[test]
+    fn serif_kerning_overlap_below_threshold_does_not_merge() {
+        assert!(!should_merge(43, 53, 51, 67, 0.5), "0.2 overlap fraction must not clear 0.5");
+        // 0.15 rather than the fraction's own 0.2, to stay clear of f32
+        // rounding at the exact boundary -- this asserts "still merges
+        // comfortably below the threshold", not exact-equality inclusion.
+        assert!(should_merge(43, 53, 51, 67, 0.15), "0.2 overlap fraction clears a lower threshold");
+    }
+
+    /// `merge_overlap_frac = 0` is the legacy any-overlap rule: any positive
+    /// overlap merges, and no overlap at all never does, whatever the
+    /// fraction.
+    #[test]
+    fn merge_overlap_frac_zero_reproduces_the_legacy_any_overlap_rule() {
+        assert!(should_merge(43, 53, 51, 67, 0.0), "the same t/h pair merges at the legacy setting");
+        assert!(!should_merge(0, 10, 10, 20, 0.0), "touching but not overlapping never merges");
+    }
+
+    /// The same `t`/`h` shape end to end: two components whose bounding
+    /// boxes overlap by one column while their ink never touches (a
+    /// crossbar row and a base-serif row, 3 rows apart), same as
+    /// `ARCHITECTURE.md` section 11, 2026-09-23 ("Worst page named"). Above
+    /// the overlap-fraction threshold this must produce two atoms, not one
+    /// -- and critically, cropping each atom's own edge must carry only its
+    /// own component's ink, never the neighbour's, even though the edges'
+    /// `x0..x1` ranges still overlap by that one column.
+    #[test]
+    fn serif_kerning_atoms_do_not_merge_and_their_crops_do_not_cross_contaminate() {
+        // Column 0..4 is a `t`-like stem-and-crossbar shape; column 3..7 is
+        // an `h`-like stem-and-base-serif shape. Column 3 is shared by both
+        // boxes but never by both letters' ink at the same row.
+        let (mask, w, h) = mask_of(&[
+            ".#....#...",
+            "####..#...",
+            ".#....#...",
+            ".#....#...",
+            ".#.####...",
+        ]);
+        let (labels, count) = crate::image::components::label(&mask, w, h, Connectivity::Eight);
+        let comps = crate::image::components::components(&labels, w, h, count);
+        assert_eq!(comps.len(), 2, "fixture must be two pixel-disjoint components");
+        let (a, b) = (0usize, 1usize);
+        assert_eq!((comps[a].x0, comps[a].x1), (0, 4), "the t-like shape");
+        assert_eq!((comps[b].x0, comps[b].x1), (3, 7), "the h-like shape");
+
+        let word = WordSpan { members: vec![a, b], x0: 0, y0: 0, x1: 7, y1: h };
+        let line = lines::TextLine {
+            members: vec![a, b],
+            x0: 0,
+            y0: 0,
+            x1: 7,
+            y1: h,
+            baseline: (h - 1) as f32,
+            x_height: h as f32,
+            cap_height: h as f32,
+            x_height_source: lines::XHeightSource::FromCapHeight,
+            median_height: h,
+        };
+
+        let mut p = Params::default();
+        p.merge_overlap_frac = 0.5; // above this fixture's 1/4 = 0.25 overlap
+        let lat = build_with(&word, &comps, &labels, w, &line, &p);
+        let singles: Vec<&Edge> = lat.edges.iter().filter(|e| e.kind == EdgeKind::Single).collect();
+        assert_eq!(singles.len(), 2, "the overlap is below threshold: two atoms, not one");
+
+        let mut total = 0u32;
+        for e in &singles {
+            let owner = if (e.x0, e.x1) == (comps[a].x0, comps[a].x1) {
+                a
+            } else if (e.x0, e.x1) == (comps[b].x0, comps[b].x1) {
+                b
+            } else {
+                panic!("edge {e:?} does not match either component's own box");
+            };
+            let g = crop(&lat, &labels, w, e).expect("each atom has ink");
+            let ink: u32 = g.ink.iter().map(|&v| u32::from(v)).sum();
+            assert_eq!(
+                ink, comps[owner].area,
+                "atom {owner}'s crop must hold exactly its own component's pixels, \
+                 not a neighbour's ink that happens to share its column range"
+            );
+            total += ink;
+        }
+        assert_eq!(total, comps[a].area + comps[b].area, "no pixel double-counted or dropped");
     }
 }

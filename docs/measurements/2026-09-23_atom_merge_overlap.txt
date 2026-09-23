@@ -1,0 +1,101 @@
+Gating segment.merge_overlap_frac against the worst-page mechanism
+================================================================================
+
+2026-09-23.  Task: ARCHITECTURE.md section 11, 2026-09-23, "Worst page named":
+bbox chaining of pixel-disjoint serif letters
+(docs/measurements/2026-09-23_worst_page_r000583.md).  atoms() in
+layout/segment.rs merged consecutive components whenever their x-ranges
+overlapped at all, so on serif faces kerning brings adjacent, pixel-disjoint
+letters (t+h, o-f-f-e-r-i, ...) into column overlap and they get glued into
+one oversized atom a fixed 3-cut budget cannot recover.
+
+Fix: new parameter segment.merge_overlap_frac.  Two adjacent components merge
+into one atom only if their column overlap covers at least
+merge_overlap_frac of the narrower participant's own width, or if either is
+fully inside the other's column range (this always-merge case keeps i/j
+dots, `:` / `;` and `=` safe at any setting).  frac=0 is the legacy
+any-overlap rule and reproduces it exactly -- verified both by unit test and
+by an end-to-end run at frac=0 matching the pre-existing r000583 control CER
+(54.661%) exactly.
+
+Model: model/out/ocrcer.ocrw built from ocrcer-build.exe write
+16,20,24,32,48 21,26,36,56 (same face/size ladder throughout this sweep).
+Engine: target/release/ocr.exe, built --release --features pages.
+
+MEMBERSHIP VS. CROP
+--------------------------------------------------------------------------------
+crop() (segment.rs) turns a lattice edge into a Glyph by scanning pixels in
+the edge's column range and keeping ink belonging to atom-member components.
+At frac=0 the legacy atoms() only ever merges components that are already
+x-disjoint from their neighbours in a word (any overlap at all was the
+merge trigger, so within one atom every member's own column range is
+disjoint from every other member outside a smaller atom already folded
+in) -- so a column crop and a by-membership crop return the same pixels at
+frac=0, and no change was needed there for legacy behaviour to hold.
+
+At frac>0 that equivalence breaks: two components can now sit in the SAME
+atom's column extent while genuinely belonging to adjacent, non-merged
+atoms above/below a threshold overlap, and a naive column-crop widened to
+the accumulated atom extent would have pulled in ink from a neighbour atom
+never designated part of this glyph -- a contamination risk.  Fixed in
+crop() by restricting the pixel scan to the exact components recorded as
+members of the atom(s) the edge spans, via a new edge_labels(lat, from, to)
+helper and the Lattice's atom_boundary / atom_labels fields (interval-overlap
+test: boundary[m] < to && boundary[m+1] > from selects every atom index m an
+edge crosses).  This required no change to the feature extractor itself --
+only to which pixels are handed to it, which is out of scope for that freeze.
+
+WORST PAGE (filing__r000583, quick screen)
+--------------------------------------------------------------------------------
+                    CER        WER
+  control (frac=0)  54.661%    84.663%
+  frac=0.3          40.000%    75.460%   <- best of the three
+  frac=0.5          40.633%    75.460%
+  frac=0.7          41.086%    75.460%
+
+All three tested fractions recover a large fraction of the page; 0.3 is the
+best and was carried forward to the full corpora.
+
+FULL FINFILINGS CORPUS (60 pages) AT frac=0.3
+--------------------------------------------------------------------------------
+  end-to-end    CER 16.113%  WER 31.755%  recall 74.272%  precision 77.019%  F1 75.620%
+  line-matched  CER 16.068%  (reading-order-independent)
+
+  control (ARCHITECTURE.md section 11, 2026-09-23, prior entry):
+  end-to-end    CER 16.932%
+  line-matched  CER 16.843%
+
+  gates:  end-to-end < 16.756   -> PASS (16.113)
+          line-matched < 16.634 -> PASS (16.068)
+
+Measured wall time: this run took approximately 24 minutes real time on this
+machine, longer than the 15-20 minute estimate carried into this task --
+reported here as measured, not as a correction to the estimate elsewhere.
+
+PAGES-COV CORPUS (625 synthetic pages) AT frac=0.3
+--------------------------------------------------------------------------------
+  end-to-end    CER 6.057%  WER 26.654%  recall 78.012%  precision 77.075%  F1 77.540%
+  line-matched  CER 6.057%  (reading-order-independent)
+  speed         696.3s for 625 pages, 1114 ms/page (recognition only)
+
+  control (ARCHITECTURE.md section 11): CER 6.089%, F1 77.429%
+
+  gate: CER <= 6.139 (control + 0.05) -> PASS (6.057, also below control)
+
+DECISION
+--------------------------------------------------------------------------------
+All three gates passed at frac=0.3.  segment.merge_overlap_frac set to 0.3 as
+the new default, provenance measured, in crates/ocrcer-core/src/params.rs and
+model/params.tsv.  Model and target/release/ocr.exe rebuilt against the new
+default; cargo test --workspace --release (168 core tests + full workspace
+suite, 0 failures), the wasm32-unknown-unknown build of ocrcer-core, and the
+forbid(unsafe_code) / zero-dependency invariants were all re-checked after
+the change and hold.
+
+Nothing surprising in the mechanism itself -- the fix behaves exactly as
+predicted from the diagnostic. The two surprises worth flagging: the size of
+the recovery on the single worst page (54.661% -> 40.000% CER, a 14.66-point
+drop, the largest single-change effect seen on this page to date), and that
+pages-cov improved rather than merely held (6.089% -> 6.057%), meaning the
+serif bbox-chaining mechanism was not confined to filing__r000583 or to real
+scanned filings -- it was measurably present in the synthetic corpus too.
