@@ -517,3 +517,27 @@ the worst-page note), so drop-fall does not address that page. Not measured.
 Sources:
 - Cao/Huang, "A new drop-falling algorithms segmentation touching character", IEEE 5552365: https://ieeexplore.ieee.org/document/5552365
 - "A novel drop-fall algorithm based on digital features for touching digit segmentation", IEEE 7746350: https://ieeexplore.ieee.org/document/7746350/
+
+## Addendum 2026-09-23: checkbox detection (queued; the round-3 checkbox-glyph mechanism)
+
+Classical checkbox detection works on a component's geometry, not by
+character matching:
+- a near-square bounding box (aspect ≈ 1);
+- a hollow interior, measured as a low fill ratio inside an inset of the box
+  (ticked or filled boxes are high);
+- a size band tied to the text size;
+- an optional quadrilateral test on the contour.
+
+Wide, shallow rectangles (aspect > 1.5) are text-input fields, not checkboxes.
+
+For OCRcer this suggests a pre-matching filter. A component that passes the
+square-and-hollow test is emitted as a declared symbol (☐/☒, if the charset
+decision adds them) or dropped as "not text". It never reaches the prototype
+matcher, which is currently forcing it to `®`/`~`/`B`. Whether truth
+transcribes the boxes decides between emit and drop. Check that first.
+Not measured.
+
+Sources:
+- Fuzzy Labs, "Checkbox Detection with OpenCV": https://www.fuzzylabs.ai/blog-post/checkbox-detection-with-opencv
+- J. Rodriguez, "Checkbox Detection: OpenCV vs YOLO": https://www.jeremias-rodriguez.com/blog/checkbox-detection-opencv-vs-yolo
+- Loichau, "Apply computer vision on the questionaire image to detect ticked checkboxes": https://loichau997.medium.com/apply-computer-vision-on-the-questionaire-image-to-detect-ticked-checkboxes-646e9245d293
