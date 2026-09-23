@@ -99,3 +99,90 @@ drop, the largest single-change effect seen on this page to date), and that
 pages-cov improved rather than merely held (6.089% -> 6.057%), meaning the
 serif bbox-chaining mechanism was not confined to filing__r000583 or to real
 scanned filings -- it was measurably present in the synthetic corpus too.
+
+FOLLOW-UP SWEEP, 2026-09-23: VALUES BELOW AND ABOVE 0.3
+--------------------------------------------------------------------------------
+Task: 0.3 was chosen from only three screened points (0.3, 0.5, 0.7), all at
+or above 0.3.  This sweep fills in below 0.3 (0.15, 0.2) and the next point
+above (0.4) on the full finfilings corpus (60 pages, not the single worst
+page) to check whether 0.3 really is the local optimum.
+
+Setup: model/out/ocrcer.ocrw and target/release/ocr.exe were STALE at task
+start (engine binary older than the model file) -- rebuilt per the standard
+sequence (ocrcer-build write, touch ocr.rs, cargo build --release -p
+ocrcer-bench --features pages) before any measurement.  Re-verified no STALE
+warning before the first run.  Params.tsv and the compiled-in default were
+NOT changed at any point in this sweep -- default remains 0.3.
+
+FULL FINFILINGS CORPUS (60 pages), CONTROL AT frac=0.3
+--------------------------------------------------------------------------------
+  end-to-end    CER 16.113%  WER 31.755%  recall 74.272%  precision 77.019%  F1 75.620%
+  line-matched  CER 16.068%
+
+FULL FINFILINGS CORPUS (60 pages) AT frac=0.15
+--------------------------------------------------------------------------------
+  end-to-end    CER 16.232%  WER 31.873%  recall 74.154%  precision 76.896%  F1 75.500%
+  line-matched  CER 16.259%
+  speed         1440.7s for 60 pages, 24011 ms/page
+
+  vs. 0.3 control: e2e +0.119, line-matched +0.191 -- WORSE on both axes.
+  Does not beat control on both CERs -> pages-cov not run for this value.
+
+FULL FINFILINGS CORPUS (60 pages) AT frac=0.2
+--------------------------------------------------------------------------------
+  end-to-end    CER 16.167%  WER 31.793%  recall 74.234%  precision 76.979%  F1 75.581%
+  line-matched  CER 16.210%
+  speed         1404.4s for 60 pages, 23406 ms/page
+
+  vs. 0.3 control: e2e +0.054, line-matched +0.142 -- WORSE on both axes.
+  Does not beat control on both CERs -> pages-cov not run for this value.
+
+FULL FINFILINGS CORPUS (60 pages) AT frac=0.4
+--------------------------------------------------------------------------------
+  end-to-end    CER 16.089%  WER 31.793%  recall 74.234%  precision 76.979%  F1 75.581%
+  line-matched  CER 15.910%
+  speed         1319.6s for 60 pages, 21993 ms/page
+
+  vs. 0.3 control: e2e -0.024, line-matched -0.158 -- BETTER on both axes.
+  Beats control on both CERs -> pages-cov run for this value (below).
+
+PAGES-COV CORPUS (625 synthetic pages) AT frac=0.4
+--------------------------------------------------------------------------------
+  end-to-end    CER 6.057%  WER 26.654%  recall 78.012%  precision 77.075%  F1 77.540%
+  line-matched  CER 6.057%
+  speed         703.9s for 625 pages, 1126 ms/page
+
+  control (0.3): end-to-end CER 6.057%, F1 77.540%.
+  gate: CER <= 6.107 -> PASS (6.057) -- numbers are identical to the 0.3
+  control to three decimal places (same CER, same WER, same recall/
+  precision/F1). pages-cov shows no measurable sensitivity to this
+  parameter in the 0.3-0.4 range; the finfilings gain at 0.4 does not show
+  up here at all, for better or worse.
+
+SUMMARY TABLE, FULL FINFILINGS CORPUS (60 pages)
+--------------------------------------------------------------------------------
+  frac    e2e CER    line-matched CER    vs 0.3 control
+  0.15    16.232%    16.259%             worse (+0.119 / +0.191)
+  0.2     16.167%    16.210%             worse (+0.054 / +0.142)
+  0.3     16.113%    16.068%             (control)
+  0.4     16.089%    15.910%             better (-0.024 / -0.158)
+
+Monotonic trend across 0.15 -> 0.2 -> 0.3 -> 0.4: CER falls as frac rises
+across this whole tested range. 0.3 is NOT the local optimum on the full
+finfilings corpus -- 0.4 is better on both e2e and line-matched CER, and
+line-matched improves by nearly 8x the margin e2e does (-0.158 vs -0.024),
+suggesting the gain at 0.4 is concentrated in cases affecting reading-order
+rather than character identity. Combined with the earlier worst-page screen
+(0.3 beat 0.5 and 0.7 on that one page), the full picture across all five
+tested points (0.15, 0.2, 0.3, 0.4, 0.5, 0.7) is not monotonic end-to-end:
+it falls from 0.15 to 0.4 then rises again from 0.4 through 0.5 to 0.7 on
+the worst-page screen. 0.4 has not been run against the worst-page screen or
+against 0.5/0.7 on the full corpus, so whether 0.4 is the true optimum
+across both corpora, or merely the best of the five points actually
+measured, is not established by this sweep. Points between 0.3 and 0.5, and
+a worst-page and pages-cov reading at 0.4 specifically to cross-check
+against the full-corpus numbers here, remain unmeasured.
+
+No default or params.tsv change was made. These numbers are reported for
+ocrcer-architect to weigh against the earlier worst-page screen and decide
+whether a further round (e.g. 0.35, 0.45) is warranted.
