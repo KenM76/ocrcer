@@ -5,148 +5,189 @@ history lives in `docs/ARCHITECTURE.md` section 11 and in
 `docs/measurements/`.
 
 **Under git since 2026-09-23, first commits approved by Ken.** Branch
-`master`, five commits, no remote:
-`4c85f69` initial snapshot, `9436f50` LF line-ending pin + binary-fixture
-marking, `a8a24be` split-gate ship, `f9dcd8f` underline-strip code moved
-into `layout/underline.rs`, `3772a41` underline-strip ship + build-report
-fix. `.gitattributes` pins LF everywhere (fixtures are compared
-byte-for-byte; a checkout-time CRLF rewrite would change their hashes).
-**Commit after each passing change from here forward.**
+`master`, no remote. Most recent five commits as of this pause:
+`13c422f` merge_overlap_frac 0.3→0.4, `e01cf6a` full-corpus sweep of
+merge_overlap_frac, `3816af6` decision-log entry for the 0.3 ship,
+`e60211a` merge atoms by overlap fraction (the fix itself), `69fa60d`
+research note on drop-fall cuts. `.gitattributes` pins LF everywhere
+(fixtures are compared byte-for-byte; a checkout-time CRLF rewrite would
+change their hashes). **Commit after each passing change from here
+forward.**
 
 ---
 
 ## 1. State of the tree
 
 `cargo test --workspace --release` was green as of the last recorded run
-this session: **304 tests, 0 failed**
-(`docs/measurements/2026-09-23_split_gate_and_strip_3b.txt`).
+this session. Rebuild and re-check before trusting that number — it is not
+re-verified in this note.
 
-Shipped this session (continuing on from the merged-line/bold-weight work
-recorded earlier the same day), all in `crates/ocrcer-core/src/` unless
+Shipped this session, all in `crates/ocrcer-core/src/segment/` unless
 noted:
 
-* `segment.split_min_x_heights` **1.15 → 1.09** (measured) — the cut-search
-  width gate on touching-glyph atoms. 1.0 won biggest on `finfilings` but
-  failed the `pages-cov` gate (over-segmentation); 1.09 passes both. Not
-  1.10: `1.10f32` widens to `1.1000000238` in `f64`, which would still miss
-  the target 11px atom under the strict `<` gate.
-* `lines.thin_debris_heights` (underline-strip rule 2, part 3b) — a joint
-  width-and-height gate on strip-produced debris, fixing the box-side
-  sliver mechanism below. Base value 3.4288, measured; ×1.5 headroom, a
-  labelled guess.
-* `lines.underline_strip` **0 → 1** (measured). Ships.
-* Underline-strip code moved from `layout/lines.rs` into its own
-  `layout/underline.rs` — a pure move, no behaviour change.
-* `ocrcer-bench`'s build report — a params-census bug (measured/authored
-  figures swapped) fixed.
+* **`segment.merge_overlap_frac`, default 0.4, provenance measured.**
+  `atoms()` used to merge any two components whose x-ranges overlapped at
+  all — correct for an `i` and its dot, wrong for a kerned serif `t`/`h`
+  pair that overlaps by a few columns at different heights without the ink
+  touching. Now merges only on full column-range containment or overlap ≥
+  the fraction × the narrower component's width. Pieces are cropped by
+  their own member components (`edge_labels()`), not by column range.
+  Shipped in two measured steps: 0.3 first (passed all three gates), then
+  a full-corpus sweep found 0.4 better on both `finfilings` CERs with
+  `pages-cov` unmoved.
+* A research-note addendum on drop-fall (non-vertical/contour) cuts,
+  appended to `docs/measurements/2026-09-22_research_classical_techniques.md`
+  — queued, not built. This is the candidate fix for touching-ink pages;
+  `r000583` (below) did not need it because its defect was chaining, not
+  touching ink.
 
 **Current controls, both corpora, at the shipped config (split gate 1.09,
-underline strip on):**
+underline strip on, `merge_overlap_frac` 0.4):**
 
 | | CER | line-matched CER | word F1 |
 |---|---|---|---|
-| `finfilings` (60 real pages) | **16.756%** | **16.634%** | **74.405%** |
-| `pages-cov` (625 synthetic pages) | **6.089%** | 6.089% | **77.429%** |
+| `finfilings` (60 real pages) | **16.089%** | **15.910%** | not re-run this filing |
+| `pages-cov` (625 synthetic pages) | **6.057%** | 6.057% | **77.540%** (reported, not independently re-run) |
 
-`r000583` is now the worst `finfilings` page at 54.66% CER (attributed to
-italic, segmentation confirmed clean — see item 2 below), not `r000022` or
-`r000055` as in earlier readings.
+`r000583` was 54.66% CER at session start, traced to bounding-box overlap
+chaining seven letters into one atom in a serif face; it is now **40.00%
+CER** at the shipped fix and is **still the worst `finfilings` page** —
+re-diagnose it before proposing a third rule. `r000022`, `r000055` and
+`r000044` were reading 34–37% CER before this fix and have not been
+re-measured against the new control; do that first, in order, below.
 
-**Check the binary against the source you changed, not against the clock**
-— unchanged advice from before, still true.
+**Check the binary against the source you changed, not against the
+clock** — unchanged advice from before, still true.
 
 ---
 
-## 2. Start here
+## 2. Start here — next-up queue, in order
 
-1. **`filing__r000022`'s dense-table trace.** 9% of the earlier six-page
-   deletion sample, a narrow-column/reading-order collapse, inferred from
-   confusion pattern, not yet pixel-verified.
-2. **Italic**, queued behind everything above and now the single worst
-   page: `filing__r000583` at 54.66% CER, unrepresented italic style,
-   segmentation confirmed clean (matcher/font-coverage gap). Measure like
-   bold was measured before deciding.
-3. **A ligature error-share count** on the bold bank. Prevalence known
-   (24/60 `finfilings` pages), error count not taken.
-4. **The column-cut lone-guard per-page diff.** Still not run — both
-   leader-line-derived rules failed their real-filings gate and neither
-   shipped; `lines.column_lone_guard` stays 0.
-5. **Re-measure `lines.rule_aspect`** — still owed since 2026-09-22.
-6. **Re-measure head-to-head vs `ocrs`** on `bench/pages-cov` — still stale;
-   this comparison is the project's reason to exist.
-7. **Re-run SROIE** against the current reading-order and line-merge fixes.
-8. **Recognition-gated chopping** (Tesseract-style: chop only the
-   least-confident atom, undo non-improving chops) — recorded as the next
-   candidate for the segmentation cut gate if a plain width threshold ever
-   stops passing both corpora again. **Not measured**, research only
-   (`docs/measurements/2026-09-22_research_classical_techniques.md`
-   addendum 2026-09-23).
-9. **ALTO/hOCR underline-formatting output**, from the `RuleSegment` data
-   the underline strip now records but nothing yet consumes. Direction from
-   Ken, recorded in `ARCHITECTURE.md` §11; not scheduled as a chunk until
-   Ken says so.
-10. **A one-time `rustfmt` pass.** 63 files drift against no committed
-    `rustfmt.toml`; pending Ken's call — see section 5.
-11. DejaVu Serif: withdrawn (2026-09-23, architect). No record shows the
+1. **Re-diagnose the new worst pages against the 0.4 control.** `r000583`
+   is still worst (40.00% CER, was 54.66%). `r000022`, `r000055`, `r000044`
+   were 34–37% before this fix and are unmeasured against it — re-measure
+   all four before proposing another segmentation rule.
+2. **Optionally sweep 0.35/0.45/0.5 for `merge_overlap_frac` on the full
+   `finfilings` corpus.** Only {0.15, 0.2, 0.3, 0.4} were run full-corpus;
+   0.5/0.7 were screened on one page only (0.5 read slightly worse than 0.3
+   there). Small expected gain — low priority relative to item 1.
+3. **Non-vertical (drop-fall/contour) cuts and a width-scaled
+   `max_splits`, for touching ink.** Queued since 2026-09-22's classical-
+   technique research, now with sharper evidence: the chaining defect that
+   `merge_overlap_frac` fixed was a different mechanism (bbox overlap, not
+   touching ink) from what drop-fall addresses. Check the re-diagnosed
+   worst pages (item 1) for touching-ink cases before building this.
+4. **Recognition-gated chopping** (Tesseract-style: chop only the
+   least-confident atom, undo non-improving chops) — the next candidate if
+   a plain width threshold on the cut-search gate ever stops passing both
+   corpora again. Not measured, research only.
+5. **Italic.** `filing__r000583` was the concrete worst-page evidence for
+   this before today's fix moved it to 40%; re-check whether italic is
+   still the dominant remaining loss on that page or on the newly
+   re-diagnosed pages from item 1.
+6. **A ligature error-share count** on the bold bank. Prevalence known
+   (24/60 `finfilings` pages carry the ligature-forming serif family and an
+   fi/fl word), error count not taken.
+7. **`baseline_split_sep`/`baseline_split_support` sweeps.** Both `guess`
+   provenance, unswept, from the 2026-09-23 merged-line fix.
+8. **Re-measure `lines.rule_aspect`.** Owed since 2026-09-22.
+9. **Re-measure head-to-head vs `ocrs`** on `bench/pages-cov`. Stale; this
+   comparison is the project's reason to exist.
+10. **Re-run SROIE** against the current reading-order and line-merge
+    fixes.
+11. **ALTO/hOCR underline-formatting output**, from the `RuleSegment` data
+    the underline strip records but nothing yet consumes. Direction from
+    Ken; not scheduled as a chunk until he says so.
+12. **The column-cut lone-guard per-page diff.** Still not run — both
+    leader-line-derived rules failed their real-filings gate and neither
+    shipped; `lines.column_lone_guard` stays 0.
+13. **The `filing__r000022` dense-table trace.** 9% of an earlier
+    six-page deletion sample, a narrow-column/reading-order collapse,
+    inferred from confusion pattern, not yet pixel-verified — likely
+    folds into item 1's re-diagnosis.
+14. **A one-time `rustfmt` pass.** 63 files drift against no committed
+    `rustfmt.toml`; **pending Ken's call** — see section 5.
+15. DejaVu Serif: withdrawn (2026-09-23, architect). No record shows the
     filings use it; raise again only if a font audit finds it.
 
-**Run heavy full-corpus sweeps in the foreground, one arm at a time** —
-still true; two sessions in a row have had a background sweep reaped for
-low memory (`personal_rag/ocr/lesson_20260923_background_long_runs_get_reaped_under_memory_pressure.md`).
+**Run heavy full-corpus sweeps in the foreground, one arm at a time.**
+Two prior sessions had a background sweep reaped for low system memory
+(`personal_rag/ocr/lesson_20260923_background_long_runs_get_reaped_under_memory_pressure.md`).
+
+**Build recipe** (unchanged from prior sessions):
+
+```
+cargo build --release -p ocrcer-bench -p ocrcer-build --features pages
+ocrcer-build write 16,20,24,32,48 21,26,36,56 model/out/ocrcer.ocrw
+# then touch ocr.rs and rebuild ocr.exe — watch for STALE
+```
+
+**Corpora:** `finfilings` at
+`D:/Dev/ExcludedPrivate/ocrcer/pages/finfilings` (~25 min to run);
+`bench/pages-cov` (~12 min). **Gates:** beat control on both `finfilings`
+CERs; `pages-cov` no worse than +0.05.
+
+**Working mode:** the `/loop` "continue working on features and research
+OCR techniques" prompt is what drives this session's shape — a fix
+followed by research followed by the next fix it surfaces, each one gated
+and shipped or explicitly rejected before moving on. **Commit after every
+passing change, locally, never push.** Replies to Ken are TL;DR — the
+detail belongs in these docs, not the chat reply.
 
 ---
 
 ## 3. Where things landed this session
 
-**The underline-strip regression is diagnosed and fixed.** Stripping a
-bordered box's rules correctly erased the furniture but left the box's own
-sides behind as 10–22×h slivers — too narrow for the width-keyed furniture
-filter, too short for the height-keyed debris filter. Tallest-first line
-grouping seeded a band on a sliver and fused two real prose lines. Fixed
-with a joint width-and-height gate on strip-produced pieces specifically.
+**The worst page's mechanism was pinned before any fix was written.**
+`atoms()`'s any-overlap merge rule, written for an `i` and its dot, was
+also gluing kerned serif letters (`t`/`h`) that overlap by a few columns
+at different heights without their ink touching. `r000583` had 73 such
+chained atoms (up to 7 letters) against 3 on an ordinary page, and a
+7-letter chained atom defeats `max_splits = 3` outright.
 
-**The `0$` touching-atom case was a threshold miss, not a design gap** —
-the cut-search gate never ran at that width. Swept and shipped at 1.09
-(narrowest value that passes both corpora; not 1.10, because of f32→f64
-widening at the exact boundary).
+**The fix narrows the merge rule to a real overlap fraction** rather than
+replacing the technique: full containment or ≥ `merge_overlap_frac` ×
+narrower width. Shipped at 0.3 (all three gates passed, screened on one
+page), then re-swept full-corpus and moved to 0.4 (both `finfilings` CERs
+improved further, `pages-cov` unmoved). The architect independently
+reproduced the 0.4 result to the digit.
 
-**Underline strip ships** at the new split gate: `finfilings` CER
-16.932%→16.756%, F1 74.047%→74.405%; `pages-cov` unchanged.
+Full narrative: `docs/ARCHITECTURE.md` §11, the three entries "Worst page
+named" through `segment.merge_overlap_frac` 0.3 → 0.4; readings in
+`docs/measurements/2026-09-23_worst_page_r000583.md`,
+`_atom_merge_overlap.txt`.
 
-Full narrative: `docs/ARCHITECTURE.md` section 11, six entries dated
-2026-09-23 from "Underline strip fails the real-filings gate" through
-"Underline strip ships (rule 2 with part 3b)"; readings in
-`docs/measurements/2026-09-23_underline_strip*.txt`,
-`_underline_strip_damage.md`, `_underline_r000055_and_touching_r000022.md`,
-`_split_gate_and_strip_3b.txt`.
-
-Four new lessons in `personal_rag/ocr/`: the strip-debris width+height gate,
-the f32→f64 threshold-widening trap, dual-corpus gating for cut-search
-width parameters, and Tesseract's confidence-gated chop/undo (research,
-unbuilt).
+No new `personal_rag/ocr` lessons were owed from this specific fix beyond
+what the diagnosis narrative already carries — see `ARCHITECTURE.md` for
+the mechanism; check `personal_rag/ocr/index.md` before assuming one is
+missing.
 
 ---
 
 ## 4. Constraints that bind the next session
 
-* **Charset, feature vector and normalisation are frozen.** Unchanged this
-  session.
+* **Charset, feature vector and normalisation are frozen.** Unchanged.
 * **`ARCHITECTURE.md` section 11 is append-only.** Supersede with a new
   entry and a forward pointer; the old text stays.
 * **A projection is labelled a projection; a reading is labelled a
-  reading.** Every figure in this file traces to a numbered
-  `docs/measurements/2026-09-23_*` file, except the code-health and
-  disk-pressure figures in section 5, which are reported by this session
-  and explicitly not independently re-verified — no shell was available to
-  the filing dispatch.
+  reading.** Every CER/F1 figure in this file traces to a numbered
+  `docs/measurements/2026-09-23_*` file, except the disk-space and
+  clippy/rustfmt figures in section 5, which are reported by their
+  sessions and explicitly not independently re-verified — no shell was
+  available to the filing dispatch either session.
 * **Blessing a fixture is a deliberate, reviewed act.** No fixture was
   reblessed this session.
 * **Nothing downloaded from the web enters the repository.** Corpora live
   in `D:/Dev/ExcludedPrivate/ocrcer`.
-* **Compare model variants only at an identical size ladder.** Unchanged
-  from before — the confound this rule guards against is not this
-  session's finding, but the discipline still applies to any future bank
-  rebuild.
+* **Compare model variants only at an identical size ladder.** Unchanged —
+  the confound this rule guards against (`lesson_20260923_compare_model_variants_at_identical_size_ladders.md`)
+  is not this session's finding, but the discipline still applies to any
+  future bank rebuild.
+* **Gate any cut-search width parameter on both corpora, not just the one
+  that motivated the change.** Established by the split-gate sweep
+  (`lesson_20260923_gate_a_cut_search_width_change_on_both_corpora.md`);
+  applies equally to `merge_overlap_frac` and to anything measured under
+  item 3 of the queue above.
 * **Commit after each passing change**, now that the tree is under git —
   see the header of this file and `ROADMAP.md`'s Standing rules.
 
@@ -155,14 +196,24 @@ unbuilt).
 ## 5. Waiting on Ken
 
 * **A one-time `rustfmt` pass** across 63 drifted files (no `rustfmt.toml`
-  committed). Not run pending his call.
+  committed). Not run, pending his call.
+* **Does "commit after each passing change" extend to Ken's other project
+  trees, or is it scoped to `D:\Dev\OCRcer`?** Newly raised this session —
+  every place the rule is written names only this tree, but it was never
+  asked whether that scoping was deliberate.
 * **ALTO/hOCR underline-formatting output**, direction given, not yet
   scheduled as a chunk.
 * **The RAG rename sweep** — ~247 files in `C:\personal_rag`, ~437 in
   `D:\dev\rag` still say `pdfce` (carried forward, unchanged).
 * **`osifont`'s GPL font exception** — unresolved; the face is not in the
   bank (carried forward, unchanged).
-* **Confirm current D: free space.** Reported this session as 38 GB free
-  after a disk-pressure incident (two untracked scratch files,
-  `aspect_err.txt`/`aspect_out.txt`, deleted by an agent; stale `target/`
-  dirs cleaned) — not independently re-verified in this filing.
+* **Confirm current D: free space.** Reported this session as **99% full,
+  ~10 GB free**, after the architect deleted `target/debug`,
+  `runtime-diag`, `glyphs-agent`, `wasm32` and `tmp` build directories
+  (~3 GB reclaimed) — worse than the prior session's unverified 38 GB
+  figure, and still not independently re-verified in this filing. Any
+  diagnostic agent building under its own `CARGO_TARGET_DIR` will rebuild
+  from scratch. Keep build directories minimal; check free space with a
+  shell before launching a heavy sweep.
+* **Clippy: 45 warnings** (top lint `needless_range_loop`, 13 occurrences)
+  — reported, report-only, no action requested yet.

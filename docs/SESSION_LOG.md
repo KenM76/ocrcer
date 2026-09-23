@@ -736,3 +736,99 @@ stale; SROIE not re-run; recognition-gated chopping (Tesseract-style,
 unmeasured, research only); ALTO/hOCR underline formatting output (awaiting
 Ken's go to schedule); the `/usage` calibration still not run, now carried
 across four sessions; and the one-time `rustfmt` pass, pending Ken's call.
+
+---
+
+## 2026-09-23 — Chunk 9, continued: worst-page diagnosis, atom merge by overlap fraction ships (0.3 then 0.4)
+
+**Request:** find out why `filing__r000583` had become the worst
+`finfilings` page at 54.66% CER after the merged-line and underline-strip
+fixes shipped earlier the same day, and act on whatever that diagnosis
+found; continue the "research OCR techniques while fixing what the
+research surfaces" loop otherwise.
+
+**Reconnaissance performed.** A targeted trace on `r000583`
+(`docs/measurements/2026-09-23_worst_page_r000583.md`) rather than a
+corpus-wide sweep, since one page was already isolated as the worst.
+
+**The finding that named the mechanism.** `atoms()` had been merging any
+two components whose x-ranges overlapped at all — a rule written for an
+`i` and its dot, where the overlap is total. In `r000583`'s serif face, a
+`t` crossbar and an `h` base serif overlap by 1–6 columns *at different
+heights*, so the ink itself never touches, but the any-overlap rule glued
+them into one atom anyway. The page carried 73 such atoms chaining three
+or more letters, seven at the worst, against three (none over three
+letters) on an ordinary page. A chained atom that size defeats
+`max_splits = 3` outright — there is no vertical cut that recovers seven
+letters glued at a slant, and the underline strip shipped earlier that day
+changes nothing about this page, because the defect predates it.
+
+**The fix, and why it was cheap.** The letters were already separate
+connected components; the segmenter was gluing components that never
+needed gluing. `segment.merge_overlap_frac` now requires either full
+column-range containment (still catches `i`/dot, `:`, `;`, `=`) or overlap
+≥ a fraction of the narrower component's width. Pieces are cropped by their
+own member components' pixels (`edge_labels()`) rather than by a column
+range, so a separated `t` no longer scoops up its neighbour's serif when
+the merge rule tightens. This is the same shape of fix as the earlier
+merged-line and underline-strip diagnoses this project keeps landing on:
+find the exact geometric coincidence a coarse rule was confusing for the
+case it was written for, then narrow the rule with a real fraction rather
+than replacing the technique.
+
+**Measured in two passes, neither guessed past its own evidence.** A
+one-page screen at 0.3/0.5/0.7 (0.3 best) shipped first, since it already
+passed all three standing gates (`r000583` 54.661%→40.000%;
+`finfilings` end-to-end CER 16.756%→16.113%, line-matched
+16.634%→16.068%; `pages-cov` CER 6.089%→6.057%) — an improvement on the
+synthetic corpus too, so the chaining defect was not confined to scanned
+serif filings. A follow-up full-`finfilings` sweep at {0.15, 0.2, 0.3, 0.4}
+then found **0.4 better than 0.3 on both `finfilings` CERs**
+(end-to-end 16.089%, line-matched 15.910%), with `pages-cov` unmoved at
+6.057%. The architect re-ran 0.4 independently and reproduced it to the
+digit — recorded as corroboration, not as a new finding. One anomaly was
+flagged rather than silently trusted: the swept 0.2 row's word-level
+figures read identical to 0.4's in the measurement file, read as a likely
+transcription slip on a value that was rejected either way, not corrected
+retroactively.
+
+**Delivered:** `docs/measurements/2026-09-23_worst_page_r000583.md`,
+`_atom_merge_overlap.txt`; three dated entries in `ARCHITECTURE.md` §11;
+`segment.merge_overlap_frac` in `crates/ocrcer-core/src/params.rs` /
+`model/params.tsv`, shipped at 0.4, provenance measured; a research-note
+addendum on drop-fall cuts appended to
+`docs/measurements/2026-09-22_research_classical_techniques.md`, queued
+behind this fix for touching-ink cases specifically (this page's defect
+was chaining, not touching ink, so it did not need a non-vertical cut);
+five git commits (`69fa60d` research note, `e60211a` merge-by-overlap-
+fraction implementation, `3816af6` decision-log entry for the 0.3 ship,
+`e01cf6a` the 0.15/0.2/0.4-vs-0.3 sweep, `13c422f` the 0.3→0.4 ship).
+
+**New controls:** `finfilings` end-to-end CER **16.089%**, line-matched
+**15.910%**; `pages-cov` CER **6.057%**, F1 **77.540%** (this session's own
+report; not independently re-run by this filing). Session started at
+16.756 / 16.634 / 6.089.
+
+**A disk-space escalation, reported this session, not independently
+re-verified (no shell in this filing dispatch):** D: reached 99% full,
+~10 GB free, tighter than the prior session's unverified 38 GB figure. The
+architect deleted `target/debug`, `runtime-diag`, `glyphs-agent`, `wasm32`
+and `tmp` build directories (~3 GB reclaimed), leaving only
+`target/release`. Consequence flagged forward: any diagnostic agent that
+builds under its own `CARGO_TARGET_DIR` will rebuild from scratch on next
+use, since its directory was among those removed.
+
+**Open, carried into the next session:** re-diagnosis of the new worst
+pages against the 0.4 control — `r000583` is still worst at 40.00% CER,
+and `r000022`/`r000055`/`r000044` (34–37% before this fix) need
+re-measurement; optionally sweeping 0.35/0.45/0.5 full-corpus (small
+expected gain); non-vertical (drop-fall/contour) cuts and a width-scaled
+`max_splits` for touching-ink pages specifically, now queued with sharper
+evidence than the 2026-09-22 research note alone; recognition-gated
+chopping; italic; ligature share; `baseline_split_sep`/`support` sweeps;
+`rule_aspect` re-measurement; the `ocrs` head-to-head; SROIE; ALTO/hOCR
+output (awaiting Ken's go); everything else already carried forward above.
+Two questions for Ken, newly recorded this filing: whether "commit after
+each passing change" extends to his other project trees, and the still-open
+`rustfmt` pass go/no-go. Clippy's 45 warnings are recorded as report-only,
+no action requested.

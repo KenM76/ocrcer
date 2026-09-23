@@ -405,6 +405,83 @@ schedule it as a chunk); DejaVu Serif still withdrawn per the architect's
 **Token spend:** not measured against `/usage` this continuation either;
 the calibration debt is carried forward again, now across four sessions.
 
+**Measured 2026-09-23, continued further — worst-page diagnosis, atom
+merge by overlap fraction ships at 0.4.** Full narrative:
+`ARCHITECTURE.md` §11, the three entries "Worst page named" through
+`segment.merge_overlap_frac` 0.3 → 0.4; evidence in
+`docs/measurements/2026-09-23_worst_page_r000583.md`,
+`_atom_merge_overlap.txt`.
+
+- **Root cause of the worst page, pinned before any fix was written.**
+  `filing__r000583` (54.66% CER) was diagnosed: `atoms()` merged any two
+  components whose x-ranges overlapped at all, a rule meant for an `i` and
+  its dot. In this serif face a `t` crossbar and an `h` base serif overlap
+  by 1–6 columns at different heights without the ink ever touching, and
+  the page had 73 atoms chaining 3+ letters (up to 7) against 3 on an
+  ordinary page. Once chained, `max_splits = 3` cannot carve a 7-letter
+  atom apart; the underline strip changes nothing on this page.
+- **Shipped: `segment.merge_overlap_frac`, default 0.4, provenance
+  measured.** Merge two components only when one sits fully inside the
+  other's column range, or the overlap is ≥ `merge_overlap_frac` × the
+  narrower one's width (0 reproduces the old any-overlap rule exactly).
+  Pieces are now cropped by atom membership (`edge_labels()`), not by
+  column, so a separated `t` no longer picks up the neighbouring `h`'s
+  serif. Shipped in two steps, both measured, neither guessed past a
+  one-page screen: **0.3** first (`r000583` 54.661%→40.000%; `finfilings`
+  end-to-end CER 16.756%→**16.113%**, line-matched 16.634%→**16.068%**;
+  `pages-cov` CER 6.089%→**6.057%**, all three gates passed), then the full
+  `finfilings` corpus swept at {0.15, 0.2, 0.3, 0.4} found **0.4 better on
+  both `finfilings` CERs** (end-to-end **16.089%**, line-matched
+  **15.910%**; `pages-cov` unchanged at 6.057%). The architect re-ran 0.4
+  independently and reproduced it to the digit.
+- **A suspicious row, flagged rather than silently repeated.** In the sweep
+  table, 0.2's word-level (WER/F1) figures read identical to 0.4's — read
+  as a likely transcription slip on the rejected 0.2 line, not a real
+  coincidence; it affects only a value that was not shipped, and is not
+  corrected retroactively here.
+- **New controls for later gates:** `finfilings` end-to-end CER **16.089**,
+  line-matched CER **15.910**; `pages-cov` CER **6.057**, F1 **77.540**
+  (F1 as reported this session; not independently re-run by this filing).
+  This started the session at 16.756 / 16.634 / 6.089.
+- **Queued behind this, unchanged in kind, sharper in evidence:** drop-fall
+  or other non-vertical (contour-following) cuts and a width-scaled
+  `max_splits`, for touching ink specifically — `r000583` did not have
+  touching ink, so this fix did not need them, but the research note on
+  drop-fall cuts (`docs/measurements/2026-09-22_research_classical_techniques.md`,
+  appended this session) stays queued for the touching-ink cases still on
+  the worst-pages list.
+
+**Disk, reported this session, not independently re-verified (no shell in
+this dispatch):** D: is at **99% full, ~10 GB free**. The architect deleted
+`target/debug`, `runtime-diag`, `glyphs-agent`, `wasm32` and `tmp` build
+directories (~3 GB reclaimed) under this pressure; only `target/release`
+remains. This supersedes the prior session's "38 GB free" figure, which
+was itself unverified — read this as the latest unverified report, not a
+confirmed measurement. **Any diagnostic agent invoking a build with its own
+`CARGO_TARGET_DIR` (runtime-diag, glyphs-agent, wasm32) will rebuild from
+scratch next use**, since its target directory was among those removed.
+Keep build directories minimal going forward; a full disk on Windows can
+present as a link error rather than an out-of-space error (see the Rust
+ecosystem RAG entry filed this session,
+`D:\dev\rag\rust\cargo_target_dir_debug_deps_grows_without_bound_and_fills_the_disk_195gb_test_binaries.md`,
+dated footer).
+
+**Open, carried forward from this continuation:** everything already
+carried forward above (dense-table trace, italic, ligature share, lone-guard
+diff, `baseline_split_sep`/`support`, `rule_aspect` re-measurement, `ocrs`
+head-to-head, SROIE, recognition-gated chopping research, ALTO/hOCR output,
+`rustfmt` pass, `/usage` calibration — now five sessions), plus, new this
+filing: **re-diagnosis of the new worst pages** — `r000583` is still the
+worst `finfilings` page at 40.00% CER even after the fix, and `r000022`,
+`r000055` and `r000044` were reading 34–37% before this fix, so all four
+need re-measurement against the new 0.4 control before the next rule is
+proposed; and optionally running **0.35/0.45/0.5** on the full `finfilings`
+corpus (small expected gain, not yet run — only 0.15/0.2/0.3/0.4 were
+swept full-corpus, 0.5/0.7 only on the one-page screen).
+
+**Token spend:** not measured against `/usage` this continuation either;
+the calibration debt is carried forward again, now across five sessions.
+
 ---
 
 ## Next up
@@ -671,7 +748,22 @@ this entry decides by adding a line to `charset.tsv`.
    `rustfmt.toml`; a one-time formatting pass is pending Ken's call before
    it is run, per the `CLAUDE.md` global rule against commissioning a
    fan-out "to bring files to a standard" without a plan for how that pass
-   is reviewed. Not run this session.
+   is reviewed. Not run this session. **Still awaiting Ken's go** as of the
+   end-of-session filing below.
+
+9. **Does "commit everywhere" mean other projects too? Raised end of
+   session, 2026-09-23.** The standing rule "commit after each passing
+   change" is scoped to this project's tree
+   (`D:\Dev\OCRcer`) in every place it is written — `ROADMAP.md`'s Standing
+   rules, `RESUME.md`'s header. Whether the same discipline is wanted
+   across Ken's other project trees is a question about those projects'
+   own conventions, not this one's, and is not this role's to decide or
+   assume either way. Needs a direct answer.
+
+10. **Clippy — 45 warnings, reported this session, report only, no action
+    requested.** Top single lint `needless_range_loop`, 13 occurrences.
+    Recorded so the count has a place to be checked against later; not a
+    question requiring an answer, filed here rather than silently dropped.
 
 **Decided 2026-09-22: declined**, and not on cost. Measured across the 19
 shippable faces, three of them draw U+2212 and U+002D as the same outline and a
@@ -692,4 +784,8 @@ chunk is not done, and saying so is the cheapest thing in the project.
 pins `* text=auto eol=lf` (LF everywhere) because fixtures are compared
 byte-for-byte and a checkout-time CRLF rewrite would change their hashes;
 `.pbm`/`.png`/`.ocrw` are also marked binary explicitly. **Commit after each
-passing change from here forward** — not batched at session end.
+passing change from here forward** — not batched at session end. As of this
+session's git log (most recent five: `13c422f`, `e01cf6a`, `3816af6`,
+`e60211a`, `69fa60d`), the tree was clean and fully committed through the
+atom-merge-overlap ship; this filing adds documentation and lesson commits
+on top, never code.
