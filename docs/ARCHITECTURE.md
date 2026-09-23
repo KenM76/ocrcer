@@ -6075,3 +6075,29 @@ unchanged: beat finfilings on both CERs (16.756 / 16.634), and keep pages-cov
 within 0.05 of 6.089. Drop-fall or contour cuts and a width-scaled
 `max_splits` stay queued behind this. They address touching ink, which this
 page does not have.
+
+### 2026-09-23 — Atom merge by overlap fraction: `segment.merge_overlap_frac` 0.3, measured
+
+This implements the preceding entry. `atoms()` now merges two components
+only if one lies entirely inside the other's column range (dots, `:`, `;`,
+`=`), or if their overlap is at least `merge_overlap_frac` × the narrower
+one's width. A value of 0 reproduces the old any-overlap rule exactly. With
+merging this strict, neighbouring atoms can now share columns. So a piece's
+pixels come from its own member components (`edge_labels()`), not a column
+crop, and a separated `t` no longer picks up the `h` serif. The feature
+extractor is unchanged.
+
+Readings are in `docs/measurements/2026-09-23_atom_merge_overlap.txt`:
+
+| corpus | control | frac 0.3 | gate |
+|---|---|---|---|
+| r000583 alone, CER | 54.661 | 40.000 | (screen; 0.3 best of 0.3/0.5/0.7) |
+| finfilings end-to-end CER | 16.756 | 16.113 | < 16.756, pass |
+| finfilings line-matched CER | 16.634 | 16.068 | < 16.634, pass |
+| pages-cov CER | 6.089 | 6.057 | ≤ 6.139, pass |
+
+This ships as the default, labelled measured. It improved the synthetic
+pages too, so the chaining was not confined to scanned serif filings. The
+new controls are finfilings 16.113 / 16.068 and pages-cov 6.057. Only 0.3,
+0.5 and 0.7 were screened, and only on one page. Values below 0.3 are
+unmeasured.
