@@ -6142,3 +6142,29 @@ thresholds (both guesses), or the band's shape. Fix whichever it is,
 preferring the split pass over a new rule. Gates are unchanged against the
 current controls: beat finfilings 16.089 / 15.910, and keep pages-cov
 within 0.05 of 6.057.
+
+### 2026-09-23 — Line fusion fix: `lines.baseline_split_valley_margin` 0.3, measured
+
+Cause: the two-baseline split measures the empty valley between two
+candidate baseline peaks, excluding a fixed 2-pixel-row margin around each
+peak. That margin was a raw pixel count, not scaled to type size. At body
+sizes, a line's own descenders reach well past 2 rows below its baseline, so
+they were counted as ink in the valley. The split test then rejected genuine
+two-line fusions. Fix: the margin is now `baseline_split_valley_margin` ×
+the line's measured x-height. 0 keeps the legacy fixed margin, so the old
+behaviour is a switch position.
+
+Readings are in `docs/measurements/2026-09-23_line_fusion_fix.txt`:
+
+| measure | control | margin 0.3 | gate |
+|---|---|---|---|
+| r000308 CER (screen) | 34.45 | 14.50 | 0.3 best of 0.3/0.4/0.6/0.7 |
+| r000363 CER (screen) | 32.27 | 18.90 | |
+| finfilings end-to-end CER | 16.089 | **13.161** | < 16.089, pass |
+| finfilings line-matched CER | 15.910 | **12.290** | < 15.910, pass |
+| pages-cov CER | 6.057 | 6.064 | ≤ 6.107, pass |
+
+This is the largest single gain on the real-filings corpus to date. It ships.
+New controls: finfilings 13.161 / 12.290, pages-cov 6.064. Values below 0.3
+were not screened. The pages-cov movement (+0.007) is within tolerance but is
+a small loss, recorded as one.
