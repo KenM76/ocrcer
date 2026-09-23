@@ -1,0 +1,15 @@
+{
+  "why": "Two candidates at exactly equal distance. ARCHITECTURE.md section 8.2 requires the tie go to the lowest class index, and this fixture's charset is its own sorted character set, so 'a' is class 0 and 'b' is class 1. A tie broken the other way is right about half the time and would never show up in an aggregate error rate.",
+  "positions": [
+    [
+      [
+        "b",
+        1.0
+      ],
+      [
+        "a",
+        1.0
+      ]
+    ]
+  ]
+}

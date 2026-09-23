@@ -1,0 +1,55 @@
+bank: 14832 prototypes from 20 faces at [16.0, 24.0, 32.0, 48.0] px/em in 58.7s
+
+660 pages
+
+                       OCRcer (oracle seg)      ocrs 0.12.2 (end to end)
+  character accuracy       92.28%                    77.26%
+  word accuracy            71.30%                    65.51%
+  characters scored        125815                    125815
+  seconds                   172.0                     273.8
+
+  layout-free, word for word (order and grouping ignored)
+  word recall              71.30%                    80.19%
+  word precision           71.30%                    82.08%
+  word F1                  71.30%                    81.12%
+
+by render size              char accuracy               word F1
+      14 px/em     OCRcer   85.22%  ocrs   73.71%    OCRcer   54.49%  ocrs   71.30%
+      18 px/em     OCRcer   90.36%  ocrs   76.72%    OCRcer   62.21%  ocrs   79.83%
+      21 px/em     OCRcer   92.68%  ocrs   77.52%    OCRcer   71.03%  ocrs   82.67%
+      28 px/em     OCRcer   96.31%  ocrs   79.96%    OCRcer   84.30%  ocrs   86.08%
+      40 px/em     OCRcer   96.84%  ocrs   78.40%    OCRcer   84.50%  ocrs   85.47%
+
+by text block               char accuracy               word F1
+      currency     OCRcer   91.60%  ocrs   91.20%    OCRcer   69.16%  ocrs   71.80%
+       drawing     OCRcer   93.41%  ocrs   95.57%    OCRcer   74.90%  ocrs   89.18%
+       invoice     OCRcer   92.33%  ocrs   56.34%    OCRcer   71.41%  ocrs   91.07%
+         prose     OCRcer   92.68%  ocrs   96.42%    OCRcer   73.96%  ocrs   91.28%
+     statement     OCRcer   91.44%  ocrs   49.46%    OCRcer   59.59%  ocrs   86.66%
+     technical     OCRcer   94.05%  ocrs   86.47%    OCRcer   79.43%  ocrs   56.35%
+         twins     OCRcer   90.56%  ocrs   86.21%    OCRcer   69.20%  ocrs   58.82%
+
+by face                     char accuracy               word F1
+  Cascadia Code            OCRcer   93.95%  ocrs   78.32%    OCRcer   74.33%  ocrs   79.68%
+  Cascadia Mono            OCRcer   93.95%  ocrs   78.32%    OCRcer   74.33%  ocrs   79.68%
+  Fira Code                OCRcer   95.23%  ocrs   78.68%    OCRcer   77.08%  ocrs   84.44%
+  Inconsolata              OCRcer   95.79%  ocrs   74.78%    OCRcer   80.74%  ocrs   83.49%
+  Inter                    OCRcer   94.17%  ocrs   80.96%    OCRcer   76.92%  ocrs   88.24%
+  JetBrains Mono           OCRcer   95.50%  ocrs   77.57%    OCRcer   80.75%  ocrs   84.77%
+  Lato                     OCRcer   92.07%  ocrs   82.10%    OCRcer   69.83%  ocrs   80.07%
+  Liberation Mono          OCRcer   91.82%  ocrs   78.99%    OCRcer   67.00%  ocrs   81.11%
+  Liberation Sans          OCRcer   92.85%  ocrs   76.20%    OCRcer   73.33%  ocrs   84.67%
+  Liberation Serif         OCRcer   91.91%  ocrs   77.18%    OCRcer   72.33%  ocrs   78.59%
+  Noto Sans                OCRcer   93.53%  ocrs   77.15%    OCRcer   73.75%  ocrs   86.85%
+  Noto Serif               OCRcer   94.22%  ocrs   79.04%    OCRcer   74.67%  ocrs   83.07%
+  Open Sans Condensed      OCRcer   76.32%  ocrs   61.58%    OCRcer   39.58%  ocrs   51.25%
+  PT Mono                  OCRcer   93.24%  ocrs   78.59%    OCRcer   71.42%  ocrs   81.94%
+  PT Sans                  OCRcer   93.38%  ocrs   77.61%    OCRcer   74.67%  ocrs   84.80%
+  Roboto                   OCRcer   93.29%  ocrs   79.04%    OCRcer   75.83%  ocrs   85.71%
+  Roboto Condensed         OCRcer   88.39%  ocrs   78.02%    OCRcer   57.33%  ocrs   84.73%
+  Roboto Mono              OCRcer   95.26%  ocrs   78.26%    OCRcer   77.00%  ocrs   83.55%
+  STIX Two Math            OCRcer   88.87%  ocrs   75.35%    OCRcer   64.83%  ocrs   73.31%
+
+The OCRcer column is a ceiling, not a result: it was given every
+glyph box and every space from the page's own ground truth. The ocrs
+column is end to end from the page. See this binary's module doc.

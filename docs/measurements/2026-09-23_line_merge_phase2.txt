@@ -1,0 +1,23 @@
+# Line-merge phase 2: rule A (x-height plausibility floor) and rule B (two-baseline split).
+# ARCHITECTURE.md section 11, 2026-09-23. Readings, full corpora, one run at a time.
+# binary target/release/ocr.exe 2026-09-23 03:52:30 -0400 (newer than lines.rs 03:50:54, params.rs 03:43:55);
+# model 2026-09-23 04:04:07 -0400, rebuilt from params.tsv 03:44:19. ocr.exe prints a STALE warning because the
+# model is newer than the binary; no ocrcer-core source changed between them, and `inspect` reads back every new param.
+# Arm A = x_height_floor_per_cap 0.3168, baseline_split 0. Arm A+B = the same with --set lines.baseline_split=1.
+# Controls (bold ship, 2026-09-23): pages-cov F1 77.392 CER 6.127; finfilings F1 70.846 CER 18.546.
+== pages-cov, arm A
+end-to-end   CER  6.127%  WER 26.803%  recall 77.863%  precision 76.928%  F1 77.392%
+line-matched CER  6.127%  (reading-order-independent)
+== finfilings, arm A
+end-to-end   CER 19.007%  WER 35.015%  recall 70.723%  precision 75.042%  F1 72.818%
+line-matched CER 19.111%  (reading-order-independent)
+== finfilings, arm A+B
+end-to-end   CER 17.064%  WER 33.745%  recall 72.271%  precision 75.009%  F1 73.615%
+line-matched CER 16.942%  (reading-order-independent)
+== pages-cov, arm A+B  (first attempt reaped for low system memory while another project's build ran; re-run foreground)
+end-to-end   CER  6.127%  WER 26.803%  recall 77.863%  precision 76.928%  F1 77.392%
+line-matched CER  6.127%  (reading-order-independent)
+# Gate outcome: A alone fails (finfilings CER +0.461, although F1 +1.972). A+B passes: pages-cov unchanged,
+# finfilings CER -1.482, F1 +2.769. Shipped as A+B (baseline_split 1), model rebuilt 2026-09-23 05:22:37,
+# binaries 05:21, both newer than params.rs 05:20; cargo test --workspace green.
+# Not measured: the per-page r000055/r000088 spot checks and the x-height-1.00 band counts from phase 2.

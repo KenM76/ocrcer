@@ -1,0 +1,49 @@
+bank: 14832 prototypes from 20 faces at [16.0, 24.0, 32.0, 48.0] px/em
+corpus: 158 ASCII pages (stride 3)
+
+weight on dims 103..107 (baseline-relative geometry)
+   weight   char acc   word acc   size-pair  other errors
+      1.0     93.53%     75.13%        1699           518
+     16.0     96.44%     85.46%         844           375
+
+by confusion family, count of substitutions
+  family         w=1.0    w=16.0
+  0oOQ             770       435
+  lI1|             339       286
+  sS$5             242        76
+  cC               146         7
+  uU                78        26
+  vV                75        13
+  wW                49         1
+
+surviving substitutions at w=16.0, top 20, against the control
+    w=1.0     16.0    change   pair
+      151      231       +80   '0' -> 'O'
+       85      129       +44   'O' -> '0'
+      140      116       -24   'l' -> 'I'
+       58       54        -4   '1' -> 'l'
+       66       51       -15   'l' -> '1'
+       43       43        +0   'e' -> 'c'
+      141       35      -106   'o' -> 'O'
+       30       32        +2   'I' -> 'l'
+       25       25        +0   ',' -> '.'
+       15       24        +9   '5' -> 'S'
+        0       24       +24   'r' -> 'c'
+       23       23        +0   'i' -> '1'
+       22       22        +0   '.' -> '-'
+       38       22       -16   'l' -> '|'
+       69       22       -47   'u' -> 'U'
+       12       20        +8   'S' -> '5'
+      172       18      -154   '0' -> 'o'
+       17       17        +0   '2' -> 'Z'
+      155       17      -138   'O' -> 'o'
+        8       15        +7   'S' -> '$'
+
+Best at weight 16.0: 96.44% character accuracy. A weight is a
+number that needs a sentence (CLAUDE.md rule 1), so this is a
+measured candidate and not yet an authored parameter — the swept
+optimum of a one-parameter family on this corpus, which is not the
+same thing as the right value on unseen input.
+
+Oracle-segmented and ASCII-restricted on every pass, so every figure
+is a ceiling. Only the differences between rows are the measurement.

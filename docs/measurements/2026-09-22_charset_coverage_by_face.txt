@@ -1,0 +1,193 @@
+How many licence-clean faces actually draw each charset class, and what the
+thinnest class means for a CAD-drawing engine
+
+
+Method
+------
+Coverage: Python fontTools, TTFont.getBestCmap(), over the 187 classes in
+model/charset.tsv against every row of model/fonts.tsv with status
+eligible-present AND distribution shippable -- 18 font files. The bank is 19
+faces: those 18 plus the authored ISO 3098 technical face in ocrcer-build,
+which covers all 187 classes by construction and is deliberately NOT counted
+below. The question here is how many independent real type designers' shapes
+the bank holds per class.
+
+A class counts as covered when the face's cmap maps the codepoint. This does
+not check that the mapped glyph has ink, so these are an upper bound.
+
+Inventory scan: the same cmap test over every .ttf/.otf/.ttc/.otc file under
+eleven roots -- C:\Windows\Fonts, the per-user font directory, and the
+application trees that supply the bank's faces (SOLIDWORKS Corp, Android
+Studio, Scribus, VcXsrv, Inkscape, Office). 1454 files read; two roots named
+in the list do not exist on this machine (LibreOffice, Git's share/fonts) and
+were skipped. Licence strings are read from name IDs 0, 8, 13 and 14 of each
+file, not from anything remembered about the family.
+
+Outlines: TTFont + RecordingPen, ink bounding box in font units divided by
+unitsPerEm; cap height from OS/2.sCapHeight.
+
+Bank self-test: target/release/ocrcer-build bank 16,24,32,48 21,26,36,56 none
+-- the shipped four-size configuration, no pruning gate.
+
+Everything below was measured on 2026-09-22 on this machine.
+
+
+1. Coverage is excellent everywhere except one class
+----------------------------------------------------
+  covering faces   classes
+        18            177
+        17              3
+        16              6
+         2              1
+
+  mean covering faces, by charset category:
+    currency  n=5    min 18   mean 18.0
+    digit     n=10   min 18   mean 18.0
+    lower     n=55   min 18   mean 18.0
+    upper     n=54   min 18   mean 18.0
+    punct     n=28   min 17   mean 17.9
+    math      n=12   min 16   mean 17.2
+    symbol    n=23   min  2   mean 17.2
+
+  Every class below full coverage:
+
+    idx  cp       ch  category  faces  missing from
+     95  U+2300   ⌀   symbol      2    16 of the 18
+    100  U+221A   √   math       16    Inconsolata, Noto Sans
+    101  U+2264   ≤   math       16    Inconsolata, Noto Sans
+    102  U+2265   ≥   math       16    Inconsolata, Noto Sans
+    103  U+2248   ≈   math       16    Inconsolata, Noto Sans
+    104  U+2260   ≠   math       16    Inconsolata, Noto Sans
+    105  U+03A9   Ω   symbol     16    Inconsolata, Lato
+    117  U+2030   ‰   symbol     17    Inconsolata
+    120  U+2013   –   punct      17    Inconsolata
+    121  U+2014   —   punct      17    Inconsolata
+
+  Two faces cover all 187 classes on their own: Fira Code and STIX Two Math.
+  One face, Inconsolata, accounts for nine of the ten thin classes -- it is a
+  narrow-coverage monospace, not a defect in the others. It is also the face
+  missing both dashes, which is worth knowing next to the '-' / '–' confusion
+  already on the list.
+
+  This reconciles exactly with the shipped bank: 31 (class, face) pairs are
+  uncovered, 31 x 4 sizes = 124 absent rows, and 187 x 19 x 4 - 124 = 14088,
+  which is the prototype count the builder reports.
+
+
+2. The thinnest class is the one the target domain cares about most
+-------------------------------------------------------------------
+  U+2300, the diameter sign, is carried by 2 of the 18 licence-clean faces.
+  It is 2 faces x 4 evaluation sizes = 8 of the bank's 14088 leave-one-out
+  evaluations -- 0.057%.
+
+  The symbol category scores 99.52% (1664/1672) in that self-test and no
+  U+00D8 / U+2300 pair appears in the top twenty confusions, which are all
+  accent-direction and case pairs. Neither figure is evidence about class 95:
+  eight samples is not a measurement of it, and the tool only prints the top
+  twenty confusions, so absence from that list is not absence from the error
+  set. What class 95 scores on its own was not measured.
+
+
+3. Why the gap exists, and why it is not an oversight
+------------------------------------------------------
+  Of every font file on this machine, 26 faces in 12 families draw U+2300:
+
+    licence-clean (OFL-1.1), 3 families
+      Fira Code            Regular/Light/Medium/Retina/Bold   IN THE BANK
+      STIX Two Math        Regular                            IN THE BANK
+      Noto Sans Symbols    Regular (Android Studio subset)    not in the bank
+
+    Microsoft proprietary, 3 families
+      Cambria, Cambria Math, Segoe UI Symbol
+
+    CAD-vendor proprietary, 6 families
+      DS ISO 1 (Regular/Italic/Bold/BoldItalic)  Dassault Systèmes
+      GENISO                                     Autodesk
+      ISOCPEUR (Regular/Italic)                  Autodesk
+      ISOCTEUR (Regular/Italic)                  Autodesk
+      GOST Common (Regular/Italic)               hanna Inc.
+      Myriad CAD                                 proprietary
+
+  Half the families that draw the diameter sign are drafting faces shipped by
+  CAD vendors -- which is to say, the codepoint that matters most in this
+  project's target domain lives almost exclusively in the faces its licence
+  posture forbids it to read. That is a permanent property of the domain, not
+  a gap in the inventory, and it will not improve by scanning harder.
+
+  Exactly one licence-clean candidate exists on this machine that is not
+  already in the bank, and it is thin:
+
+    Noto Sans Symbols, Regular
+    C:\Program Files\Android\Android Studio\plugins\design-tools\
+      resources\layoutlib\data\fonts\NotoSansSymbols-Regular-Subsetted.ttf
+    OFL-1.1 (nameID13/14), Copyright 2013 Google Inc., vendor Monotype
+    upem 2048, sxHeight 1098, sCapHeight 1462
+    covers 6 of 187 classes: the five math operators above, plus U+2300
+
+  The filename says Subsetted and the sibling Subsetted2 file covers 0 of the
+  187. The licence is unambiguous; the provenance of the modification is not
+  upstream's. If this face is taken, take it from Google Fonts, the way
+  norm-stroke and osifont are already recorded to be fetched -- not from
+  another application's derived copy.
+
+
+4. The two shapes already in the bank do not agree with each other
+-------------------------------------------------------------------
+  ink box as a fraction of em, and width divided by the face's cap height:
+
+                        w       h     y range          w/h     w/cap
+    Fira Code        0.555   0.555   +0.075..+0.630   1.000   0.786
+    STIX Two Math    0.570   0.484   +0.014..+0.498   1.178   0.868
+    Noto Sans Sym.   0.469   0.470   +0.116..+0.586   0.999   0.657
+
+  Class 95 does not hold one shape seen twice. Fira Code draws a true circle;
+  STIX draws it 18% wider than tall and sitting lower. charset.tsv's authored
+  band for the class is 0.65..0.90 width-over-cap and all three land inside
+  it, but Noto's 0.657 clears the floor by 0.007 -- and the class 105 note in
+  the same file records that one pixel of width quantisation is worth about
+  0.022 of this quantity at cap_px 44.8. So if that face is added, the
+  authored floor should be re-derived from measurement rather than assumed to
+  hold.
+
+
+5. U+00D8 and U+2300 are not drawn identically, and the reason matters
+-----------------------------------------------------------------------
+  Section 11's 2026-09-18 entry says the two codepoints are "drawn identically
+  by design, not by coincidence" in most faces. In the only two faces that
+  carry both, that is not what they do:
+
+                     U+00D8 (Ø)                   U+2300 (⌀)
+                   w      h    y range          w      h    y range
+    Fira Code    0.520  0.936  -0.113..+0.824  0.555  0.555  +0.075..+0.630
+    STIX Two     0.637  0.695  -0.020..+0.675  0.570  0.484  +0.014..+0.498
+
+  Ø is a full-height letter that crosses the baseline. ⌀ is a smaller ring
+  floating entirely above it. They are different marks, drawn differently, in
+  both faces that draw both. Sixteen of the eighteen faces carry only Ø, so
+  the "most faces" claim is untestable there rather than true.
+
+  The 2026-09-18 conclusion still holds, but for a different reason than it
+  gives. The separating cue is size and vertical placement relative to the
+  line -- and a feature vector normalised per glyph, into the glyph's own box,
+  discards exactly that. A ⌀ at 24 px and a Ø at 14 px land in nearly the same
+  107 numbers. The cue is on the page and is not in the vector.
+
+  No feature-vector change follows from this. There is no measured accuracy
+  problem to fix (section 2), the cost of a format change is the one this
+  project is most careful about, and section 4.1's aspect/baseline pruning --
+  which is where a height-relative-to-line quantity would naturally live -- is
+  currently disabled because both forms of it lost accuracy.
+
+
+6. Caveats
+----------
+- Coverage is from cmap only. A cmap entry pointing at an empty or .notdef
+  glyph would count here, so section 1 is an upper bound.
+- Section 3's inventory is this machine, today. It says nothing about what a
+  Linux build host or a fresh Windows install would carry; DejaVu Sans, which
+  carries U+2300 and is OFL, is absent here and is already recorded as absent
+  in fonts.tsv.
+- Section 2's 99.52% is the symbol category, not class 95, and is a
+  leave-one-out bank self-test, not a page result.
+- Sections 4 and 5 are outline geometry from the font files -- exact, but they
+  are what the faces contain, not what a rasteriser at 21 px/em produces.

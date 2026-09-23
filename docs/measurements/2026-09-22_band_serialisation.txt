@@ -1,0 +1,66 @@
+# Band serialisation fix (page_text joins a band's fragments with a space,
+# ends the band with one newline) vs the pre-fix control, bench/pages-cov all
+# 625 pages. `column_gap_heights` at 0 and 2.5, shipped defaults otherwise
+# (words.pitch_min_glyphs stays 6). Same grep as
+# docs/measurements/2026-09-22_fallback_full_corpus.txt
+# (`grep -E '^(pages|end-to-end)|" " -> ""|"" -> " "'`) plus a check for the
+# `" " -> "\n"` row.
+#
+# Binary: target/release/ocr.exe, built 2026-09-22 22:12:35 -0400, newer than
+# every edited source (pipeline.rs 22:07:46, pages.rs 22:08:42, hocr.rs
+# 22:08:00). Run one arm at a time in the foreground, per Ken's low-memory
+# instruction; no background shell held a lock at any point (one run auto-
+# backgrounded past the tool's 300s default timeout while the binary kept
+# running in the foreground of its own process -- not a second concurrent
+# invocation -- and was waited on to completion, not polled).
+#
+# Implementation: `pipeline::Line` carries a new `band: usize` field, the
+# index of `lines::group_with_bands`' outer group a fragment came from.
+# `ocrcer-bench::pages::page_text` (the single place lines are flattened to
+# text; it existed only in bench, so there was no core copy to redirect per
+# CLAUDE.md rule 4) now joins consecutive `Line`s that share a `band` with one
+# space and starts a new line only when the band changes, instead of a
+# newline after every `Line`. No change to words, word order or boxes.
+
+== cg=0 pitch_min_glyphs=6 (shipped default)
+pages   625 of 625 in bench/pages-cov (stride 1, offset 0)
+end-to-end   CER  6.698%  WER 27.283%  recall 74.119%  precision 78.401%  F1 76.200%
+    1353  " " -> ""
+     275  "" -> " "
+# Identical to the 2026-09-22_fallback_full_corpus.txt control (F1 76.200%,
+# CER 6.698%) to the last digit. No line is ever cut at cg=0, so no `Line`
+# shares a band with another and every band ends in its own newline just as
+# before; page_text's new branch is a no-op here by construction, not by
+# coincidence. `" " -> "\n"` does not appear for the same reason: cut off,
+# fragments off, nothing to rejoin.
+
+== cg=2.5 pitch_min_glyphs=6 (shipped default)
+pages   625 of 625 in bench/pages-cov (stride 1, offset 0)
+end-to-end   CER  6.653%  WER 27.860%  recall 76.112%  precision 76.554%  F1 76.332%
+     894  " " -> ""
+     776  "" -> " "
+# Word precision/recall/F1 identical to the fallback-corpus reading
+# (76.112% / 76.554% / 76.332%) to the last digit, as the gate requires: this
+# is a text-serialisation change and cannot touch what a word is. CER fell
+# from 7.760% (fallback-corpus reading, same arm) to 6.653%, a drop of 1.107
+# points -- more than closing the whole 1.06-point gap to cg=0 that
+# ARCHITECTURE.md section 11 recorded; cg=2.5 now beats cg=0 on both CER
+# (6.653% vs 6.698%) and word F1 (76.332% vs 76.200%).
+#
+# `" " -> "\n"` does not appear in the top 100 confusions (rerun at
+# `--worst 100`, full 625 pages, same CER/F1) -- down from the finding that
+# named it, at 768 occurrences on the 90-page `invoice` family alone
+# (ARCHITECTURE.md section 11). Re-checked directly on that same subset
+# (`--only invoice --set lines.column_gap_heights=2.5 --worst 200`): the
+# confusion is not present at any count, 0 of 768 remaining.
+
+# Gate: all four conditions hold.
+#   cg=2.5 word P/R/F1 76.112/76.554/76.332 -- identical.        PASS
+#   cg=0   F1 76.200 / CER 6.698% -- identical, unaffected.      PASS
+#   " " -> "\n" -- falls (768 -> 0 on invoice; absent at top-100 corpus-wide). PASS
+#   CER at 2.5 falls from 7.760% -- 7.760% -> 6.653%.            PASS
+#
+# cargo test --workspace and cargo build -p ocrcer-core --target
+# wasm32-unknown-unknown both green; no fixture under fixtures/expected/
+# changed (none covers page_text or the pipeline's line output), so nothing
+# was blessed.

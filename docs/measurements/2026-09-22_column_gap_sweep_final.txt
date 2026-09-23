@@ -1,0 +1,31 @@
+# lines.column_gap_heights sweep after fixed-pitch + band serialisation. bench/pages-cov, 625 pages, shipped defaults otherwise. Foreground, one arm per invocation.
+# binary 2026-09-22 22:12:35.144737900 -0400; newest core source 2026-09-22 22:07:46.804320400 -0400 crates/ocrcer-core/src/pipeline.rs
+== cg=1.5
+end-to-end   CER  6.458%  WER 27.483%  recall 77.742%  precision 75.869%  F1 76.794%
+== cg=2.0
+end-to-end   CER  6.554%  WER 27.697%  recall 76.717%  precision 76.263%  F1 76.489%
+== cg=1.0
+end-to-end   CER  7.348%  WER 34.710%  recall 75.991%  precision 69.713%  F1 72.716%
+== cg=1.75
+end-to-end   CER  6.503%  WER 27.483%  recall 77.141%  precision 76.215%  F1 76.675%
+== cg=1.25
+end-to-end   CER  6.720%  WER 29.779%  recall 77.206%  precision 73.686%  F1 75.405%
+== finfilings cg=0
+pages   60 of 60 in D:/Dev/ExcludedPrivate/ocrcer/pages/finfilings (stride 1, offset 0)
+end-to-end   CER 20.902%  WER 41.783%  recall 60.785%  precision 65.332%  F1 62.976%
+== finfilings cg=1.75
+pages   60 of 60 in D:/Dev/ExcludedPrivate/ocrcer/pages/finfilings (stride 1, offset 0)
+end-to-end   CER 19.544%  WER 38.056%  recall 68.158%  precision 68.396%  F1 68.277%
+== finfilings cg=2.5
+pages   60 of 60 in D:/Dev/ExcludedPrivate/ocrcer/pages/finfilings (stride 1, offset 0)
+end-to-end   CER 19.544%  WER 38.025%  recall 68.141%  precision 68.429%  F1 68.285%
+
+# Control reading after the decision landed: params.tsv/Params::DEFAULT/shipped
+# .ocrw moved to cg=1.75 (provenance measured), no --set override -- this is
+# the shipped default, not a swept arm. Rebuilt model/out/ocrcer.ocrw at
+# 16,20,24,32,48 confirmed to differ from the previous file in the params
+# table only (`ocrcer-build inspect` reads back column_gap_heights 1.75).
+# binary 2026-09-22 23:53:04 -0400; model 2026-09-22 23:48:06 -0400, both
+# newer than every edited source.
+== shipped default (cg=1.75, no --set)
+end-to-end   CER  6.503%  WER 27.483%  recall 77.141%  precision 76.215%  F1 76.675%

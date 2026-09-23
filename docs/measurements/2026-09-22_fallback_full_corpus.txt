@@ -1,0 +1,32 @@
+# Shipped fallback (cell merge, pitch_grid_check=0) vs pitch off, bench/pages-cov all 625 pages.
+# Binary rebuilt 2026-09-22 21:00:40.400503900 -0400, newer than params.rs/words.rs. Readings.
+== cg=0 pitch_min_glyphs=6
+pages   625 of 625 in bench/pages-cov (stride 1, offset 0)
+end-to-end   CER  6.698%  WER 27.283%  recall 74.119%  precision 78.401%  F1 76.200%
+    1353  " " -> ""
+     275  "" -> " "
+== cg=0 pitch_min_glyphs=0
+pages   625 of 625 in bench/pages-cov (stride 1, offset 0)
+# RUN STOPPED after arm 1 of 4: Claude Code reaped the background shell because the system was critically low on memory (not a fault of the run). Arms cg=0 pitch-off, cg=2.5 pitch-on, cg=2.5 pitch-off NOT measured here. Not restarted pending Ken.
+# Resumed 2026-09-22 21:46:48 at Ken's request, foreground, one arm per call; binary 2026-09-22 21:00:40.400503900 -0400.
+== cg=0 pitch_min_glyphs=0
+pages   625 of 625 in bench/pages-cov (stride 1, offset 0)
+end-to-end   CER  6.732%  WER 27.637%  recall 74.193%  precision 77.946%  F1 76.023%
+    1307  " " -> ""
+     368  "" -> " "
+== cg=2.5 pitch_min_glyphs=6
+pages   625 of 625 in bench/pages-cov (stride 1, offset 0)
+end-to-end   CER  7.760%  WER 27.860%  recall 76.112%  precision 76.554%  F1 76.332%
+     914  " " -> ""
+     741  "" -> " "
+== cg=2.5 pitch_min_glyphs=0
+pages   625 of 625 in bench/pages-cov (stride 1, offset 0)
+end-to-end   CER  8.172%  WER 31.288%  recall 75.111%  precision 73.616%  F1 74.356%
+    1245  "" -> " "
+     872  " " -> ""
+# Summary (readings, all 625 pages):
+#            pitch on (shipped)          pitch off
+#   cg=0     F1 76.200  CER 6.698%       F1 76.023  CER 6.732%
+#   cg=2.5   F1 76.332  CER 7.760%       F1 74.356  CER 8.172%
+# The fixed-pitch rule is a net gain at both arms. With it, the cut (2.5)
+# leads on word F1 and still trails on CER by 1.06 points.

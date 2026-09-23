@@ -1,0 +1,191 @@
+# aspect_min/aspect_max are the glyph's ink width divided by the face's CAP HEIGHT,
+# not by the glyph's own ink height. They are NOT the section 3 aspect feature and do
+# not convert into it. See ARCHITECTURE.md section 11, 2026-09-22.
+#index	codepoint	glyph	category	baseline_class	aspect_min_over_cap	aspect_max_over_cap	aspect_source	case_twin	notes
+0	U+0021	!	punct	ascender	0.06	0.25	authored-provisional	-1	one pen wide by design (STROKE/CAP = 0.100), measures 0.089 once width quantises to whole pixels; floor was authored for a serifed form
+1	U+0022	"	punct	above	0.35	0.55	authored-provisional	-1	
+2	U+0023	#	symbol	full	0.75	0.95	authored-provisional	-1	
+3	U+0024	$	currency	full	0.55	0.75	authored-provisional	-1	
+4	U+0025	%	symbol	ascender	0.85	1.10	authored-provisional	-1	
+5	U+0026	&	symbol	ascender	0.75	1.00	authored-provisional	-1	
+6	U+0027	'	punct	above	0.06	0.25	authored-provisional	-1	confusable with comma via baseline position; one pen wide by design (STROKE/CAP = 0.100), measures 0.089 once width quantises to whole pixels; floor was authored for a serifed form
+7	U+0028	(	punct	full	0.30	0.45	authored-provisional	-1	
+8	U+0029	)	punct	full	0.30	0.45	authored-provisional	-1	
+9	U+002A	*	symbol	above	0.45	0.65	authored-provisional	-1	
+10	U+002B	+	math	above	0.65	0.90	authored-provisional	-1	
+11	U+002C	,	punct	low	0.15	0.30	authored-provisional	-1	confusable with apostrophe via baseline position
+12	U+002D	-	punct	above	0.45	0.70	authored-provisional	-1	
+13	U+002E	.	punct	low	0.06	0.25	authored-provisional	-1	one pen wide by design (STROKE/CAP = 0.100), measures 0.089 once width quantises to whole pixels; floor was authored for a serifed form
+14	U+002F	/	punct	ascender	0.35	0.55	authored-provisional	-1	
+15	U+0030	0	digit	ascender	0.50	0.70	authored-provisional	-1	confusable with O; separates on aspect and counter shape
+16	U+0031	1	digit	ascender	0.20	0.50	authored-provisional	-1	part of 1/l/I/| confusion family; separates on serif and baseline contact; band spans the flagged-no-foot form (0.25) to the foot-serifed form (0.50); floor lowered from 0.30, which excluded the flagged-no-foot form this face draws
+17	U+0032	2	digit	ascender	0.50	0.70	authored-provisional	-1	
+18	U+0033	3	digit	ascender	0.45	0.70	authored-provisional	-1	floor was the exact design aspect 0.50, unreachable after pixel rounding (measures 0.491); one pixel at the gate size is 0.022
+19	U+0034	4	digit	ascender	0.50	0.75	authored-provisional	-1	
+20	U+0035	5	digit	ascender	0.45	0.70	authored-provisional	-1	confusable with S; floor was the exact design aspect 0.50, unreachable after pixel rounding (measures 0.491); one pixel at the gate size is 0.022
+21	U+0036	6	digit	ascender	0.50	0.70	authored-provisional	-1	
+22	U+0037	7	digit	ascender	0.50	0.70	authored-provisional	-1	
+23	U+0038	8	digit	ascender	0.50	0.70	authored-provisional	-1	confusable with B
+24	U+0039	9	digit	ascender	0.50	0.70	authored-provisional	-1	
+25	U+003A	:	punct	xheight	0.06	0.30	authored-provisional	-1	lower dot on the baseline, upper dot at x-height; one pen wide by design (STROKE/CAP = 0.100), measures 0.089 once width quantises to whole pixels; floor was authored for a serifed form
+26	U+003B	;	punct	descender	0.15	0.30	authored-provisional	-1	upper dot at x-height, comma tail below the baseline
+27	U+003C	<	math	above	0.55	0.84	authored-provisional	-1	measured 0.804 at 64 px, above the authored 0.80 ceiling; max = measured + 1.5 px width quantisation (1 px = 0.022 aspect at cap_px 44.8)
+28	U+003D	=	math	above	0.65	0.90	authored-provisional	-1	
+29	U+003E	>	math	above	0.55	0.84	authored-provisional	-1	measured 0.804 at 64 px, above the authored 0.80 ceiling; max = measured + 1.5 px width quantisation (1 px = 0.022 aspect at cap_px 44.8)
+30	U+003F	?	punct	ascender	0.45	0.65	authored-provisional	-1	
+31	U+0040	@	symbol	ascender	0.90	1.15	authored-provisional	-1	
+32	U+0041	A	upper	ascender	0.65	0.90	authored-provisional	64	
+33	U+0042	B	upper	ascender	0.55	0.80	authored-provisional	65	confusable with 8
+34	U+0043	C	upper	ascender	0.60	0.85	authored-provisional	66	
+35	U+0044	D	upper	ascender	0.65	0.90	authored-provisional	67	
+36	U+0045	E	upper	ascender	0.55	0.80	authored-provisional	68	
+37	U+0046	F	upper	ascender	0.50	0.75	authored-provisional	69	
+38	U+0047	G	upper	ascender	0.65	0.90	authored-provisional	70	
+39	U+0048	H	upper	ascender	0.65	0.90	authored-provisional	71	
+40	U+0049	I	upper	ascender	0.15	0.35	authored-provisional	72	part of 1/l/I/| confusion family
+41	U+004A	J	upper	ascender	0.40	0.60	authored-provisional	73	
+42	U+004B	K	upper	ascender	0.60	0.85	authored-provisional	74	
+43	U+004C	L	upper	ascender	0.50	0.75	authored-provisional	75	
+44	U+004D	M	upper	ascender	0.80	1.05	authored-provisional	76	
+45	U+004E	N	upper	ascender	0.65	0.90	authored-provisional	77	
+46	U+004F	O	upper	ascender	0.65	0.90	authored-provisional	78	confusable with 0
+47	U+0050	P	upper	ascender	0.55	0.80	authored-provisional	79	
+48	U+0051	Q	upper	ascender	0.65	0.95	authored-provisional	80	
+49	U+0052	R	upper	ascender	0.60	0.85	authored-provisional	81	
+50	U+0053	S	upper	ascender	0.55	0.80	authored-provisional	82	confusable with 5
+51	U+0054	T	upper	ascender	0.55	0.80	authored-provisional	83	
+52	U+0055	U	upper	ascender	0.65	0.90	authored-provisional	84	
+53	U+0056	V	upper	ascender	0.65	0.90	authored-provisional	85	
+54	U+0057	W	upper	ascender	0.90	1.15	authored-provisional	86	
+55	U+0058	X	upper	ascender	0.65	0.90	authored-provisional	87	
+56	U+0059	Y	upper	ascender	0.65	0.90	authored-provisional	88	
+57	U+005A	Z	upper	ascender	0.55	0.80	authored-provisional	89	
+58	U+005B	[	punct	full	0.25	0.40	authored-provisional	-1	
+59	U+005C	\	punct	ascender	0.35	0.55	authored-provisional	-1	
+60	U+005D	]	punct	full	0.25	0.40	authored-provisional	-1	
+61	U+005E	^	symbol	above	0.45	0.70	authored-provisional	-1	
+62	U+005F	_	punct	low	0.60	0.90	authored-provisional	-1	
+63	U+0060	`	punct	above	0.20	0.35	authored-provisional	-1	
+64	U+0061	a	lower	xheight	0.55	0.75	authored-provisional	32	
+65	U+0062	b	lower	ascender	0.50	0.70	authored-provisional	33	
+66	U+0063	c	lower	xheight	0.45	0.65	authored-provisional	34	
+67	U+0064	d	lower	ascender	0.50	0.70	authored-provisional	35	
+68	U+0065	e	lower	xheight	0.50	0.70	authored-provisional	36	
+69	U+0066	f	lower	ascender	0.35	0.55	authored-provisional	37	
+70	U+0067	g	lower	descender	0.50	0.70	authored-provisional	38	confusable with 9
+71	U+0068	h	lower	ascender	0.50	0.70	authored-provisional	39	
+72	U+0069	i	lower	ascender	0.06	0.30	authored-provisional	40	dot elevates the bounding box above x-height; classed ascender by convention, font-dependent; one pen wide by design (STROKE/CAP = 0.100), measures 0.089 once width quantises to whole pixels; floor was authored for a serifed form
+73	U+006A	j	lower	descender	0.25	0.40	authored-provisional	41	
+74	U+006B	k	lower	ascender	0.45	0.70	authored-provisional	42	floor was the exact design aspect 0.50, unreachable after pixel rounding (measures 0.491); one pixel at the gate size is 0.022
+75	U+006C	l	lower	ascender	0.06	0.30	authored-provisional	43	part of 1/l/I/| confusion family; one pen wide by design (STROKE/CAP = 0.100), measures 0.089 once width quantises to whole pixels; floor was authored for a serifed form
+76	U+006D	m	lower	xheight	0.85	1.10	authored-provisional	44	classic confusion with the two-character sequence rn
+77	U+006E	n	lower	xheight	0.55	0.75	authored-provisional	45	
+78	U+006F	o	lower	xheight	0.55	0.75	authored-provisional	46	
+79	U+0070	p	lower	descender	0.50	0.70	authored-provisional	47	
+80	U+0071	q	lower	descender	0.50	0.70	authored-provisional	48	
+81	U+0072	r	lower	xheight	0.35	0.55	authored-provisional	49	
+82	U+0073	s	lower	xheight	0.45	0.65	authored-provisional	50	
+83	U+0074	t	lower	ascender	0.35	0.55	authored-provisional	51	
+84	U+0075	u	lower	xheight	0.55	0.75	authored-provisional	52	
+85	U+0076	v	lower	xheight	0.55	0.75	authored-provisional	53	
+86	U+0077	w	lower	xheight	0.80	1.05	authored-provisional	54	
+87	U+0078	x	lower	xheight	0.55	0.75	authored-provisional	55	
+88	U+0079	y	lower	descender	0.50	0.70	authored-provisional	56	
+89	U+007A	z	lower	xheight	0.45	0.65	authored-provisional	57	
+90	U+007B	{	punct	full	0.30	0.45	authored-provisional	-1	
+91	U+007C	|	symbol	ascender	0.08	0.20	authored-provisional	-1	part of 1/l/I/| confusion family
+92	U+007D	}	punct	full	0.30	0.45	authored-provisional	-1	
+93	U+007E	~	symbol	above	0.55	0.80	authored-provisional	-1	
+94	U+00D8	Ø	upper	ascender	0.65	0.90	authored-provisional	-1	the letter O-with-stroke; kept distinct from the diameter sign U+2300. Measured 2026-09-22: the two are NOT near-identical outlines -- this one is full height and crosses the baseline (Fira Code ink height 0.936 em, y -0.113..+0.824). What they share is not shape but the fact that the separating cue is size relative to the LINE, which a per-glyph-normalised feature vector discards. See ARCHITECTURE.md section 11, 2026-09-22.
+95	U+2300	⌀	symbol	ascender	0.65	0.90	authored-provisional	-1	the diameter sign; kept distinct from the letter O-with-stroke (U+00D8). Measured 2026-09-22: a smaller ring floating entirely above the baseline (Fira Code 0.555 em, y +0.075..+0.630), not U+00D8's outline. The charset's thinnest class by far: carried by 2 of the 18 shippable file faces (Fira Code, STIX Two Math) plus the authored ISO 3098 face, because half the families on this machine that draw it are CAD-vendor faces the licence posture excludes. Its own accuracy is unmeasured -- 8 of 14088 bank evaluations. See ARCHITECTURE.md section 11, 2026-09-22.
+96	U+00B0	°	symbol	above	0.35	0.55	authored-provisional	-1	
+97	U+00B1	±	math	above	0.65	0.90	authored-provisional	-1	
+98	U+00D7	×	math	above	0.55	0.80	authored-provisional	-1	
+99	U+00F7	÷	math	above	0.65	0.90	authored-provisional	-1	
+100	U+221A	√	math	full	0.65	0.95	authored-provisional	-1	
+101	U+2264	≤	math	above	0.65	0.90	authored-provisional	-1	
+102	U+2265	≥	math	above	0.65	0.90	authored-provisional	-1	
+103	U+2248	≈	math	above	0.65	0.90	authored-provisional	-1	
+104	U+2260	≠	math	above	0.65	0.90	authored-provisional	-1	
+105	U+03A9	Ω	symbol	ascender	0.65	0.97	authored-provisional	-1	ohm sign usage; shape is the Greek capital omega; measured 0.938 at 64 px, above the authored 0.90 ceiling; max = measured + 1.5 px width quantisation (1 px = 0.022 aspect at cap_px 44.8)
+106	U+00B5	µ	symbol	descender	0.50	0.70	authored-provisional	-1	micro sign; descender tail like mu/y
+107	U+00BC	¼	symbol	ascender	0.90	1.20	authored-provisional	-1	
+108	U+00BD	½	symbol	ascender	0.90	1.20	authored-provisional	-1	
+109	U+00BE	¾	symbol	ascender	0.90	1.20	authored-provisional	-1	
+110	U+00A7	§	symbol	ascender	0.45	0.65	authored-provisional	-1	
+111	U+00B6	¶	symbol	descender	0.45	0.65	authored-provisional	-1	
+112	U+2020	†	symbol	ascender	0.35	0.55	authored-provisional	-1	
+113	U+2021	‡	symbol	ascender	0.35	0.55	authored-provisional	-1	
+114	U+00A9	©	symbol	ascender	0.75	0.95	authored-provisional	-1	
+115	U+00AE	®	symbol	ascender	0.75	0.95	authored-provisional	-1	
+116	U+2122	™	symbol	above	0.75	1.06	authored-provisional	-1	superscript-style mark; does not sit on the baseline; measured 1.027 at 64 px, above the authored 1.00 ceiling; max = measured + 1.5 px width quantisation (1 px = 0.022 aspect at cap_px 44.8)
+117	U+2030	‰	symbol	ascender	1.30	1.70	authored-provisional	-1	
+118	U+00B7	·	punct	above	0.06	0.25	authored-provisional	-1	one pen wide by design (STROKE/CAP = 0.100), measures 0.089 once width quantises to whole pixels; floor was authored for a serifed form
+119	U+2022	•	punct	above	0.30	0.50	authored-provisional	-1	
+120	U+2013	–	punct	above	0.90	1.30	authored-provisional	-1	en dash
+121	U+2014	—	punct	above	1.60	2.20	authored-provisional	-1	em dash
+122	U+2018	‘	punct	above	0.10	0.25	authored-provisional	-1	
+123	U+2019	’	punct	above	0.10	0.25	authored-provisional	-1	
+124	U+201C	“	punct	above	0.35	0.55	authored-provisional	-1	
+125	U+201D	”	punct	above	0.35	0.55	authored-provisional	-1	
+126	U+2026	…	punct	low	0.90	1.30	authored-provisional	-1	
+127	U+00A2	¢	currency	full	0.45	0.65	authored-provisional	-1	
+128	U+00A3	£	currency	ascender	0.55	0.75	authored-provisional	-1	
+129	U+20AC	€	currency	ascender	0.55	0.75	authored-provisional	-1	
+130	U+00A5	¥	currency	ascender	0.60	0.80	authored-provisional	-1	
+131	U+00C0	À	upper	ascender	0.65	0.90	authored-provisional	159	
+132	U+00C1	Á	upper	ascender	0.65	0.90	authored-provisional	160	
+133	U+00C2	Â	upper	ascender	0.65	0.90	authored-provisional	161	
+134	U+00C3	Ã	upper	ascender	0.65	0.90	authored-provisional	162	
+135	U+00C4	Ä	upper	ascender	0.65	0.90	authored-provisional	163	
+136	U+00C5	Å	upper	ascender	0.65	0.90	authored-provisional	164	
+137	U+00C6	Æ	upper	ascender	0.95	1.20	authored-provisional	165	
+138	U+00C7	Ç	upper	full	0.60	0.85	authored-provisional	166	cedilla dips below baseline while the body reaches cap-height; spans two zones, no single bucket fits cleanly
+139	U+00C8	È	upper	ascender	0.55	0.80	authored-provisional	167	
+140	U+00C9	É	upper	ascender	0.55	0.80	authored-provisional	168	
+141	U+00CA	Ê	upper	ascender	0.55	0.80	authored-provisional	169	
+142	U+00CB	Ë	upper	ascender	0.55	0.80	authored-provisional	170	
+143	U+00CC	Ì	upper	ascender	0.15	0.35	authored-provisional	171	
+144	U+00CD	Í	upper	ascender	0.15	0.35	authored-provisional	172	
+145	U+00CE	Î	upper	ascender	0.15	0.35	authored-provisional	173	
+146	U+00CF	Ï	upper	ascender	0.15	0.35	authored-provisional	174	
+147	U+00D1	Ñ	upper	ascender	0.65	0.90	authored-provisional	175	
+148	U+00D2	Ò	upper	ascender	0.65	0.90	authored-provisional	176	
+149	U+00D3	Ó	upper	ascender	0.65	0.90	authored-provisional	177	
+150	U+00D4	Ô	upper	ascender	0.65	0.90	authored-provisional	178	
+151	U+00D5	Õ	upper	ascender	0.65	0.90	authored-provisional	179	
+152	U+00D6	Ö	upper	ascender	0.65	0.90	authored-provisional	180	
+153	U+00D9	Ù	upper	ascender	0.65	0.90	authored-provisional	181	
+154	U+00DA	Ú	upper	ascender	0.65	0.90	authored-provisional	182	
+155	U+00DB	Û	upper	ascender	0.65	0.90	authored-provisional	183	
+156	U+00DC	Ü	upper	ascender	0.65	0.90	authored-provisional	184	
+157	U+00DD	Ý	upper	ascender	0.65	0.90	authored-provisional	185	
+158	U+00DF	ß	lower	ascender	0.45	0.65	authored-provisional	-1	no uppercase equivalent in this charset
+159	U+00E0	à	lower	xheight	0.55	0.75	authored-provisional	131	
+160	U+00E1	á	lower	xheight	0.55	0.75	authored-provisional	132	
+161	U+00E2	â	lower	xheight	0.55	0.75	authored-provisional	133	
+162	U+00E3	ã	lower	xheight	0.55	0.75	authored-provisional	134	
+163	U+00E4	ä	lower	xheight	0.55	0.75	authored-provisional	135	
+164	U+00E5	å	lower	xheight	0.55	0.75	authored-provisional	136	
+165	U+00E6	æ	lower	xheight	0.85	1.15	authored-provisional	137	ceiling raised from 1.05 to match the capital ligature's band; this face under-fuses the a and e halves at 1.071, which is inside the range real faces show but is on the wide edge of it
+166	U+00E7	ç	lower	descender	0.45	0.65	authored-provisional	138	cedilla below baseline, body at x-height: same extent as p g y
+167	U+00E8	è	lower	xheight	0.50	0.70	authored-provisional	139	
+168	U+00E9	é	lower	xheight	0.50	0.70	authored-provisional	140	
+169	U+00EA	ê	lower	xheight	0.50	0.70	authored-provisional	141	
+170	U+00EB	ë	lower	xheight	0.50	0.70	authored-provisional	142	
+171	U+00EC	ì	lower	ascender	0.15	0.30	authored-provisional	143	diacritic elevates the bounding box above x-height, as with plain i; classed ascender by convention, font-dependent
+172	U+00ED	í	lower	ascender	0.15	0.30	authored-provisional	144	diacritic elevates the bounding box above x-height, as with plain i; classed ascender by convention, font-dependent
+173	U+00EE	î	lower	ascender	0.15	0.30	authored-provisional	145	diacritic elevates the bounding box above x-height, as with plain i; classed ascender by convention, font-dependent
+174	U+00EF	ï	lower	ascender	0.15	0.30	authored-provisional	146	diacritic elevates the bounding box above x-height, as with plain i; classed ascender by convention, font-dependent
+175	U+00F1	ñ	lower	xheight	0.55	0.75	authored-provisional	147	
+176	U+00F2	ò	lower	xheight	0.55	0.75	authored-provisional	148	
+177	U+00F3	ó	lower	xheight	0.55	0.75	authored-provisional	149	
+178	U+00F4	ô	lower	xheight	0.55	0.75	authored-provisional	150	
+179	U+00F5	õ	lower	xheight	0.55	0.75	authored-provisional	151	
+180	U+00F6	ö	lower	xheight	0.55	0.75	authored-provisional	152	
+181	U+00F9	ù	lower	xheight	0.55	0.75	authored-provisional	153	
+182	U+00FA	ú	lower	xheight	0.55	0.75	authored-provisional	154	
+183	U+00FB	û	lower	xheight	0.55	0.75	authored-provisional	155	
+184	U+00FC	ü	lower	xheight	0.55	0.75	authored-provisional	156	
+185	U+00FD	ý	lower	descender	0.50	0.70	authored-provisional	157	descender base (y) plus a diacritic that clears the x-line but not the cap line, so descender rather than full
+186	U+00FF	ÿ	lower	descender	0.50	0.70	authored-provisional	-1	descender base (y) plus a diacritic that clears the x-line but not the cap line, so descender rather than full

@@ -1,0 +1,138 @@
+2026-09-23 — column fragment minimum-two-components rule, shipped-default readings
+
+WHAT THIS IS
+  Readings taken per the gate in ARCHITECTURE.md section 11's 2026-09-23 entry
+  ("A column fragment must hold two components..."), after implementing the
+  rule in `split_at_column_gaps`
+  (crates/ocrcer-core/src/layout/lines.rs): every gap wider than the cut is a
+  candidate, but a candidate is kept only if the raw fragments on both sides
+  of it -- as formed by all candidates together -- each hold two or more
+  components. No parameter change; the model file is unchanged.
+
+  Binary under test: target/release/ocr.exe, built at t=1790136551
+  (`cargo build --release -p ocrcer-bench --features pages`), which is newer
+  than crates/ocrcer-core/src/layout/lines.rs (t=1790136423). Model file:
+  model/out/ocrcer.ocrw, t=1790135286 (unchanged).
+
+  `cargo test --workspace`: 145 ocrcer-core tests pass (0 failed), including
+  all five fixtures the 1.75 default previously broke
+  (layout::lines::a_line_of_only_leader_dots_inherits_the_pages_x_height,
+  a_page_of_nothing_but_leaders_changes_nothing,
+  a_page_with_no_observed_line_inherits_nothing,
+  a_page_with_no_observed_line_votes_with_every_line_instead,
+  layout::words::a_single_wide_gap_still_separates_two_words) and the new
+  layout::lines::a_lone_glyph_between_wide_gaps_does_not_fracture_its_band.
+  Full workspace: all crates green.
+
+READING 1 — bench/pages-cov (shipped default)
+  command: ./target/release/ocr.exe model/out/ocrcer.ocrw bench/pages-cov
+  reading: end-to-end   CER 6.502%  WER 27.478%  recall 77.141%  precision 76.218%  F1 76.677%
+  control (2026-09-22, 1.75 cut, no min-fragment rule): F1 76.675%, CER 6.503%
+  delta: F1 +0.002, CER -0.001 -- within noise, effectively unchanged.
+
+READING 2 — D:/Dev/ExcludedPrivate/ocrcer/pages/finfilings (shipped default)
+  command: ./target/release/ocr.exe model/out/ocrcer.ocrw D:/Dev/ExcludedPrivate/ocrcer/pages/finfilings
+  reading: 60 of 60 pages, 578.1s (9635 ms/page)
+  reading: end-to-end   CER 19.960%  WER 39.065%  recall 66.251%  precision 67.372%  F1 66.807%
+  control (2026-09-22, 1.75 cut, no min-fragment rule): F1 68.277%, CER 19.544%
+  delta: F1 -1.470, CER +0.416
+
+GATE CHECK, per ARCHITECTURE.md section 11 (2026-09-23 entry)
+  Stated gate: "If F1 falls by more than 0.2 on either, it comes back here
+  before it ships."
+  pages-cov: PASSES (delta +0.002, well inside the 0.2 band).
+  finfilings: FAILS. F1 fell 1.470 points and CER rose 0.416 points, both far
+  past the 0.2 threshold the entry itself sets. This is a reading, not a
+  projection: the run completed in full (60 of 60 pages, no reap), the binary
+  timestamp confirms the fresh build was used, and CER/F1 are read directly
+  off the bench tool's own end-to-end line.
+
+  This does not ship as-is under the entry's own gate. Per the entry's
+  "Cost, to be measured, not assumed" paragraph, the rule was already known to
+  stop cuts next to a lone table digit or checkbox mark that the 1.75-only cut
+  currently makes; finfilings is real-world financial filings, dense with
+  tables, so this is plausibly that cost landing harder than anticipated
+  rather than a bug in the implementation (workspace tests, including the
+  five adjudicated fixtures and the new guard test, all pass under the
+  code's own unit-level expectations). Escalate to ocrcer-architect before
+  this ships: either the rule needs a narrower trigger than "any candidate
+  next to a singleton", or the 2026-09-22 gap-height default needs
+  re-examination together with it, or the cost is judged acceptable and the
+  gate in the architecture entry is revised with that judgement recorded.
+
+DIFF SIZE
+  crates/ocrcer-core/src/layout/lines.rs: 58 lines added, 4 lines removed
+  (62 changed lines total) against the pre-change version reconstructed from
+  the three edits applied in this session (no prior commit exists in this
+  repository to diff against).
+
+Narrowed rule (both sides lone)
+
+WHAT THIS IS
+  Readings taken per ARCHITECTURE.md section 11's 2026-09-23 entry "The
+  two-component rule failed its gate on real filings; narrowed to 'no cut
+  between two lone glyphs'", which supersedes the entry the readings above
+  were taken against. `split_at_column_gaps`
+  (crates/ocrcer-core/src/layout/lines.rs) now drops a candidate boundary
+  only when the raw fragments on *both* sides of it -- as formed by all
+  candidates together -- are each exactly one component; a candidate with a
+  multi-component fragment on either side is kept. No parameter change; the
+  model file is unchanged.
+
+  Also changed to fit the narrowed rule (per the entry's "Decision" list):
+  layout::words::a_single_wide_gap_still_separates_two_words moved its
+  geometry from `[0, 10, 40]` to `[0, 10, 34]` (the wide gap is now 16 px,
+  under the 17.5 px cut at 1.75x10, so the column rule does not fire on it at
+  all); its assertions (fallback source, two words, one-member second word)
+  are unchanged. layout::lines::a_lone_glyph_between_wide_gaps_does_not_
+  fracture_its_band, written for the withdrawn two-component rule, is
+  replaced by layout::lines::a_run_of_lone_glyphs_across_wide_gaps_stays_
+  one_band and layout::lines::a_lone_glyph_beside_a_multi_glyph_fragment_
+  is_still_cut.
+
+  Binary under test: target/release/ocr.exe, built at t=1790137964
+  (`cargo build --release -p ocrcer-bench --features pages`), which is newer
+  than crates/ocrcer-core/src/layout/lines.rs (t=1790137767). Model file:
+  model/out/ocrcer.ocrw, unchanged.
+
+  `cargo test --workspace`: 146 ocrcer-core tests pass (0 failed). Full
+  workspace: all crates green (38+3+2+14+82(71 passed, 11 pre-existing
+  ignored)+6+146 across the member crates, no failures).
+
+READING 1 — bench/pages-cov (shipped default)
+  command: ./target/release/ocr.exe model/out/ocrcer.ocrw bench/pages-cov
+  reading: end-to-end   CER 6.503%  WER 27.483%  recall 77.141%  precision 76.215%  F1 76.675%
+  control (2026-09-22, 1.75 cut, no min-fragment rule): F1 76.675%, CER 6.503%
+  delta: F1 +0.000, CER +0.000 -- unchanged to the digit.
+
+READING 2 — D:/Dev/ExcludedPrivate/ocrcer/pages/finfilings (shipped default)
+  command: ./target/release/ocr.exe model/out/ocrcer.ocrw D:/Dev/ExcludedPrivate/ocrcer/pages/finfilings
+  reading: pages   60 of 60 in D:/Dev/ExcludedPrivate/ocrcer/pages/finfilings (stride 1, offset 0)
+  reading: end-to-end   CER 19.610%  WER 38.422%  recall 67.602%  precision 68.130%  F1 67.865%
+  reading: line-matched CER 20.279%  (reading-order-independent)
+  reading: speed       613.5s for 60 pages, 10224 ms/page, 0.4 Mpixel/s
+  control (2026-09-22, 1.75 cut, no min-fragment rule): F1 68.277%, CER 19.544%
+  delta: F1 -0.412, CER +0.066
+  The run completed in full (60 of 60 pages, no reap, no memory kill observed).
+
+GATE CHECK, per ARCHITECTURE.md section 11 (2026-09-23 "narrowed to 'no cut
+between two lone glyphs'" entry)
+  Stated gate: within 0.2 F1 of the controls on both corpora (pages-cov
+  76.675%, finfilings 68.277%).
+  pages-cov: PASSES. Delta is 0.000 -- the narrowed rule changes nothing on
+  this corpus; every candidate that fired here already had a multi-component
+  fragment on at least one side.
+  finfilings: FAILS. F1 fell 0.412 points, more than double the 0.2 gate,
+  though far short of the two-component rule's 1.470-point loss above. This
+  is a reading, not a projection: the run completed in full, the binary
+  timestamp confirms the fresh build, and CER/F1 are read directly off the
+  bench tool's own end-to-end line.
+
+  This does not clear the gate the 2026-09-23 entry itself sets, though it
+  recovers most of the ground the withdrawn two-component rule lost
+  (finfilings F1 66.807% -> 67.865%, three-quarters of the 1.470-point gap
+  closed). The entry's own inferred mechanism -- a lone currency sign or
+  digit in its own table cell, cut off from the value beside it -- plausibly
+  still fires whenever that neighbour is itself more than one component
+  (e.g. a multi-character amount), which the narrowed rule does not protect.
+  Escalate to ocrcer-architect before this ships.

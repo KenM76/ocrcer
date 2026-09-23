@@ -1,0 +1,115 @@
+2026-09-22 — lines.column_gap_heights: the gap populations it sits between
+
+WHAT WAS ASSERTED
+  The parameter was authored against a sentence naming three populations, in
+  the parameter's own unit (the band's width-weighted median component height):
+
+    "A word space measures about 0.2 median heights and the widest gap inside
+     a set line -- a tabbed column in a rendered invoice -- about 1.5, while a
+     form's box boundary is several times that."
+
+  None of it was measured. It read as measured, which is what rule 1 forbids.
+
+HOW IT WAS MEASURED
+  ./target/release/ocr model/out/ocrcer.ocrw bench/pages-cov --stride 11 \
+      --set lines.column_gap_heights=0 --layout
+
+  384 line records over 57 pages, the cut disabled so every band is one uncut
+  line, word floor at the shipped 0.3. Every gap classified by the word
+  splitter's OWN per-line threshold, which the dump prints — a gap strictly
+  wider than the threshold is a space, the rest are intra-word. Classifying by
+  a hand-drawn cut instead would have made the answer a function of the cut.
+
+  A first attempt at this table was thrown away. --layout did not honour --set,
+  so the dump was post-cut and every family's maximum came out at exactly 2.50.
+  See the decision-log entry on the harness bug.
+
+EVERY GAP, BY THE SPLITTER'S OWN CLASSIFICATION
+
+  family      intra n   p50   p90 |  space n   p10   p50   p90    p99     max
+  currency        716  0.14  0.30 |      136  0.42  0.67  1.36   1.64    1.64
+  drawing         993  0.14  0.25 |      232  0.36  0.54  1.11   2.75    2.86
+  invoice        1654  0.14  0.30 |      247  0.60  1.36  6.56  18.08   18.77
+  prose          1211  0.17  0.27 |      314  0.42  0.58  1.36   1.50    1.55
+  statement      1558  0.14  0.31 |      147  0.50  1.17 11.50  23.44   24.12
+  technical       432  0.12  0.25 |      124  0.35  0.50  1.08   1.20    1.25
+  twins           803  0.17  0.30 |      266  0.43  0.67  1.19   1.40    1.50
+
+  Pooled over the five families with no banded rows (currency, prose,
+  technical, twins, drawing): 1072 spaces, p50 0.57, p90 1.25, p99 1.50,
+  max 2.86. Six of the 1072 reach 2.5, every one of them in a drawing.
+
+THE WIDEST GAP INSIDE ONE UNCUT LINE — WHAT THE CUT ACTUALLY DECIDES ON
+
+  family      lines  median    p90    p99    max   >=1.5  >=2.5   >=4
+  currency       35    0.70   1.50   1.64   1.64   11.4%   0.0%  0.0%
+  drawing        72    0.86   1.29   2.86   2.86    8.3%   8.3%  0.0%
+  invoice        88    3.25   8.12  18.77  18.77   76.1%  62.5% 33.0%
+  prose          32    0.67   1.45   1.55   1.55    9.4%   0.0%  0.0%
+  statement      72    5.30  12.25  24.12  24.12   70.8%  66.7% 62.5%
+  technical      35    0.50   1.20   1.25   1.25    0.0%   0.0%  0.0%
+  twins          50    0.86   1.30   1.50   1.50    2.0%   0.0%  0.0%
+  ALL           384    1.10   7.25  18.77  24.12   34.4%  28.4% 19.3%
+
+  The widest of them all:
+
+    24.12  gap 193 px / median  8   'Adjustments                      -0.05'
+    23.44  gap 375 px / median 16   'Adjustments                      -0.05'
+    22.75  gap 273 px / median 12   'Adjustments                      -0.05'
+    18.77  gap 413 px / median 22   (line with no matching truth)
+    12.50  gap 175 px / median 14   'Opening balance              12,480.15'
+    12.25  gap  98 px / median  8   'Payments received           (3,250.00)'
+
+BOTH ASSERTED FIGURES NAMED THE WRONG POPULATION
+  "About 0.2" is the INTRA-WORD gap (p50 0.14, p90 0.25-0.31), not the word
+  space. A word space is 0.57 at the median on the families without banded
+  rows.
+
+  "About 1.5" is the CEILING ON RUNNING TEXT (max 1.25 to 1.64 on four
+  families), not the tabbed column gap. The widest gap inside one banded row
+  is 3.25 median heights on invoice and 5.30 on statement.
+
+  Both errors understate the separation, which is the harmless direction — the
+  populations are further apart than the sentence claimed, not closer. The
+  problem is not the conclusion, it is that a reader had no way to know the
+  numbers were invented.
+
+THE PREDICTION, AND THE TEST OF IT
+  If a family's widest intra-line gap never reaches 2.5, the shipped cut cannot
+  fire on it, and the family must score IDENTICALLY with the cut on and off.
+
+  ./target/release/ocr model/out/ocrcer.ocrw bench/pages-cov \
+      --only __<family>__ --set lines.column_gap_heights=<0|2.5>
+
+  90 pages per family (85 for currency), all five render sizes:
+
+    family      cut off                          cut at 2.5
+    currency    CER 5.615%  F1 82.367%           CER 5.615%  F1 82.367%
+    prose       CER 4.155%  F1 89.425%           CER 4.155%  F1 89.425%
+    technical   CER 6.357%  F1 77.766%           CER 6.357%  F1 77.766%
+    twins       CER 13.164% F1 57.610%           CER 13.164% F1 57.610%
+    drawing     CER 4.121%  F1 82.198%           CER 4.528%  F1 82.797%
+
+  Four families identical in every digit of CER, WER, recall, precision and F1.
+  Drawing — the one family without banded rows whose tail crosses 2.5, at 8.3%
+  of its lines — is the one that moves, and it moves in both directions at
+  once: +0.60 points of word F1, -0.41 points of CER.
+
+  So the whole effect of the cut on this corpus at its shipped value lives in
+  invoice, statement and the 8.3% tail of drawing. A sweep of the parameter
+  pooled over 625 pages is 5/7 dilution at values above about 1.7, and below
+  that it starts cutting running text at the word spaces it should be keeping.
+
+CAVEATS
+  1. Rendered pages, not scans. A scan's gaps carry the additional spread of
+     its own binarisation, and the 29-scan corpus is where the cut and the
+     synthetic corpus disagree about whether the cut is worth having at all.
+  2. 57 pages at stride 11. Stride 11 is coprime with the 5-size ladder so all
+     five render sizes are sampled.
+  3. The classification is the splitter's, so it inherits the splitter's
+     mistakes: on a badly split line a gap called a space may not be one. That
+     is the right inheritance for this question — the cut runs before the
+     splitter and the question is what populations the splitter then sees.
+  4. This measures the populations the parameter sits between. It does NOT
+     choose the value. The value remains a guess; its sweep was invalidated
+     when words.min_valley_x_heights changed under it and is being re-run.

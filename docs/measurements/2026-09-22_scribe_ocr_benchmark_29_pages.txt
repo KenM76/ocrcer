@@ -1,0 +1,81 @@
+2026-09-22 — First third-party measurement: scribeocr/ocr-benchmark, 29 pages
+
+WHAT THIS IS
+  Every accuracy figure elsewhere in this repository is OCRcer scored by
+  OCRcer, on truth this project converted, by a metric this project chose.
+  This run is none of those: their pages, their truth, their metric, their
+  code. `github.com/scribeocr/ocr-benchmark`, cloned to the excluded-private
+  tree; no part of it enters the model or the repository.
+
+HOW OCRcer WAS PRESENTED TO IT
+  A new `hocr` bin in ocrcer-bench (behind --features pages) writes hOCR with
+  ocr_line / ocrx_word elements, bounding boxes, and a baseline on every line.
+  The baseline is mandatory: their importer does `if (!baselineMatch) return ''`
+  and silently drops any line that lacks one, which presents as `missed = total`
+  with `extra = 0`. The two baseline numbers are slope and offset, and the
+  offset is relative to the BOX BOTTOM, not the page.
+
+STEP 1 — VALIDATE THE HARNESS ON THE ENGINES NOBODY HERE TUNED
+  node run_eval.js over the 29 pages, ignorePunct = true:
+
+    engine                 pooled    mean-of-pages    published
+    Tesseract.js (LSTM)    86.67%    84.76%           84.76%
+    Scribe.js              94.52%    93.65%           93.65%
+
+  Both reproduce exactly. The published statistic is the UNWEIGHTED MEAN OVER
+  PAGES, not the pooled ratio; the two differ by more than a point here.
+
+STEP 2 — OCRcer THROUGH THE SAME HARNESS
+
+    setting                        pooled    mean-of-pages
+    lines.column_gap_heights = 0   32.88%    33.81%
+    lines.column_gap_heights = 1.5 45.84%    43.40%
+    lines.column_gap_heights = 2.5 45.51%    43.13%
+
+  Headline, on their terms: OCRcer 43.40% against Tesseract.js 84.76% and
+  Scribe.js 93.65%.
+
+WHAT THEIR METRIC COUNTS
+  Per page, `correct / total` where `total` counts GROUND-TRUTH words matched
+  by bounding-box overlap, punctuation ignored. That is a box-matched word
+  RECALL. There is no insertion term, so the figure above says nothing at all
+  about spurious output — and a change that only improves precision cannot
+  move it.
+
+STEP 3 — THIS CRATE'S OWN METRIC, SAME 29 PAGES, SAME SETTINGS (cg = 1.5)
+    end-to-end   CER 109.765%  WER 270.659%  recall 44.809%  precision 15.134%  F1 22.626%
+
+  Recall 44.8% agrees with their 43.40% to about a point, which is the second
+  validation: two independent implementations of a recall-like statistic over
+  different truth conversions land in the same place. Precision 15.1% is the
+  half their metric cannot see.
+
+STEP 4 — PER-FAMILY, THIS CRATE'S METRIC, cg = 0
+    479.474% / 453.994%  slide       (989 chars)     [cg2.5 / cg0]
+    193.569% / 168.741%  table       (24134 chars)
+     95.568% /  86.205%  chart       (2008 chars)
+     84.420% /  85.067%  form        (2163 chars)
+     66.646% /  66.508%  multicol    (35474 chars)
+     65.890% /  65.270%  deposition  (5324 chars)
+     24.283% /  24.283%  receipt     (453 chars)
+     12.056% /  11.895%  singlecol   (1858 chars)
+      6.842% /   5.744%  filing      (3186 chars)
+
+  Clean single-column text reads well. Everything the engine cannot refuse —
+  chart furniture, table cell rules, slide graphics — costs more than the text
+  on the page earns.
+
+DIAGNOSIS
+  Precision 15% at recall 45% means roughly three emitted tokens for every one
+  the truth has. This is not a matcher failure and better prototypes do not fix
+  it: THE PIPELINE HAS NO REJECT ANYWHERE. Every component surviving the
+  geometric filters is matched to its nearest class and emitted.
+
+  A match-distance floor is the missing stage. Its value must come from the
+  measured distance distributions of glyph and non-glyph components on a corpus
+  containing both — not from a plausible number.
+
+SPEED, RECORDED BUT NOT COMPARED
+  427.8 s for 29 pages at cg 0, 14753 ms/page, 0.3 Mpixel/s (recognition only).
+  These are 300 DPI full-page scans and the machine was not idle. No
+  head-to-head timing claim is made from this run.

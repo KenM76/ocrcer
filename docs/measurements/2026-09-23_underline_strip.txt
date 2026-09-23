@@ -1,0 +1,457 @@
+2026-09-23 -- lines.rule_run_heights derivation
+Task: implement docs/ARCHITECTURE.md sec 11 last entry, "Underlines are
+stripped from the pixels of over-wide components".
+
+Tool: ocrcer-build aspect (extended), 256 px/em, model/fonts.tsv shippable
+faces (32, incl. the always-prepended authored face "OCRcer Technical
+Regular"), 187 charset classes.
+
+Build: cargo build --release -p ocrcer-build (commit: working tree, no
+commit made per instructions)
+
+Command: ./target/release/ocrcer-build.exe aspect
+
+--- full output ---
+ratio	char	px	face
+   23.60	'—'	236x10	Open Sans Condensed Light
+   21.33	'|'	12x256	Open Sans Condensed Light
+   16.17	'l'	12x194	Open Sans Condensed Light
+   15.17	'I'	12x182	Open Sans Condensed Light
+   14.80	'_'	148x10	Liberation Sans Bold
+   11.62	'i'	16x186	Open Sans Condensed Light
+   11.00	'–'	198x18	OCRcer Technical Regular
+   11.00	'…'	198x18	OCRcer Technical Regular
+   10.44	'!'	18x188	OCRcer Technical Regular
+    7.69	'j'	32x246	Open Sans Condensed Light
+    7.00	':'	18x126	OCRcer Technical Regular
+    6.72	';'	25x168	Liberation Sans Regular
+    5.95	'Ì'	40x238	Open Sans Condensed Light
+    5.95	'Í'	40x238	Open Sans Condensed Light
+    5.88	'ì'	34x200	OCRcer Technical Regular
+
+187 classes, 5935 face renders at 256 px/em
+flattest or thinnest class '—' at 23.60:1 -- an aspect gate must sit above this
+
+longest horizontal ink run '—' on OCRcer Technical Regular: 340px run / 125.44px x-height = 2.7105 x-heights
+lines.rule_run_heights = 2 x 2.7105 = 5.4209
+--- end output ---
+
+Derivation: arg-max is the class '—' (em dash) on face "OCRcer Technical
+Regular" (the authored ISO 3098 face, always face 0 of the bank, counted as
+one of the "32 faces" per the same convention `ocrcer-build metrics` already
+uses -- see its "32 faces measured" line with OCRcer Technical Regular as
+row 1). Longest horizontal ink run = 340px, face x-height at 256px/em =
+125.44px (measured ink height of 'x', this face declares no OS/2 sxHeight).
+Ratio = 340 / 125.44 = 2.7105 x-heights. lines.rule_run_heights = 2 x 2.7105
+= 5.4209 (rounded to 5.421 for the params row; the factor of 2 is authored
+headroom per ARCHITECTURE.md).
+
+Sanity check against the gate this feeds: with rule_run_heights = 5.42, the
+run floor on a real page is L = 5.42 x h (h = median glyphish-component
+height, which ARCHITECTURE.md notes is >= the page's true x-height). An
+em dash or row of hyphens is a single run of width ~= 2.7 x its own
+x-height at most (per this same measurement, taken over every class and
+every shippable face) which is comfortably under 5.42 x h whenever h is at
+least approximately the page's own x-height -- exactly the case the 2x
+headroom exists to cover.
+
+--- implementation ---
+lines.rule_run_heights = 5.4209 (measured), lines.underline_strip = 0 (guess,
+default off) landed in model/params.tsv and Params::DEFAULT
+(crates/ocrcer-core/src/params.rs). Strip pass: layout::lines::strip_underlines
+(crates/ocrcer-core/src/layout/lines.rs), gated behind lines.underline_strip in
+pipeline::Engine::recognize_lines; toggle-off path is byte-identical to the
+pre-existing label/components call, so all prior golden fixtures are
+unaffected. New named tests (crates/ocrcer-core/src/layout/lines.rs,
+mod tests): an_underlined_word_splits_into_letters_with_the_line_gone,
+an_em_dash_and_a_row_of_hyphens_are_untouched,
+a_table_rule_touching_digits_recovers_them,
+the_toggle_off_leaves_the_default_pipeline_path_alone. All pass:
+`cargo test -p ocrcer-core --lib layout::lines::` -- 31 passed, 0 failed.
+`cargo test --workspace` -- all green, 0 failed. `cargo build -p ocrcer-core
+--target wasm32-unknown-unknown` -- clean, forbid(unsafe_code) and
+zero-deps invariants intact.
+
+Model rebuilt after the params.tsv change:
+  ./target/release/ocrcer-build.exe write 16,20,24,32,48 21,26,36,56 model/out/ocrcer.ocrw
+  wrote model/out/ocrcer.ocrw: 29675 prototypes, 32 faces, 9 tables, 3.15 MB
+  int8 top-1 agreement with f32: 23618/23740 = 99.486%
+`ocrcer-build.exe inspect model/out/ocrcer.ocrw` confirms the params table
+reads back: "params  lines rule_run_heights 5.4209 underline_strip 0".
+
+Binary/model timestamps used for every reading below:
+  model/out/ocrcer.ocrw        2026-09-23 06:15 (t=1790158557)
+  target/release/ocr.exe       2026-09-23 06:21 (built t=1790158918, newer
+                                                  than the model -- no
+                                                  staleness warning)
+  target/release/ocrcer-build.exe  2026-09-23 06:22
+
+--- readings ---
+
+Reading 1 -- filing__r000022, control (no --set), --line-pages:
+  end-to-end   CER 40.144%  WER 80.000%  recall 30.000%  precision 29.893%  F1 29.947%
+  line-matched CER 37.154%
+  (D:/Dev/ExcludedPrivate/ocrcer/pages/finfilings, 1 of 60 pages, "only filing__r000022")
+
+Reading 2 -- filing__r000022, --set lines.underline_strip=1, --line-pages:
+  end-to-end   CER 34.994%  WER 75.357%  recall 33.571%  precision 32.982%  F1 33.274%
+  line-matched CER 33.444%
+  Delta vs reading 1: CER -5.150 (better), line-matched CER -3.710 (better),
+  F1 +3.327 (better). This is the dense-table page from
+  docs/measurements/2026-09-23_dense_table_r000022.md, i.e. exactly the page
+  the rule targets.
+
+Reading 3 -- bench/pages-cov (625 pages), --set lines.underline_strip=1, --line-pages:
+  end-to-end   CER  6.127%  WER 26.803%  recall 77.863%  precision 76.928%  F1 77.392%
+  line-matched CER  6.127%
+  speed       693.7s for 625 pages, 1110 ms/page (run exceeded the 600s
+              foreground budget; completed under run_in_background)
+  Control:     F1 77.392 / CER 6.127 / line-matched CER 6.127
+  Delta:       F1 +0.000, CER +0.000, line-matched CER +0.000 -- bit-identical
+  to the control on every reported figure. Gate ("no worse than 0.05 F1 or
+  CER") passes with margin to spare; the synthetic corpus evidently contains
+  nothing the strip pass ever triggers on (or triggers on harmlessly),
+  consistent with pages-cov being rendered prose/tables without the ruled
+  underlines/table-rule artifacts real scanned filings have.
+
+Reading 4 -- D:/Dev/ExcludedPrivate/ocrcer/pages/finfilings (60 pages), --set lines.underline_strip=1, --line-pages:
+  end-to-end   CER 19.253%  WER 35.889%  recall 69.811%  precision 74.299%  F1 71.985%
+  line-matched CER 19.414%
+  speed       1304.8s for 60 pages, 21747 ms/page (10:51:47 EDT start ->
+              07:13:41 EDT end -- ran under run_in_background per
+              instructions, ~21.7min)
+  Control:     F1 73.615 / CER 17.064 / line-matched CER 16.942
+  Delta:       F1 -1.630 (worse), CER +2.189 (worse), line-matched CER
+  +2.472 (worse). Gate ("finfilings must be better on both end-to-end and
+  line-matched CER") FAILS -- clearly, not marginally.
+
+--- verdict ---
+
+Rule A alone (this toggle) does not clear its own gate on the full
+finfilings corpus, despite clearing it decisively on the one page the rule
+was derived to fix (filing__r000022: CER -5.15, line-matched CER -3.71,
+both better). pages-cov is untouched (bit-identical to control), so the
+regression is confined to real scanned filing pages, not synthetic ones.
+
+top confusions on the toggled finfilings run are dominated by plain
+single-character deletions across nearly every common letter --
+"e"->"" 1614, "i"->"" 1239, "t"->"" 1209, "r"->"" 1163, "o"->"" 1053,
+"n"->"" 930, "a"->"" 854, "s"->"" 708, "f"->"" 587, plus " "->"" 1635 and
+"\n"->"" 729 -- a much broader and flatter deletion profile than either the
+control finfilings run or the toggled filing__r000022 run individually
+show. This pattern (wide, uniform character loss across many distinct
+pages, not concentrated on dense-table pages) is consistent with the strip
+firing on real prose/signature content elsewhere in the 60-page corpus --
+long words, letter-sequences whose 8-connected components merge into a
+single wide blob at 0px/em scan resolution, or genuine underlines/rules
+whose removal also removed adjoining glyph ink at the L-long boundary the
+run-erase touches -- and stripping real ink along with it, not just the
+table rule the single audited page has. The per-page worst-page lists
+shifted too: several pages not near the top of the control's worst list
+(filing__r000033 at 68.02%, filing__r000044 at 64.61%, filing__r000055 at
+55.19%, filing__r000583 at 53.76%) are now the four worst pages in the
+corpus, well above filing__r000022 itself (34.99%) -- the toggle is hurting
+different pages far more than it helps the one it was built for.
+
+This is the escalation-worthy finding: the rule as implemented (component
+width >= L, full-length horizontal run erase along that component's own
+label) is not safe to ship at lines.underline_strip=1 by default. Left at
+its current default (0, guess) per instructions; not flipped. The
+architect should look at reading 4's worst-page list and top-confusions
+table before deciding whether the fix is a tighter run_floor, a
+column/row-rule-specific heuristic (e.g. requiring the run to span the
+full component width rather than just exceed L, or requiring near-constant
+row thickness), or component-height gating in addition to width.
+
+================================================================================
+Second rule, 2026-09-23 07:54 EDT
+"Underline strip, second rule: straight bands only, keep crossing strokes,
+drop strip debris, and keep what was stripped" (ARCHITECTURE.md section 11,
+2026-09-23, last entry, items 1-4). Reworks strip_underlines in response to
+the finding above: a band must now be >= 2 consecutive rows, each with
+exactly one qualifying run whose x0/x1 agree within 2px of the row before
+it; within an accepted band, a column is only erased where its own vertical
+ink run is no taller than the band's row count + 1 (a crossing stroke keeps
+every pixel); a piece produced by re-labelling a component that was
+actually stripped is discarded if it is taller than lines.debris_heights x
+h; every accepted band is recorded as a RuleSegment (x0, x1, y0, y1) on
+strip_underlines's new StripOutput, unconsumed downstream. Item 5
+("Direction recorded") is out of scope for this entry.
+
+--- lines.debris_heights derivation ---
+
+`./target/release/ocrcer-build.exe aspect`, extended 2026-09-23 to also
+report the tallest ink height per class/face (the run-floor computation,
+lines.rule_run_heights, was already there and is unchanged -- reprinted
+below for the cross-check that it agrees with the shipped default):
+
+    ratio	char	px	face
+       23.60	'—'	236x10	Open Sans Condensed Light
+       21.33	'|'	12x256	Open Sans Condensed Light
+       16.17	'l'	12x194	Open Sans Condensed Light
+       15.17	'I'	12x182	Open Sans Condensed Light
+       14.80	'_'	148x10	Liberation Sans Bold
+       11.62	'i'	16x186	Open Sans Condensed Light
+       11.00	'–'	198x18	OCRcer Technical Regular
+       11.00	'…'	198x18	OCRcer Technical Regular
+       10.44	'!'	18x188	OCRcer Technical Regular
+        7.69	'j'	32x246	Open Sans Condensed Light
+        7.00	':'	18x126	OCRcer Technical Regular
+        6.72	';'	25x168	Liberation Sans Regular
+        5.95	'Ì'	40x238	Open Sans Condensed Light
+        5.95	'Í'	40x238	Open Sans Condensed Light
+        5.88	'ì'	34x200	OCRcer Technical Regular
+
+    187 classes, 5935 face renders at 256 px/em
+    flattest or thinnest class '—' at 23.60:1 -- an aspect gate must sit above this
+
+    longest horizontal ink run '—' on OCRcer Technical Regular: 340px run / 125.44px x-height = 2.7105 x-heights
+    lines.rule_run_heights = 2 x 2.7105 = 5.4209
+
+    tallest ink height '√' on STIX Two Math Regular: 304px height / 121.09px x-height = 2.5106 x-heights
+    lines.debris_heights = 2 x 2.5106 = 5.0211
+
+rule_run_heights reproduces the shipped default exactly (5.4209),
+confirming the extension changed nothing about the existing computation.
+The arg-max for debris_heights is the radical sign ('\u{221A}') on "STIX
+Two Math Regular": 304px tall / 121.09px x-height = 2.5106 x-heights,
+doubled for the same authored headroom rule_run_heights uses (the same
+factor-of-two clearance, not a second independent guess) = 5.0211.
+Recorded in model/params.tsv (lines.debris_heights, measured) and
+crates/ocrcer-core/src/params.rs (Params::DEFAULT.lines.debris_heights =
+5.0211), both citing this derivation.
+
+--- tests ---
+
+Four existing strip_underlines tests kept green. All four had their return-
+type destructuring updated for the (labels, components) tuple becoming
+StripOutput; three (an_underlined_word_splits_into_letters_with_the_line_gone,
+an_em_dash_and_a_row_of_hyphens_are_untouched,
+a_table_rule_touching_digits_recovers_them) had their rule fixtures widened
+from a 1-row rule to a 2-row band, since a single-row run is no longer
+erasable at all under item 2 ("bands, not rows"), and now also assert on
+StripOutput::rule_segments. the_toggle_off_leaves_the_default_pipeline_path_alone
+needed no change beyond that -- it never calls strip_underlines directly.
+
+Two of the three widened tests needed a second, larger premise change,
+found only by actually running them against the finished implementation:
+an_underlined_word_splits_into_letters_with_the_line_gone and
+a_table_rule_touching_digits_recovers_them both originally expected each
+letter/digit to come back at its pre-rule height (8px), same as under the
+first rule. Both failed instead with height 10. Item 3 ("Keep crossing
+strokes") measures a touching column's own vertical ink run through the
+whole band, which may reach above or below it; a letter stroke or a solid
+digit block that touches the rule with no vertical gap produces one
+continuous run spanning its own height plus the rule's, far taller than
+the band's own thickness (2) plus 1, so that column is preserved whole
+rather than split at the band boundary -- the identical mechanism, not a
+special case, that protects a `)`'s bowl in
+a_crossing_stroke_keeps_its_pixels_through_the_band below. Both fixtures'
+expectations were corrected to match: each letter/digit keeps its own body
+plus the two rule rows fused to the column(s) where it touches (height 10,
+not 8); only the rule pixels strictly between glyphs, where no column
+touches them, are erased. Confirmed correct by hand-tracing every column
+of both fixtures against the implementation before changing the
+assertions, not by re-running until green.
+
+Four new tests added, one per item:
+  - a_single_row_between_a_double_rule_is_not_erased: the exact false-hit
+    shape from 2026-09-23_underline_strip_damage.md section 3 (a lone row
+    beside a genuine 2-row band, in a separate component so there is no
+    column-level interaction between them) -- the lone row survives
+    untouched, the genuine band is fully erased, one rule segment recorded.
+  - a_crossing_stroke_keeps_its_pixels_through_the_band: a 3px-wide stroke
+    runs the full height of a component that also carries a 2-row full-
+    width band; every pixel of the stroke through the band's rows survives,
+    every other column in the band is erased, one rule segment recorded.
+  - a_box_top_edge_leaves_no_debris_taller_than_the_bound: a "Pi"-shaped
+    box (a 2-row top edge plus two 88px-tall vertical sides) beside five
+    8px letters; the top edge is erased except at the two side columns
+    (correctly kept as crossing strokes), which would otherwise survive as
+    two new 88px debris pieces -- with debris_heights set, both are
+    dropped, leaving only the five letters and one recorded rule segment.
+  - rule_segments_are_recorded: two independent clean rule bands on one
+    page, both fully consumed, asserting exactly two recorded segments with
+    the right (x0, x1, y0, y1).
+
+`cargo test --workspace`: 162 ocrcer-core tests, 71 ocrcer-build tests (11
+ignored, report-only), and the rest of the workspace all pass. Two real
+failures were hit and fixed along the way, both caught by actually running
+the suite rather than assumed away:
+  - params::tests::the_file_and_the_compiled_defaults_agree and
+    params::tests::the_table_round_trips_through_the_runtime_reader failed
+    in the intermediate state where lines.debris_heights existed on the
+    Params struct but not yet in model/params.tsv / Params::DEFAULT --
+    expected, and fixed by the edits recorded above.
+  - an_underlined_word_splits_into_letters_with_the_line_gone and
+    a_table_rule_touching_digits_recovers_them failed on their height
+    assertions (10 actual vs. 8 expected) -- the genuine premise change
+    from item 3 described above, not an implementation bug; fixed by
+    correcting the fixtures' expectations after hand-verifying the actual
+    behaviour column by column.
+Full workspace run, final: 0 failed.
+
+wasm32-unknown-unknown build of ocrcer-core: builds clean. One
+unused-`mut` warning was hit on first build (the `flush` closure in
+strip_component_bands never needed `mut`); fixed, rebuilt, zero warnings.
+No unsafe.
+
+--- rebuild ---
+
+  cargo build --release -p ocrcer-build -p ocrcer-bench --features pages
+  ./target/release/ocrcer-build.exe write 16,20,24,32,48 21,26,36,56 model/out/ocrcer.ocrw
+    params  61 rows: 14 authored, 10 measured, 37 guess
+    weights 7 blocks: 6 authored, 1 measured, 0 guess
+    wrote model/out/ocrcer.ocrw: 29675 prototypes, 32 faces, 9 tables, 3.15 MB
+    int8 top-1 agreement with f32: 23618/23740 = 99.486%
+    int8 top-1 accuracy: 21873/23740 = 92.14%
+
+Prototype count (29675), face count (32), table count (9) and the int8
+agreement figure are all byte-identical to the first-rule build recorded
+above: lines.debris_heights changes nothing about the bank itself, only
+the params table (60 rows -> 61, 9 measured -> 10).
+
+`ocrcer-build.exe inspect` only printed rule_run_heights and
+underline_strip on its "lines" row (a hardcoded list, not a generic dump),
+so debris_heights could not be confirmed to read back without extending
+it. Added debris_heights to that same printed line
+(crates/ocrcer-build/src/main.rs), rebuilt, reran:
+
+  ladder              16,20,24,32,48
+  params              lines x_height_floor_per_cap 0.3168 baseline_split 1 baseline_split_sep 0.6 baseline_split_support 0.25
+  params              lines rule_run_heights 5.4209 debris_heights 5.0211 underline_strip 0
+
+Ladder unchanged, baseline_split reads 1, underline_strip reads 0,
+debris_heights reads back 5.0211 as written. `cargo test --workspace`
+rerun clean after this change (0 failed).
+
+Binary/model timestamps for every reading below:
+  model/out/ocrcer.ocrw            2026-09-23 08:04
+  target/release/ocr.exe           2026-09-23 08:11 (rebuilt after the
+                                    model, touching
+                                    crates/ocrcer-bench/src/bin/ocr.rs, so
+                                    it is newer than the model -- no
+                                    staleness warning)
+  target/release/ocrcer-build.exe  2026-09-23 08:11
+
+--- readings ---
+
+Reading 1 -- filing__r000022, control (no --set), --line-pages:
+  end-to-end   CER 40.144%  WER 80.000%  recall 30.000%  precision 29.893%  F1 29.947%
+  line-matched CER 37.154%
+  Reproduces the first-rule control exactly (same figures recorded above),
+  confirming the rebuild changed nothing about the toggle-off path.
+
+Reading 2 -- filing__r000022, --set lines.underline_strip=1, --line-pages:
+  end-to-end   CER 37.320%  WER 77.500%  recall 32.500%  precision 31.818%  F1 32.155%
+  line-matched CER 34.551%
+  Delta vs reading 1: CER -2.824 (better), line-matched CER -2.603 (better),
+  F1 +2.208 (better). Smaller improvement than the first rule's -5.150 CER /
+  +3.327 F1 on this same page -- expected, since item 3 (keep crossing
+  strokes) is strictly more conservative: it leaves rule pixels fused to any
+  touching glyph column rather than erasing the whole band uniformly, so
+  less of the dense table's rule ink is removed here, but also less
+  collateral damage is done elsewhere (see readings 4-6 below).
+
+Reading 3 -- filing__r000033, control (no --set), --line-pages:
+  end-to-end   CER 26.849%  WER 61.696%  recall 46.491%  precision 44.538%  F1 45.494%
+  line-matched CER 32.266%
+
+Reading 4 -- filing__r000033, --set lines.underline_strip=1, --line-pages:
+  end-to-end   CER 22.657%  WER 48.538%  recall 57.018%  precision 55.874%  F1 56.440%
+  line-matched CER 28.733%
+  Delta vs reading 3: CER -4.192 (better), line-matched CER -3.533 (better),
+  F1 +10.946 (much better). Under the first rule this was one of the worst
+  regressions in the whole corpus (68.02% CER, per the verdict above); under
+  the second rule it is one of the best improvements, actually beating
+  control by a wide margin. Consistent with a false-positive band under the
+  first rule (a full-width run erase with no row-count-2 or column-crossing
+  guard) that items 1-3 now correctly refuse to erase or correctly preserve
+  the crossing ink from.
+
+Reading 5 -- filing__r000055, control (no --set), --line-pages:
+  end-to-end   CER 32.488%  WER 39.351%  recall 64.300%  precision 76.755%  F1 69.978%
+  line-matched CER 35.598%
+
+Reading 6 -- filing__r000055, --set lines.underline_strip=1, --line-pages:
+  end-to-end   CER 57.005%  WER 65.923%  recall 34.686%  precision 64.773%  F1 45.178%
+  line-matched CER 61.775%
+  Delta vs reading 5: CER +24.517 (much worse), line-matched CER +26.177
+  (much worse), F1 -24.800 (much worse), recall -29.614. This page still
+  regresses severely under the second rule. Top confusions on the toggled
+  run are a broad, flat set of plain single-character deletions across
+  nearly every common letter and the space -- " "->"" 139, "e"->"" 123,
+  "n"->"" 80, "a"->"" 72, "t"->"" 69, "o"->"" 67, "i"->"" 59, "s"->"" 57,
+  "r"->"" 56, "d"->"" 51, "h"->"" 44 -- not a narrow, table-shaped set the
+  way filing__r000022's confusions are ("\n"->" ", "."->""). This looks like
+  real running text being erased across much of the page, not isolated rule
+  debris; the crossing-stroke and debris-height guards evidently are not
+  preventing whatever band(s) this page's layout triggers from consuming
+  live text. Root cause not further diagnosed here (out of this entry's
+  scope) but flagged prominently below and in the final report; this page
+  and filing__r000044 are the two largest single contributors to the
+  corpus-wide regression in reading 8.
+
+Reading 7 -- bench/pages-cov (625 pages), --set lines.underline_strip=1, --line-pages:
+  end-to-end   CER  6.127%  WER 26.803%  recall 77.863%  precision 76.928%  F1 77.392%
+  line-matched CER  6.127%
+  speed       738.4s for 625 pages, 1181 ms/page (exceeded the 600s
+              foreground budget; completed under run_in_background)
+  Control:    F1 77.392 / CER 6.127 / line-matched CER 6.127
+  Delta:      +0.000 on every figure -- bit-identical to control, exactly as
+  under the first rule. pages-cov contains nothing the strip pass ever
+  touches (or touches harmlessly); all signal from this change is in
+  finfilings.
+
+Reading 8 -- D:/Dev/ExcludedPrivate/ocrcer/pages/finfilings (60 pages), --set lines.underline_strip=1, --line-pages:
+  end-to-end   CER 18.555%  WER 35.210%  recall 70.521%  precision 74.527%  F1 72.469%
+  line-matched CER 18.741%
+  speed       1149.0s for 60 pages, 19150 ms/page (ran under run_in_background
+              per instructions; nothing else started while it ran)
+  Control:    F1 73.615 / CER 17.064 / line-matched CER 16.942
+  Delta:      F1 -1.146 (worse), CER +1.491 (worse), line-matched CER +1.799
+  (worse). Gate ("finfilings must be better on both end-to-end and
+  line-matched CER") still FAILS, but by roughly half the margin of the
+  first rule (first rule: F1 -1.630, CER +2.189, line-matched CER +2.472).
+  Items 1-3 recovered filing__r000033 outright (reading 4) and reduced
+  filing__r000022's over-erasure (reading 2), but filing__r000055 (reading
+  6) and filing__r000044 remain severely damaged.
+
+  worst pages (end-to-end): filing__r000044 64.61%, filing__r000055 57.00%,
+  filing__r000583 53.76%, filing__r000022 37.32%, filing__r000308 34.91%,
+  filing__r000363 32.58%, filing__r000011 31.75%, filing__r000396 31.25%.
+  worst pages (line-matched): filing__r000044 74.13%, filing__r000055
+  61.78%, filing__r000583 53.76%, filing__r000022 34.55%, filing__r000308
+  34.37%, filing__r000363 33.33%, filing__r000011 31.09%, filing__r000319
+  30.58%. filing__r000033 -- the worst page for the first rule at 68.02% --
+  has dropped off the worst-12 list entirely under the second rule (28.73%
+  line-matched, well down the corpus), confirming reading 4's finding holds
+  at full-corpus scale, not just in isolation.
+
+  top confusions (aligned, end-to-end): " "->"" 1602, "e"->"" 1568,
+  "i"->"" 1200, "t"->"" 1166, ""->" " 1132, "r"->"" 1125, "o"->"" 992,
+  "n"->"" 890, "a"->"" 819, "s"->"" 681, "\n"->"" 612, "\n"->" " 602 -- the
+  same broad, flat, single-character-deletion shape as filing__r000055
+  alone, still dominating the corpus-wide picture even with items 1-3's
+  guards active.
+
+--- verdict, second rule ---
+
+Items 1-4 measurably reduce the damage from the first rule (finfilings F1
+delta improves from -1.630 to -1.146, CER delta from +2.189 to +1.491,
+line-matched CER delta from +2.472 to +1.799) and fully recover at least one
+previously-bad page (filing__r000033: +10.946 F1 at full scale). But the
+gate ("finfilings must be better on both end-to-end and line-matched CER
+than control, with pages-cov unchanged") still fails: pages-cov is
+untouched (bit-identical, reading 7) but finfilings is still net worse than
+leaving the toggle off. filing__r000044 and filing__r000055 are now the two
+dominant contributors, both showing the same broad, flat, uniform-deletion
+confusion profile across ordinary prose letters rather than the narrow,
+rule-shaped confusion set the one page this feature was built for shows.
+Left at its current default (0, guess) per instructions; not flipped.
+underline_strip remains an operator-opt-in feature, not a default-on one, at
+the end of this entry. The architect should look at filing__r000044 and
+filing__r000055 specifically -- both survive items 1-3's straight-band,
+crossing-stroke, and debris-height guards and still lose real text, which
+means whatever is triggering false erasure there is not explained by any of
+the three failure modes those items were built to close.

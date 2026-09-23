@@ -1,0 +1,49 @@
+# Column-cut precision collapse: x-height hypothesis vs space-rule hypothesis
+# bench/pages-cov --only invoice (90 pages), binary rebuilt 15:42 from current source
+
+## x-height deviation from page reference (median x-height of Observed lines with >=10 members), by line member count
+Traceback (most recent call last):
+  File "C:\Users\Ken\AppData\Local\Temp\claude\D--Dev-OCRcer\5a0b92c0-41c9-4bbc-8b81-2341857b8cad\scratchpad\xh.py", line 4, in <module>
+    for l in open(f,encoding="utf-8"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'lay_0.txt'
+
+## space-rule source and word count by fragment size; truth has 4500 words on these pages
+Traceback (most recent call last):
+  File "C:\Users\Ken\AppData\Local\Temp\claude\D--Dev-OCRcer\5a0b92c0-41c9-4bbc-8b81-2341857b8cad\scratchpad\sp.py", line 4, in <module>
+    for l in open(f,encoding="utf-8"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'lay_0.txt'
+
+## top confusions, cg=0
+end-to-end   CER  8.309%  WER 35.778%  recall 64.689%  precision 77.793%  F1 70.638%
+
+speed       100.4s for 90 pages, 1116 ms/page, 0.2 Mpixel/s (recognition only; loading, scoring and rendering excluded)
+
+by px/em
+   14px   CER 18.862%  WER 53.444%  (5238 chars)
+   18px   CER  7.923%  WER 34.889%  (5238 chars)
+--
+top confusions (aligned, end-to-end)
+     721  " " -> ""
+      84  "S" -> "s"
+      62  "0" -> "o"
+      56  "t" -> ""
+      51  "0" -> ""
+      47  "r" -> ""
+## top confusions, cg=2.5
+end-to-end   CER 12.600%  WER 49.511%  recall 68.200%  precision 62.799%  F1 65.388%
+
+speed       97.6s for 90 pages, 1084 ms/page, 0.3 Mpixel/s (recognition only; loading, scoring and rendering excluded)
+
+by px/em
+   14px   CER 22.986%  WER 68.556%  (5238 chars)
+   18px   CER 12.066%  WER 49.000%  (5238 chars)
+--
+top confusions (aligned, end-to-end)
+     760  " " -> "\n"
+     727  "" -> " "
+     377  " " -> ""
+      75  "S" -> "s"
+      56  "t" -> ""
+      47  "r" -> ""

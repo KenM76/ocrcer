@@ -1,0 +1,125 @@
+OCRcer 625-page coverage corpus, word-splitter fallback change, end to end.
+Same model file (model/out/ocrcer.ocrw, 17610 prototypes), same binary, same
+corpus (bench/pages-cov, 625 pages, 119155 characters). The only difference
+between the two runs is two parameter values, applied by --set on the control
+arm so that nothing else can differ:
+
+  control (shipped): words.no_valley_x_heights = 0.7   words.min_separability = 0.6
+  candidate:         words.no_valley_x_heights = 0.4   words.min_separability = 0.8
+
+The control reproduces the figures of the pre-change build to the digit
+(CER 6.792%, F1 75.231%), which is what makes the delta attributable to the
+two values rather than to the refactor that separated the ceiling from the
+fallback.
+
+=============================== CONTROL ===============================
+set     words.no_valley_x_heights = 0.7  (an override, not what the file carries)
+set     words.min_separability = 0.6  (an override, not what the file carries)
+model   model/out/ocrcer.ocrw — 187 classes, 19 faces, 17610 prototypes, lexicon 2477 nodes, bigrams 188 rows, confusions 76
+pages   625 of 625 in bench/pages-cov (stride 1, offset 0)
+
+end-to-end   CER  6.792%  WER 28.759%  recall 73.891%  precision 76.620%  F1 75.231%
+
+speed       309.9s for 625 pages, 496 ms/page, 0.3 Mpixel/s (recognition only; loading, scoring and rendering excluded)
+
+by px/em
+   14px   CER 14.918%  WER 46.403%  (23831 chars)
+   18px   CER  6.974%  WER 29.895%  (23831 chars)
+   21px   CER  5.388%  WER 26.542%  (23831 chars)
+   28px   CER  3.684%  WER 21.537%  (23831 chars)
+   40px   CER  2.996%  WER 19.418%  (23831 chars)
+
+by face
+  16.562%  Open Sans Condensed (6660 chars)
+  11.532%  STIX Two Math (6660 chars)
+  11.336%  Roboto Condensed (6660 chars)
+  10.030%  Liberation Serif (6660 chars)
+   8.754%  Lato (6660 chars)
+   8.048%  Roboto (6660 chars)
+   7.898%  Noto Serif (6660 chars)
+   7.853%  PT Sans (6660 chars)
+   6.862%  Liberation Sans (6660 chars)
+   6.291%  Noto Sans (6660 chars)
+   4.760%  Inter (6660 chars)
+   3.604%  Liberation Mono (6660 chars)
+   3.604%  Roboto Mono (6660 chars)
+   3.108%  PT Mono (6660 chars)
+   3.003%  JetBrains Mono (6660 chars)
+   2.999%  Inconsolata (5935 chars)
+   2.868%  Fira Code (6660 chars)
+   2.733%  Cascadia Mono (6660 chars)
+
+top confusions (aligned, end-to-end)
+    1279  " " -> ""
+     530  "" -> " "
+     270  "O" -> "0"
+     239  "l" -> "1"
+     199  "C" -> "c"
+     197  "O" -> "o"
+     192  "r" -> ""
+     150  "S" -> "s"
+
+worst pages
+   42.75%  stix-two-math__regular__twins__14px
+   42.31%  open-sans-condensed__light__technical__14px
+   41.88%  stix-two-math__regular__prose__14px
+   36.77%  open-sans-condensed__light__invoice__14px
+   36.08%  roboto-condensed__regular__invoice__14px
+   35.86%  roboto-condensed__regular__currency__14px
+   35.29%  open-sans-condensed__light__statement__14px
+   35.17%  open-sans-condensed__light__currency__14px
+
+=============================== CANDIDATE =============================
+model   model/out/ocrcer.ocrw — 187 classes, 19 faces, 17610 prototypes, lexicon 2477 nodes, bigrams 188 rows, confusions 76
+pages   625 of 625 in bench/pages-cov (stride 1, offset 0)
+
+end-to-end   CER  6.651%  WER 28.233%  recall 75.446%  precision 76.508%  F1 75.973%
+
+speed       321.4s for 625 pages, 514 ms/page, 0.3 Mpixel/s (recognition only; loading, scoring and rendering excluded)
+
+by px/em
+   14px   CER 15.392%  WER 49.639%  (23831 chars)
+   18px   CER  6.727%  WER 28.917%  (23831 chars)
+   21px   CER  4.960%  WER 24.331%  (23831 chars)
+   28px   CER  3.479%  WER 20.629%  (23831 chars)
+   40px   CER  2.698%  WER 17.648%  (23831 chars)
+
+by face
+  15.691%  Open Sans Condensed (6660 chars)
+  11.081%  STIX Two Math (6660 chars)
+  10.255%  Roboto Condensed (6660 chars)
+   9.039%  Liberation Serif (6660 chars)
+   7.402%  Lato (6660 chars)
+   7.312%  Noto Serif (6660 chars)
+   7.207%  Roboto (6660 chars)
+   6.952%  PT Sans (6660 chars)
+   6.246%  Liberation Sans (6660 chars)
+   5.195%  Noto Sans (6660 chars)
+   4.895%  Roboto Mono (6660 chars)
+   4.805%  Liberation Mono (6660 chars)
+   4.195%  Inconsolata (5935 chars)
+   3.994%  Inter (6660 chars)
+   3.949%  JetBrains Mono (6660 chars)
+   3.904%  Fira Code (6660 chars)
+   3.874%  PT Mono (6660 chars)
+   3.453%  Cascadia Mono (6660 chars)
+
+top confusions (aligned, end-to-end)
+     998  " " -> ""
+     736  "" -> " "
+     255  "O" -> "0"
+     241  "l" -> "1"
+     206  "C" -> "c"
+     195  "r" -> ""
+     175  "O" -> "o"
+     151  "S" -> "s"
+
+worst pages
+   50.00%  stix-two-math__regular__prose__14px
+   43.48%  stix-two-math__regular__twins__14px
+   39.42%  open-sans-condensed__light__technical__14px
+   39.32%  open-sans-condensed__light__prose__14px
+   35.86%  roboto-condensed__regular__currency__14px
+   34.84%  open-sans-condensed__light__statement__14px
+   34.02%  open-sans-condensed__light__invoice__14px
+   33.79%  open-sans-condensed__light__currency__14px

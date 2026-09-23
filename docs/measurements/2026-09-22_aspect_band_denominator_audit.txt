@@ -1,0 +1,45 @@
+Aspect-band denominator audit â€” 2026-09-22
+
+Method: fontTools over the 19 shippable faces in model/fonts.tsv that are
+present on this machine. Ink bounding box from the glyph outline (BoundsPen);
+cap height from OS/2.sCapHeight, falling back to the 'H' ink bbox. Every
+charset codepoint each face carries. Outline units, not rasterised tight crops.
+
+Question: charset.tsv's aspect_min/aspect_max band â€” is it width over the
+glyph's own ink height (what the matcher compares it against, feature 103) or
+width over cap height (what face::raster's aspect_report compares it against)?
+
+faces measured: 19
+class/face pairs measured: 3521
+in authored band, reading it as width/ink-height : 49.30%
+in authored band, reading it as width/cap-height : 64.16%
+
+by baseline class (in-band %, ink-height reading vs cap-height reading)
+  ascender   n=1842  ink  56.95%   cap  59.55%
+  xheight    n=665   ink  52.48%   cap  80.30%
+  above      n=522   ink  13.79%   cap  59.58%
+  descender  n=209   ink  76.56%   cap  60.29%
+  full       n=207   ink  51.21%   cap  65.22%
+  low        n=76    ink   0.00%   cap  73.68%
+
+worst classes under the ink-height reading (miss factor = median measured ratio / band midpoint)
+  x 9.07  _   low       band 0.60-0.90  median w/h   6.80  median w/cap  0.66  in-band 0/19
+  x 6.45  ·   above     band 0.06-0.25  median w/h   1.00  median w/cap  0.18  in-band 0/19
+  x 6.45  .   low       band 0.06-0.25  median w/h   1.00  median w/cap  0.18  in-band 0/19
+  x 6.09  -   above     band 0.45-0.70  median w/h   3.50  median w/cap  0.40  in-band 0/19
+  x 5.86  –   above     band 0.90-1.30  median w/h   6.44  median w/cap  0.68  in-band 0/18
+  x 4.73  —   above     band 1.60-2.20  median w/h   8.98  median w/cap  0.92  in-band 0/18
+  x 4.57  `   above     band 0.20-0.35  median w/h   1.26  median w/cap  0.27  in-band 0/19
+  x 4.35  …   low       band 0.90-1.30  median w/h   4.78  median w/cap  0.78  in-band 0/19
+  x 4.27  ~   above     band 0.55-0.80  median w/h   2.88  median w/cap  0.70  in-band 0/19
+  x 3.16  ’   above     band 0.10-0.25  median w/h   0.55  median w/cap  0.21  in-band 0/19
+  x 3.16  ‘   above     band 0.10-0.25  median w/h   0.55  median w/cap  0.21  in-band 0/19
+  x 2.79  ”   above     band 0.35-0.55  median w/h   1.25  median w/cap  0.48  in-band 0/19
+  x 2.79  “   above     band 0.35-0.55  median w/h   1.25  median w/cap  0.48  in-band 0/19
+  x 2.50  •   above     band 0.30-0.50  median w/h   1.00  median w/cap  0.36  in-band 0/19
+  x 2.42  ,   low       band 0.15-0.30  median w/h   0.54  median w/cap  0.21  in-band 0/19
+  x 2.34  '   above     band 0.06-0.25  median w/h   0.36  median w/cap  0.13  in-band 1/19
+  x 2.31  "   above     band 0.35-0.55  median w/h   1.04  median w/cap  0.39  in-band 0/19
+  x 2.23  °   above     band 0.35-0.55  median w/h   1.00  median w/cap  0.43  in-band 0/19
+  x 2.01  ™   above     band 0.75-1.06  median w/h   1.82  median w/cap  0.82  in-band 0/19
+  x 2.00  i   ascender  band 0.06-0.30  median w/h   0.36  median w/cap  0.36  in-band 8/19

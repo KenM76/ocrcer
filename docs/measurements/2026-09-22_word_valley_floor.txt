@@ -1,0 +1,190 @@
+2026-09-22 — words.min_valley_x_heights: the floor under a believed valley
+
+WHAT THE PARAMETER IS
+  The narrowest gap a believed valley may call a word space, as a fraction of
+  the line's x-height. 0 removes the floor and restores the behaviour that
+  shipped before this date.
+
+  It is the mirror of words.lone_gap_x_heights. That one is a ceiling on the
+  threshold: no valley may sit where a gap this WIDE is called intra-word.
+  This one is a floor on the narrowest space: no valley may call a gap this
+  NARROW a word space.
+
+  It floors the narrowest gap the valley would call a space, NOT the
+  threshold. The threshold sits at the widest INTRA-word gap and is
+  legitimately small on well-set text; flooring it breaks correct lines. The
+  first implementation floored the threshold and failed the existing unit test
+  that a threshold of 1 px is right for gaps of 1, 1, 1, 9, 9.
+
+  A valley below the floor is rejected to words.no_valley_x_heights, the
+  no-information rule — not to "this segment has no spaces at all", so a short
+  segment that genuinely holds one space still gets it.
+
+WHY IT WAS NEEDED
+  A valley search given only intra-word gaps still finds a valley. Otsu
+  separability is scale-free: a histogram of 1, 1, 3, 1, 2 px is exactly as
+  bimodal as one of 2, 2, 40, 2, 3, so words.min_separability — which exists to
+  reject a unimodal line — cannot reject a line that has no word space in it at
+  all. The valley is real; the interpretation is not.
+
+  Nothing bound this before, because any line long enough to hold several words
+  holds their spaces too. It became live the moment lines.column_gap_heights
+  began cutting a banded line into segments that are each a single word. On
+  bench/pages-cov invoice pages at 18 px the engine read `Unit` as `U n î t`,
+  `Amount` as `A mo u n t`, `112.50` as `112 .50` and `3.75` as `3 .75`.
+
+THE PARAMETER IS A STAIRCASE, NOT A CURVE
+  threshold_at truncates, so the value selects an integer pixel floor, and at
+  the x-heights in this corpus it is coarse. Computed directly from the shipped
+  helper:
+
+    x_height   0.15  0.2  0.25  0.3  0.35  0.4  0.5  0.6
+      6.0 px      1    1     1    1     2    2    3    3
+      8.0 px      1    1     2    2     2    3    4    4
+      9.0 px      1    1     2    2     3    3    4    5
+     12.0 px      1    2     3    3     4    4    6    7
+     17.0 px      2    3     4    5     5    6    8   10
+
+  So "0.3 against 0.4" is "a 2 px floor against a 3 px floor" on an 18 px page,
+  and any two values that truncate alike are the same parameter.
+
+  What that costs, on the four segments that motivated the floor. Valley and
+  separability recomputed from the shipped algorithm; the threshold is the last
+  gap value belonging to the intra-word class, so a gap strictly greater is a
+  space:
+
+    segment (18 px, x-height 9)   gaps           t    eta   narrowest   0.3    0.4
+                                                         called space
+    112.50 amount cell            1,1,3,1,2      1  0.844       2      reject reject
+    Amount header                 1,1,2,1,2      1  1.000       2      reject reject
+    Unit header                   1,1,3          1  1.000       3      believe reject
+    3.75 amount cell              1,3,1          1  1.000       3      believe reject
+    two genuine words             1,1,1,9,9      1  1.000       9      believe believe
+
+  The shipped 0.3 therefore fixes two of the four anecdotes and not the other
+  two, while 0.4 fixes all four — and 0.4 measures worse in aggregate at both
+  column-gap settings. The extra rejections 0.4 buys cost more elsewhere than
+  they gain here. This is why the value was swept rather than argued.
+
+PAIRED ISOLATION — THE FLOOR-OFF ARM REPRODUCES THE PRE-CHANGE RUN
+  Measured at 0.4, the value in force when this pair was run. Same binary, same
+  model file, one --set apart; the floor-off arm is what proves the new code
+  inert rather than compensating.
+
+  ./target/release/ocr model/out/ocrcer.ocrw bench/pages-cov \
+      --only __invoice__18px --set lines.column_gap_heights=2.5 \
+      --set words.min_valley_x_heights=<v>
+
+    invoice 18px (18 pages)      floor 0     floor 0.4
+      CER                        17.965%     13.058%
+      WER                        78.556%     47.778%
+      word recall                61.333%     68.000%
+      word precision             46.780%     65.315%
+      word F1                    53.077%     66.630%
+
+    statement 18px (18 pages)    floor 0     floor 0.4
+      CER                        22.423%     14.681%
+      WER                       112.302%     55.556%
+      word recall                61.111%     68.056%
+      word precision             36.536%     58.733%
+      word F1                    45.731%     63.051%
+
+  Every floor-0 figure matches the pre-change run to the last digit.
+
+  Across all five sizes, same families, same cut, now including the shipped
+  value. Every arm is a separate run of the same binary against the same model
+  file, one --set apart:
+
+    invoice (90 pages)           floor 0     floor 0.3    floor 0.4
+      CER                        19.473%     15.124%      14.914%
+      word F1                    52.206%     65.388%      66.200%
+
+    statement (90 pages)         floor 0     floor 0.3    floor 0.4
+      CER                        23.685%     17.371%      16.621%
+      word F1                    47.864%     64.635%      67.055%
+
+  THE SHIPPED VALUE LOSES ON BOTH FAMILIES THE FLOOR WAS BUILT FOR. 0.4 is
+  better on invoice by 0.81 points of word F1 and 0.21 of CER, and on statement
+  by 2.42 points of F1 and 0.75 of CER. 0.3 is nonetheless the shipped value
+  because the pooled corpus is what the engine is graded on and 0.3 wins there
+  at both column-gap settings: the other five families lose more under 0.4 than
+  invoice and statement gain.
+
+  That is a trade taken deliberately and it is worth restating plainly. The
+  parameter was introduced to fix invoice and statement, and the value chosen
+  for it is not the value that fixes them best. If the corpus mix is ever
+  reweighted toward banded documents — which is the pdfcer use case — this
+  choice should be re-swept before it is trusted.
+
+VALUE SWEEP — WHAT CHOSE 0.3
+  bench/pages-cov, 90 pages, --stride 7. Stride 7 is coprime with the 5-size
+  ladder so every render size is sampled; stride 5 would have selected 14 px
+  and nothing else. Two settings of lines.column_gap_heights, because the floor
+  and the cut are coupled: the cut is what creates the single-word segments the
+  floor exists to protect.
+
+  With the column cut DISABLED (lines.column_gap_heights = 0):
+
+    floor     CER       WER      recall   precision   word F1
+    0       5.830%   26.446%    75.873%    78.694%    77.258%
+    0.15    5.830%   26.446%    75.873%    78.694%    77.258%
+    0.2     5.830%   26.446%    75.873%    78.694%    77.258%
+    0.25    5.830%   26.386%    75.783%    78.847%    77.285%
+    0.3     5.841%   26.024%    75.542%    79.569%    77.503%   <- argmax F1
+    0.4     6.060%   27.169%    74.247%    79.235%    76.660%
+    0.5     6.066%   27.229%    74.217%    79.177%    76.617%
+    0.6     6.072%   27.289%    74.187%    79.120%    76.574%
+
+  Inert at 0.15 and 0.2 — identical in every digit to the floor-off arm. On
+  full-width lines the floor cannot bind below about a fifth of an x-height.
+
+  With the column cut at 2.5, the shipped setting:
+
+    floor     CER       WER      recall   precision   word F1
+    0      10.060%   41.084%    74.096%    66.884%    70.306%
+    0.15    9.956%   40.422%    74.277%    67.377%    70.659%
+    0.2     9.433%   37.139%    75.181%    69.877%    72.432%
+    0.25    9.179%   35.422%    75.542%    71.210%    73.312%
+    0.3     8.569%   31.506%    76.235%    74.661%    75.440%   <- argmax F1 and CER min
+    0.4     8.713%   32.199%    75.030%    74.648%    74.839%
+    0.5     8.725%   32.319%    74.970%    74.543%    74.756%
+    0.6     8.742%   32.440%    74.940%    74.446%    74.692%
+
+  0.3 is the argmax of word F1 at BOTH settings, and with the cut on it is also
+  the CER minimum. The two arms agreeing on the same value is the reason this
+  is recorded as measured rather than as the better of two guesses.
+
+  With the cut off, 0.3 costs 0.011 points of CER against the 5.830% minimum
+  and buys 0.245 points of word F1. That trade is stated rather than hidden:
+  the floor is not free on full-width text.
+
+WHY IT IS NOT 0.4, WHICH WAS THE ARGUED VALUE
+  words.no_valley_x_heights is 0.4, and the coherence argument for the floor
+  put it AT that value: a valley is believed only if it calls a space the
+  no-information rule would also call a space. The argument establishes 0.4 as
+  a CEILING — above it the rule contradicts itself, rejecting a valley for
+  calling a gap a space and then falling back to a rule that calls the same gap
+  a space — and says nothing about where below it the value belongs. The sweep
+  says 0.3, on both arms. The argument and the measurement do not conflict; the
+  argument was never that precise.
+
+CAVEATS
+  1. 90 pages, one sample. The 0.25-to-0.3 difference with the cut off is 0.22
+     points of F1 and is inside what a different sample could move. The
+     0.3-to-0.4 difference with the cut on is 0.60 points of F1 and 0.14 of
+     CER, in the same direction on both arms, which is the difference this
+     choice actually rests on.
+  2. The 18 px paired isolation was run at 0.4 and has not been repeated at the
+     shipped 0.3; the all-sizes per-family arms above have been. The floor-0
+     arm of every pair reproduces the pre-change run to the last digit, which
+     is what rules out the new code compensating rather than being inert.
+  3. lines.column_gap_heights remains a guess. Its own post-floor sweep was
+     started at floor 0.4 and stopped when the floor moved; the three values it
+     completed (0, 1.0, 1.5 on all 625 pages, at floor 0.4) are superseded and
+     are not reported here as a choice. What they did show is that the floor
+     rehabilitates the cut: at 1.5 the cut scored 67.160% word F1 before the
+     floor and 74.665% after, against 75.020% with the cut off.
+  4. The synthetic corpus and the 29 real scans disagree about the cut. The
+     cut is a net loss on bench/pages-cov at every value tried and worth
+     33.81% -> 43.40% on the third-party harness. That disagreement is open.
+  5. The 43.40% third-party figure predates the floor and has not been re-run.

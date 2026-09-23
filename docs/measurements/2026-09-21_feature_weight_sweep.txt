@@ -1,0 +1,58 @@
+bank: 14832 prototypes from 20 faces at [16.0, 24.0, 32.0, 48.0] px/em
+corpus: 158 ASCII pages (stride 3)
+
+weight on dims 103..107 (baseline-relative geometry)
+   weight   char acc   word acc   size-pair  other errors
+      1.0     93.53%     75.13%        1699           518
+      2.0     94.31%     77.61%        1484           468
+      4.0     94.95%     79.84%        1274           456
+      8.0     96.01%     83.69%         952           416
+     16.0     96.44%     85.46%         844           375
+     32.0     96.47%     85.64%         821           388
+     64.0     96.54%     86.23%         781           406
+
+by confusion family, count of substitutions
+  family         w=1.0    w=16.0     w=2.0    w=32.0     w=4.0    w=64.0     w=8.0
+  0oOQ             770       435       681       430       615       427       468
+  lI1|             339       286       319       283       308       266       308
+  sS$5             242        76       206        80       162        83        88
+  cC               146         7       104         3        70         0        23
+  uU                78        26        78        18        62         5        42
+  vV                75        13        57         6        33         0        20
+  wW                49         1        39         1        24         0         3
+
+substitution counts per weight, top 24 pairs by worst-case count
+  pair              w=1.0    w=2.0    w=4.0    w=8.0   w=16.0   w=32.0   w=64.0
+  '0' -> 'O'          151      137      137      198      231      267      263
+  '0' -> 'o'          172      156      156       51       18       12       12
+  'O' -> 'o'          155      138      102       54       17        3        3
+  'O' -> '0'           85       92      108      103      129      137      141
+  'o' -> 'O'          141      120      107       50       35        6        0
+  'l' -> 'I'          140      135      133      133      116      105       99
+  'S' -> 's'           78       57       41       11        2        2        3
+  's' -> 'S'           78       59       43        9        3        0        0
+  'C' -> 'c'           74       49       32        1        0        0        0
+  'c' -> 'C'           72       55       38       22        7        3        0
+  'u' -> 'U'           69       69       54       41       22       14        0
+  '1' -> 'l'           58       67       67       61       54       57       38
+  'l' -> '1'           66       56       47       47       51       50       55
+  'v' -> 'V'           64       53       32       19       13        6        0
+  'w' -> 'W'           46       37       23        2        1        1        0
+  '0' -> 'Q'           45       18        0        0        0        0        7
+  'e' -> 'c'           43       43       43       43       43       43       43
+  'l' -> '|'           38       22       22       22       22       22       22
+  'I' -> 'l'           30       30       30       32       32       31       34
+  'S' -> '$'            8       15       15       15       15       26       31
+  'o' -> 'a'            0        0        0        0        0       28       28
+  ',' -> '.'           25       25       25       26       25       18       10
+  '5' -> 'S'           15       20       20       20       24       24       17
+  'r' -> 'c'            0       24       24       24       24       24        8
+
+Best at weight 64.0: 96.54% character accuracy. A weight is a
+number that needs a sentence (CLAUDE.md rule 1), so this is a
+measured candidate and not yet an authored parameter — the swept
+optimum of a one-parameter family on this corpus, which is not the
+same thing as the right value on unseen input.
+
+Oracle-segmented and ASCII-restricted on every pass, so every figure
+is a ceiling. Only the differences between rows are the measurement.

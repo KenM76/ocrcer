@@ -1,0 +1,7 @@
+{
+  "fixture": "a_non_letter_resets_the_case_run",
+  "stage": "decode",
+  "text": "AB-Cd",
+  "identifier": false,
+  "score": "12.200000286102295"
+}

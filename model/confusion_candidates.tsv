@@ -1,0 +1,191 @@
+# confusion_candidates.tsv
+#
+# Measured, face-specific confusion CANDIDATES discovered during chunk 1.
+# This is chunk-1 INPUT EVIDENCE for chunk 4 (ocrcer-linguist authors
+# `confusions` from this plus everything it already knows); it is not the
+# confusion table itself. Per CLAUDE.md rule 1, every value below is either
+# a number read off a test run or a fact quoted from an existing dated
+# ARCHITECTURE.md entry -- nothing here is an authored prior, a disambig-
+# uation rule, a weight, or a threshold. Those are chunk 4's job.
+#
+# Metric: unweighted L2 distance over the raw 107-dim `extract()` feature
+# vector (`ocrcer-core`'s extractor, called once by `ocrcer-build`'s
+# `pairwise_margin_report` test in crates/ocrcer-build/src/face/raster.rs).
+# "Unweighted" is a stand-in: ocrcer-core/src/match.rs is still a stub and
+# no `feature_norm` table exists yet (that arrives in chunk 3), so this
+# number is not the score the runtime will actually use -- it is the best
+# available proxy for "how close are these two prototypes" right now.
+#
+# Sizes swept: 16, 32, 48, 64 px (4 checkpoints; the sweep does not test
+# every size in between, so "min distance" and "size at min" below are the
+# minimum OVER THOSE FOUR CHECKPOINTS, not a true global minimum).
+#
+# Population: 187 glyphs, 17391 unordered pairs per size. Rows below are the
+# pairs whose minimum-over-sweep L2 distance falls under 0.526936 -- the
+# smallest of the sweep's own four per-size 1st-percentile values (already
+# computed by the test as a distribution statistic; used here as a reporting
+# cutoff, not authored). That is 78 of the 143 pairs that ever rank as some
+# glyph's single nearest same-bucket rival. Two named pairs the confusion
+# table cares about (period/middle-dot, digit-zero/cap-O) sit just above
+# this cutoff and are appended after the sorted block because the sweep's
+# own "five named pairs" section gives them a full 4-size breakdown; two
+# more rows (digit-zero/digit-8 non-collision, and a cited pre-existing
+# measurement for the O-with-stroke-shaped-zero / 8 pair from a separate
+# 2026-09-18 four-glyph experiment) are appended after that. All four extras
+# are marked EXTRA in the size_at_min column's row context -- see the
+# comment immediately above each.
+#
+# Every row already reached the L2-distance stage, i.e. survived the
+# hole-count + baseline_class pruning bucket check -- this test only
+# records same-bucket nearest rivals, so a "does not appear in this file"
+# pair may still be a real confusion risk if it was never in this report's
+# scope (see the AI's accompanying chat report for what that means for
+# ,/. and ;/: specifically).
+#
+# A face-wide collision sweep at finer size granularity (16-40px, every
+# integer size, all 17391 pairs, NO bucket filtering) has since landed,
+# independently re-run twice with agreeing results. Verdict: the only
+# bit-identical pairs anywhere in that range are the two already in this
+# file by hand-verification below (i/i-diaeresis at 16,18,19,20px; period/
+# ellipsis at 16,17,18,20px) -- zero collisions at every integer size from
+# 21 through 40. The collision floor for this face is therefore 21px,
+# bounded by the top of the sweep (not yet swept above 40px). No
+# section-sign pair appears anywhere in the collision list. This closes
+# the "finer sweep not yet landed" gap noted in the original write of this
+# file; source 3 is now measured, not a stated gap.
+#
+# The section-sign (U+00A7) glyph was redrawn after this file's first draft
+# (see the 8/section-sign row: min L2 distance moved from 0.37192@64px
+# pre-redraw to 0.53969@64px post-redraw, still near this face's p1 floor
+# but the redraw's actual goal was shape, not distance -- see that row's
+# note for the endpoint-count structural fact). All four section-sign
+# rows have since been re-measured against the shipped glyph in one
+# run, and all four moved apart: vs sharp-s 0.3754 -> 0.5606, vs B
+# 0.4337 -> 0.7018, vs a-with-ring 0.4700 -> 0.6866. The
+# stale-pending-re-measure flag is lifted; no section-sign row carries
+# a pre-redraw number any more.
+#
+# The sorted block was re-sorted after that re-measure. Four rows now
+# exceed the 0.526936 reporting cutoff the block was originally cut at
+# (all four are section-sign rows that moved). They are RETAINED rather
+# than dropped: the cutoff selected what to look at, and a pair that
+# improved is evidence chunk 4 wants, not evidence to delete. No row
+# was added by the re-sort, so the block is still a superset of nothing
+# -- it is exactly the original 78 pairs, four of them now further
+# apart than when they were selected.
+#
+# Columns:
+#   codepoint_1, codepoint_2   Unicode codepoints, U+XXXX
+#   glyph_1, glyph_2           the characters themselves
+#   category_1, category_2    charset.tsv `category` column for each
+#   min_l2_dist                minimum unweighted-L2 distance over the swept sizes
+#   size_at_min                which of 16/32/48/64px produced that minimum
+#   survives_prune              whether the pair shares a hole-count +
+#                               baseline_class bucket and so reaches the
+#                               distance stage at all (every row here: yes,
+#                               by construction of the source test)
+#   bit_identical               "true" only where a raster-level pixel
+#                               comparison was actually performed (i/ï and
+#                               ./… only, both hand-verified by the AI
+#                               operator by rendering); "not tested" for
+#                               every other row -- an L2 distance of 0.0
+#                               elsewhere would still mean "feature vectors
+#                               identical", not verified bit-identical rasters
+#   bit_identical_sizes         sizes at which bit-identity was confirmed,
+#                               for the two hand-verified rows only
+#   measured_note                measured facts only: what the two glyphs
+#                               share or differ in, and any provenance flag
+#                               (PROVISIONAL, SETTLED, HAND-VERIFIED, cited
+#                               external measurement). Never a claim about
+#                               how often a pair is confused in practice --
+#                               nothing here says that because nothing
+#                               measured it.
+#codepoint_1	codepoint_2	glyph_1	glyph_2	category_1	category_2	min_l2_dist	size_at_min	survives_prune	bit_identical	bit_identical_sizes	measured_note
+U+0069	U+00EF	i	ï	lower	lower	0.000000	16px	yes (same hole-count + baseline_class bucket; reaches distance stage)	true	16,18,19,20px (separate at 17px and 21px+)	HAND-VERIFIED bit-identical rasters at 16,18,19,20px; separate at 17px and 21px+; non-monotonic in size -- sub-pixel phase quantisation at small sizes per ARCHITECTURE.md's rasteriser-subgrid entry (2026-09-18), not a threshold that can be bisected
+U+002E	U+2026	.	…	punct	punct	0.000000	16px	yes (same hole-count + baseline_class bucket; reaches distance stage)	true	16,17,18,20px (separate at 19px and 21px+)	HAND-VERIFIED bit-identical rasters at 16,17,18,20px; separate at 19px and 21px+; non-monotonic in size -- same sub-pixel phase quantisation as i/ï, per ARCHITECTURE.md's rasteriser-subgrid entry (2026-09-18); the three dots of the ellipsis sit at different sub-pixel offsets than the period's single dot, which is why the surviving/failing sizes differ from i/ï's
+U+00C8	U+00C9	È	É	upper	upper	0.015067	16px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'E'; differs only by diacritic mark (grave accent vs acute accent)
+U+00CC	U+00CD	Ì	Í	upper	upper	0.029937	16px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'I'; differs only by diacritic mark (grave accent vs acute accent)
+U+00E8	U+00E9	è	é	lower	lower	0.042598	16px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'e'; differs only by diacritic mark (grave accent vs acute accent)
+U+00D2	U+00D3	Ò	Ó	upper	upper	0.047369	64px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'O'; differs only by diacritic mark (grave accent vs acute accent)
+U+00E0	U+00E1	à	á	lower	lower	0.049510	48px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'a'; differs only by diacritic mark (grave accent vs acute accent)
+U+00F2	U+00F3	ò	ó	lower	lower	0.051909	48px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'o'; differs only by diacritic mark (grave accent vs acute accent)
+U+00D9	U+00DA	Ù	Ú	upper	upper	0.052180	32px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'U'; differs only by diacritic mark (grave accent vs acute accent)
+U+00C0	U+00C1	À	Á	upper	upper	0.053256	64px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'A'; differs only by diacritic mark (grave accent vs acute accent)
+U+00F9	U+00FA	ù	ú	lower	lower	0.071185	32px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'u'; differs only by diacritic mark (grave accent vs acute accent)
+U+00CE	U+00CF	Î	Ï	upper	upper	0.088301	32px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'I'; differs only by diacritic mark (circumflex accent vs diaeresis)
+U+00EC	U+00ED	ì	í	lower	lower	0.097943	32px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'i'; differs only by diacritic mark (grave accent vs acute accent)
+U+00E1	U+00E2	á	â	lower	lower	0.101722	64px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'a'; differs only by diacritic mark (acute accent vs circumflex accent)
+U+00F9	U+00FB	ù	û	lower	lower	0.106607	32px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'u'; differs only by diacritic mark (grave accent vs circumflex accent)
+U+00F2	U+00F4	ò	ô	lower	lower	0.111324	64px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'o'; differs only by diacritic mark (grave accent vs circumflex accent)
+U+00C0	U+00C2	À	Â	upper	upper	0.116505	48px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'A'; differs only by diacritic mark (grave accent vs circumflex accent)
+U+00D8	U+2300	Ø	⌀	upper	symbol	0.117529	32px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		SETTLED, do not re-adjudicate: one shape, two classes by design (ARCHITECTURE.md 2026-09-18 dated entry). Both built from the authored O plus the same slash; disambiguation is left to context (diameter sign precedes a number, the letter sits inside a word), and a prior favouring U+00D8 on this toolchain (SolidWorks/AutoCAD both emit it) is defensible but must be labelled a prior, never folded into the distance
+U+00D9	U+00DB	Ù	Û	upper	upper	0.119646	48px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'U'; differs only by diacritic mark (grave accent vs circumflex accent)
+U+00D2	U+00D4	Ò	Ô	upper	upper	0.135887	64px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'O'; differs only by diacritic mark (grave accent vs circumflex accent)
+U+00C9	U+00CA	É	Ê	upper	upper	0.139090	48px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'E'; differs only by diacritic mark (acute accent vs circumflex accent)
+U+00CA	U+00CB	Ê	Ë	upper	upper	0.141961	32px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'E'; differs only by diacritic mark (circumflex accent vs diaeresis)
+U+00E9	U+00EA	é	ê	lower	lower	0.146629	64px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'e'; differs only by diacritic mark (acute accent vs circumflex accent)
+U+00E0	U+00E3	à	ã	lower	lower	0.148288	16px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'a'; differs only by diacritic mark (grave accent vs tilde)
+U+00EC	U+00EE	ì	î	lower	lower	0.171177	32px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'i'; differs only by diacritic mark (grave accent vs circumflex accent)
+U+2020	U+2021	†	‡	symbol	symbol	0.172575	16px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		dagger's single crossbar vs double-dagger's two crossbars; the second crossbar is the only distinguishing ink and is thin relative to the shared stem
+U+00C0	U+00C3	À	Ã	upper	upper	0.190370	16px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'A'; differs only by diacritic mark (grave accent vs tilde)
+U+00C2	U+00C4	Â	Ä	upper	upper	0.196416	32px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'A'; differs only by diacritic mark (circumflex accent vs diaeresis)
+U+00D4	U+00D5	Ô	Õ	upper	upper	0.199790	64px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'O'; differs only by diacritic mark (circumflex accent vs tilde)
+U+00FD	U+00FF	ý	ÿ	lower	lower	0.206713	32px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'y'; differs only by diacritic mark (acute accent vs diaeresis)
+U+00F4	U+00F5	ô	õ	lower	lower	0.209157	16px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'o'; differs only by diacritic mark (circumflex accent vs tilde)
+U+00DB	U+00DC	Û	Ü	upper	upper	0.224951	32px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'U'; differs only by diacritic mark (circumflex accent vs diaeresis)
+U+0029	U+007D	)	}	punct	punct	0.233835	16px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		closing-bracket punctuation; round vs curly closer collapse to a near-identical short curved stroke at small sizes
+U+0067	U+0071	g	q	lower	lower	0.238224	16px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		both lower, descender class; bowl+descending tail shapes, differ only in tail curvature/closure
+U+0028	U+007B	(	{	punct	punct	0.242171	16px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		opening-bracket punctuation; round vs curly opener collapse to a near-identical short curved stroke at small sizes
+U+005D	U+007D	]	}	punct	punct	0.251456	16px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		square vs curly closer; both reduce to a vertical stroke with a small top/bottom serif at small sizes
+U+0031	U+2020	1	†	digit	symbol	0.257504	16px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		digit 1's stem+top-flag vs dagger's stem+crossbar; both a single dominant vertical stroke, crossbar/flag is the only distinguishing ink
+U+0040	U+00AE	@	®	symbol	symbol	0.257877	64px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		both a small internal mark inside a round/oval enclosure; at-symbol's swash vs registered-mark's R differ in fine internal ink only
+U+005B	U+007B	[	{	punct	punct	0.259703	64px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		square vs curly opener; both reduce to a vertical stroke with a small top/bottom serif at small sizes
+U+0059	U+00A5	Y	¥	upper	currency	0.266753	16px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		yen sign is cap Y plus a horizontal strike; strike is thin ink relative to the shared Y body, same currency-strike family as V/¥ and E/€ below
+U+0049	U+2020	I	†	upper	symbol	0.271529	16px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		cap I's single vertical stroke vs dagger's stem+crossbar; crossbar is the only distinguishing ink
+U+0069	U+006C	i	l	lower	lower	0.275082	32px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		authored 1/l/I/| confusion family (ocrcer-linguist); dot presence and stem width are the only differences
+U+0021	U+0069	!	i	punct	lower	0.279187	48px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		single vertical stroke plus a mark above; exclamation mark's mark is a full stroke segment, i's is a round dot -- differ in the mark's shape more than position
+U+00BC	U+00BE	¼	¾	symbol	symbol	0.279271	16px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		fraction glyphs share slash+denominator structure; differ only in the numerator digit, which is small relative to the whole glyph
+U+006C	U+007C	l	|	lower	symbol	0.281896	64px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		authored 1/l/I/| confusion family (ocrcer-linguist); both a bare vertical stroke, separated on serif presence per that family's rule, not on raw distance
+U+00D4	U+00D6	Ô	Ö	upper	upper	0.288504	48px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'O'; differs only by diacritic mark (circumflex accent vs diaeresis)
+U+00EA	U+00EB	ê	ë	lower	lower	0.292912	32px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'e'; differs only by diacritic mark (circumflex accent vs diaeresis)
+U+00FB	U+00FC	û	ü	lower	lower	0.294662	48px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'u'; differs only by diacritic mark (circumflex accent vs diaeresis)
+U+00C3	U+00C5	Ã	Å	upper	upper	0.294894	16px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same base letter 'A'; differs only by diacritic mark (tilde vs ring above)
+U+00E4	U+00F6	ä	ö	lower	lower	0.295101	16px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		different base letters (a vs o) both carrying a diaeresis; coincidental cross-letter match, not a same-base diacritic pair -- the diaeresis dominates the feature vector at 16px and swamps the bowl-shape difference
+U+0032	U+005A	2	Z	digit	upper	0.297939	32px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		digit 2's curved top vs cap Z's straight diagonal; per ocrcer-linguist's authored 2/Z family, separated on top-third curvature, not raw distance
+U+0043	U+00C7	C	Ç	upper	upper	0.301729	64px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		plain 'C' vs 'C' with cedilla; the added mark is the entire difference
+U+0064	U+00E2	d	â	lower	lower	0.307034	16px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		d's stem+bowl vs a-with-circumflex's rounded body; coincidental cross-letter match, not a same-base diacritic pair
+U+2013	U+2014	–	—	punct	punct	0.308410	32px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		en dash vs em dash; same stroke, differ only in authored length (aspect band), not in shape -- see charset.tsv aspect_min/aspect_max
+U+0061	U+006F	a	o	lower	lower	0.310096	16px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		adjacent bowls in the authored aspect bands; a's ear is the only ink that is not shared with o
+U+0063	U+00E7	c	ç	lower	lower	0.335916	64px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		plain 'c' vs 'c' with cedilla; the added mark is the entire difference
+U+0079	U+00FF	y	ÿ	lower	lower	0.354080	64px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		plain 'y' vs 'y' with diaeresis; the added mark is the entire difference
+U+00BC	U+00BD	¼	½	symbol	symbol	0.358343	64px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		fraction glyphs share slash+numerator structure; differ only in the denominator digit, which is small relative to the whole glyph
+U+0044	U+004F	D	O	upper	upper	0.360153	48px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		authored 0/O/D/Q family (ocrcer-linguist); D's flat left side is the only structural difference from O's round body, separated on aspect ratio not raw distance
+U+004F	U+0051	O	Q	upper	upper	0.362898	64px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		authored 0/O/D/Q family (ocrcer-linguist); Q's tail is thin ink against O's closed round body, separated on tail survival not raw distance
+U+0030	U+00F6	0	ö	digit	lower	0.371432	64px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		digit 0 vs lowercase o-with-diaeresis; coincidental cross-category match, not a named family -- the diaeresis dots sit inside 0's counter region at small sizes
+U+003D	U+2248	=	≈	math	math	0.385166	64px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		equals sign's two straight strokes vs approx-equal's two wavy strokes; the wave amplitude is thin ink relative to the shared two-stroke structure
+U+0036	U+00F5	6	õ	digit	lower	0.408034	64px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		digit 6 vs lowercase o-with-tilde; coincidental cross-category match -- the tilde mark occupies the same region as 6's upper curve at small sizes
+U+0056	U+00A5	V	¥	upper	currency	0.414637	32px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same currency-strike family as Y/¥ above; V's body plus yen sign's horizontal strike, strike is thin ink
+U+002D	U+2013	-	–	punct	punct	0.448197	64px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		hyphen vs en dash; same stroke, differ only in authored length (aspect band) -- see charset.tsv aspect_min/aspect_max
+U+005D	U+006A	]	j	punct	lower	0.453439	64px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		closing square bracket vs lowercase j; both a single descending vertical stroke with a small hook/serif, coincidental cross-category match
+U+0066	U+2021	f	‡	lower	symbol	0.470817	32px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		lowercase f's ascender+crossbar vs double-dagger's stem+two-crossbars; coincidental cross-category match at small sizes where the second crossbar quantises away
+U+0045	U+20AC	E	€	upper	currency	0.486894	48px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		same currency-strike family as Y/¥ and V/¥ above; euro sign is cap E plus a horizontal strike
+U+0030	U+0062	0	b	digit	lower	0.496903	16px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		digit 0 vs lowercase b; coincidental -- b's bowl matches 0's counter shape when the stem renders short relative to the bowl
+U+0041	U+00C4	A	Ä	upper	upper	0.497262	64px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		plain 'A' vs 'A' with diaeresis; the added mark is the entire difference
+U+0057	U+0077	W	w	upper	lower	0.497760	32px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		case pair sharing the authored 0.90-1.15 aspect band; near-miss expected where x-height and cap-height convergence narrows the size gap between the two
+U+00D1	U+00D9	Ñ	Ù	upper	upper	0.498972	16px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		N-with-tilde vs U-with-acute; coincidental cross-letter match, not a same-base diacritic pair
+U+0037	U+0054	7	T	digit	upper	0.508481	32px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		digit 7's diagonal off a top horizontal vs cap T's stem off a top horizontal; coincidental digit/letter match
+U+2248	U+2260	≈	≠	math	math	0.526882	64px	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		approx-equal's two wavy strokes vs not-equal's two straight strokes plus a diagonal slash; the slash is the only distinguishing ink at large sizes, where the wave itself is well separated from equals
+U+0038	U+00A7	8	§	digit	symbol	0.53969	64px (post-redraw sweep: 16px=0.76432 24px=0.61980 32px=0.66315 48px=0.59230 64px=0.53969)	yes (same hole-count + baseline_class bucket, hole count 2 in both; reaches distance stage)	not tested		POST-REDRAW (section-sign redraw landed; PROVISIONAL flag lifted). Min L2 now 0.53969@64px, vs pre-redraw 0.37192@64px -- roughly 45% farther apart, right direction, but still near the floor: this face's 64px same-bucket distribution has p1=0.5276 and median=1.5464, so the pair sits right at the 1st percentile, not comfortably separated. Bounding boxes are now distinct at 48px (section 20x36 vs eight 22x36; were identical pre-redraw). Redraw target was shape, not distance: the glyph now has two free stroke terminals (one sweeping up-right, one down-left) against 8's zero-endpoint closed figure -- that endpoint count is the measured structural fact a human uses to separate them, and it is not currently captured by any of the 107 feature-vector dims.
+U+00A7	U+00DF	§	ß	symbol	lower	0.560558	48px (post-redraw sweep: 16px=0.87616 24px=0.59949 32px=0.69921 48px=0.56056 64px=0.57790)	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		section sign's two loops vs sharp-s's two bowls. POST-REDRAW, re-measured by the AI operator against the shipped section-sign glyph, same test and metric as the 8/section-sign row (that row's 0.53969@64px reproduced exactly in the same run, which is what establishes the run is against the shipped glyph and not a stale copy). Was 0.375425@64px pre-redraw. At 64px this face's same-bucket distribution has p1=0.5276 and median=1.5464, so the pair now sits above the 1st percentile but still far below the median -- retained as a candidate, not cleared. stale-pending-re-measure flag lifted.
+U+00A7	U+00E5	§	å	symbol	lower	0.686614	64px (post-redraw sweep: 16px=1.12819 24px=0.79047 32px=0.82728 48px=0.70126 64px=0.68661)	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		section sign vs lowercase a-with-ring; coincidental cross-category match. POST-REDRAW, re-measured by the AI operator against the shipped section-sign glyph, same test and metric as the 8/section-sign row (that row's 0.53969@64px reproduced exactly in the same run, which is what establishes the run is against the shipped glyph and not a stale copy). Was 0.470048@48px pre-redraw. At 64px this face's same-bucket distribution has p1=0.5276 and median=1.5464, so the pair now sits above the 1st percentile but still far below the median -- retained as a candidate, not cleared. stale-pending-re-measure flag lifted.
+U+0042	U+00A7	B	§	upper	symbol	0.701772	64px (post-redraw sweep: 16px=1.00589 24px=0.94801 32px=0.97993 48px=0.73168 64px=0.70177)	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		cap B's flat-backed double bowl vs section sign's two open hooked lobes. POST-REDRAW, re-measured by the AI operator against the shipped section-sign glyph, same test and metric as the 8/section-sign row (that row's 0.53969@64px reproduced exactly in the same run, which is what establishes the run is against the shipped glyph and not a stale copy). Was 0.433655@64px pre-redraw. At 64px this face's same-bucket distribution has p1=0.5276 and median=1.5464, so the pair now sits above the 1st percentile but still far below the median -- retained as a candidate, not cleared. stale-pending-re-measure flag lifted.
+#
+# --- EXTRA ROWS below this line are not part of the sorted 78-row sweep
+# --- block above. Each is appended because it is directly named by
+# --- ocrcer-linguist's authored confusion-family list or by an
+# --- ARCHITECTURE.md dated entry, even though it falls outside (or was
+# --- never captured by) the p1-cutoff sweep block. See each row's own note.
+U+002E	U+00B7	.	·	punct	punct	0.606092	16px (size-invariant: identical at 16/32/48/64px)	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		EXTRA, from the sweep's dedicated '.' vs '·' feature-vector check (not the generic nearest-rival scan): distance is IDENTICAL at all four swept sizes (0.606092), and dims 0..103 of the 107-dim feature vector are bit-identical at every size -- only the baseline-relative dims (104-106, ocrcer-glyphs's baseline-position feature group) differ (period sits low, middle-dot sits above). This is NOT a drawing problem: the raster shape is genuinely indistinguishable, but the baseline feature already carries the separating signal, so the decoder does not need context to resolve it, only the threshold ocrcer-linguist puts on that feature per rule 5's note in ocrcer-linguist.md.
+U+0030	U+004F	0	O	digit	upper	0.832938	16px (per-size: 16px=0.832938 32px=0.842179 48px=0.839835 64px=0.856742)	yes (same hole-count + baseline_class bucket; reaches distance stage)	not tested		EXTRA, from the sweep's dedicated 'five named pairs' section, not the p1-cutoff block (0.83 is close to this face's median pairwise distance of ~1.58, i.e. comfortably separated). SURPRISING NEGATIVE: 0/O is the textbook OCR digit/letter confusion and it does not collide in this face at any swept size -- rank 1351 of 17391 pairs face-wide. charset.tsv's own note ('confusable with O; separates on aspect and counter shape') is a design intent, and this measurement confirms the intent held.
+U+0030	U+0038	0	8	digit	digit	n/a	n/a	no (different hole-count bucket: 0 has 1 counter, 8 has 2, per ARCHITECTURE.md's 2026-09-18 O-with-stroke/diameter-sign entry -- pruned apart before the distance stage, never compared)	not tested		EXTRA, absence-of-evidence row, explicitly requested by the task brief: 0 and 8 do NOT appear as each other's nearest same-bucket rival at any of the four swept sizes (0's nearest rival is ö at 0.371432@64px; 8's is § at 0.371924@64px). This report's methodology only records each glyph's single nearest rival, so no exact pairwise 0-vs-8 L2 distance exists in the underlying data ('n/a' above is an honest gap, not a measured zero-collision). ARCHITECTURE.md already documents why structurally: hole count differs, so pruning separates them before any distance is computed. CONFIRMS the architecture's settled call that 0/8 models a confusion that does not occur in this face; see the Ø/⌀-vs-8 row below for the confusion that DOES occur and should be carried instead.
+U+00D8/U+2300	U+0038	Ø/⌀-shaped (slashed zero)	8	upper/symbol	digit	0.78 (cited)	size not stated in source	yes (hole-count 2 in both: the slash severs the counter same as 8's two loops, per ARCHITECTURE.md)	not tested		EXTRA, CITED EXTERNAL MEASUREMENT, not from this chunk's raster.rs sweep -- pulled forward from ARCHITECTURE.md's 2026-09-18 dated entry ('measured... by running four drawn glyphs through the extractor'): a slashed-zero-style glyph (hole count 2, same shape family as Ø/⌀) sits 0.78 from 8, versus 1.25 from a plain zero, while a dotted-zero-style glyph sits 0.28 from a plain zero and keeps hole count 1 (prunes with 0/o/O, not with 8). Size at which 0.78/1.25/0.28 were measured is not stated in the source text and is NOT re-derived here per rule 1 (no invented numbers to fill a gap). This is the pair to carry into chunk 4: Ø/⌀ (letter and diameter sign) ↔ 8, not 0 ↔ 8 -- this face's actual digit 0 glyph is the dotted-hole-count-1 style (confirmed by the 0/8 non-collision row above), so the slashed-style collision applies to Ø/⌀, never to the shipped digit 0.

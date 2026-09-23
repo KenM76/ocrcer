@@ -1,0 +1,198 @@
+Cascadia Code and Cascadia Mono are the same outlines: what that cost, and
+what removing one changed
+
+Method
+------
+Font comparison: Python fontTools, TTFont + RecordingPen, over the 187
+classes in model/charset.tsv. Compared per class the full outline draw-command
+record (contours and on/off-curve points, in font units) and the horizontal
+advance. Outline units, not rasters. Table-level comparison is a byte
+comparison of each SFNT table as stored. Both files as installed in
+C:\Windows\Fonts on this machine.
+
+Page comparison: cmp(1) over the rendered .pgm pages already on disk in
+bench/pages and bench/holdout, produced earlier by `ocrcer-build pages`.
+
+Accuracy: target/release/vs-ocrs over bench/holdout, bank sizes
+16,20,24,32,48 px/em, --geometry-weight 16, ocrs 0.12.2 with models read
+from D:\Dev\pdfcer\crates\pdfcer-core\assets\models\ocrs (path reference
+only; nothing from ocrs enters this project's model file). Runs A and B were
+executed back to back in the same session on the same machine from the same
+binary; the only difference between them is one row of model/fonts.tsv.
+
+Everything below was measured on 2026-09-22. The OCRcer column throughout is
+an oracle-segmentation ceiling, not an end-to-end result -- it is given every
+glyph box and every space from each page's own ground truth, while ocrs runs
+end to end from the page. The two columns are not like for like.
+
+
+1. The two files
+----------------
+  A  Cascadia Code Regular   version 2102.025   upem 2048   numGlyphs 1780
+  B  Cascadia Mono Regular   version 2102.025   upem 2048   numGlyphs 1780
+
+  over the 187 charset classes:
+    identical outline AND advance : 186
+    different                     :   0
+    absent from one or both       :   1   (U+2300, absent from both)
+
+  glyph order identical over the whole font : yes
+  every glyph's advance, both faces         : 1200 units (monospaced)
+
+  metric fields the rasteriser and the extractor read, all identical:
+    head.unitsPerEm 2048   head.yMin -891   head.yMax 2309
+    head.xMin -115   head.xMax 4520   head.indexToLocFormat 1
+    hhea.ascent 1900   hhea.descent -480   hhea.lineGap 0
+    hhea.advanceWidthMax 1200   hhea.numberOfHMetrics 1775
+    OS/2.sxHeight 1060   OS/2.sCapHeight 1420
+    OS/2.sTypoAscender 1900   OS/2.sTypoDescender -480
+    OS/2.usWinAscent 2226   OS/2.usWinDescent 480
+    OS/2.xAvgCharWidth 1200
+
+  raw SFNT tables byte-identical:
+    GDEF GPOS HVAR STAT avar cmap cvar cvt fpgm fvar glyf gvar
+    hhea hmtx loca maxp post prep gasp
+  raw SFNT tables that differ:
+    GSUB  (Code's programming ligatures; Mono is the same design with them
+           removed)
+    name  (family name)
+    OS/2  (panose classification byte only; every numeric metric above is
+           identical)
+    head  (checkSumAdjustment)
+    DSIG  (digital signature)
+
+  Every table the rasteriser touches is byte-identical. OCRcer renders
+  isolated codepoints with no shaping, so GSUB -- the entire substantive
+  difference between the two files -- cannot reach the bank.
+
+
+2. The rendered pages were byte-identical
+-----------------------------------------
+  bench/holdout : 35 of 35 cascadia-code pages byte-identical to their
+                  cascadia-mono counterpart, 0 differ
+  bench/pages   : 35 of 35 byte-identical, 0 differ
+
+  So the per-face table in every benchmark to date had two rows that were
+  one measurement printed twice, and 5.3% of every run's wall clock was
+  spent reading the same images a second time.
+
+
+3. What the duplicate cost the reported headline
+------------------------------------------------
+  The 660-page held-out run recorded on 2026-09-21 is the same corpus with
+  the 35 duplicate pages still in it. Run A below is that corpus with the
+  duplicates removed and the bank left alone -- so the difference is purely
+  the double-counting, with nothing else changed.
+
+                                660 pages (2026-09-21)   625 pages (run A)
+    OCRcer char accuracy              95.88%                  95.76%
+    OCRcer word accuracy / F1         83.69%                  83.26%
+    ocrs   char accuracy              77.74%                  77.72%
+    ocrs   word F1                    82.72%                  82.72%
+
+  The duplicate was inflating OCRcer's character accuracy by 0.12 points and
+  its word figure by 0.43 points, because the Cascadia design scores 98.00%
+  -- well above the corpus mean -- and was being counted twice. It inflated
+  ocrs by 0.02 points of character accuracy and nothing measurable on words.
+  The error ran in OCRcer's favour, which is the direction that matters in a
+  head-to-head.
+
+  Every per-face row in run A is identical to the 660-page run, to the last
+  reported digit. Removing duplicate pages changed no face's own score.
+
+
+4. A/B: the same corpus, with and without the face in the bank
+--------------------------------------------------------------
+  Run A: bank = 20 faces (19 files + the authored technical face), 18540
+         prototypes, built in 45.4s.
+  Run B: bank = 19 faces, 17610 prototypes, built in 43.3s.
+  Difference: 930 prototypes = 186 covered classes x 5 sizes = 5.01% of the
+  bank.
+
+                                run A            run B          delta
+    OCRcer char accuracy        95.76%           95.73%         -0.03
+    OCRcer word accuracy / F1   83.26%           83.15%         -0.11
+    OCRcer match seconds        226.5            204.3          -9.8%
+    ocrs char accuracy          77.72%           77.72%          0.00
+    ocrs word F1                82.72%           82.72%          0.00
+
+  Per-face, only four rows moved at all. Cascadia Mono did not:
+
+                              char accuracy        word F1
+                            run A    run B       run A    run B
+    Cascadia Mono           98.00%   98.00%      91.33%   91.33%
+    Open Sans Condensed     87.90%   87.97%      67.75%   68.08%
+    PT Mono                 97.36%   97.00%      87.25%   85.42%
+    Roboto Mono             96.50%   96.44%      82.08%   81.83%
+    STIX Two Math           93.95%   93.75%      79.58%   79.25%
+    (all fourteen other faces: identical to the last reported digit)
+
+
+5. Why removing a bitwise duplicate changed anything at all
+-----------------------------------------------------------
+  The matcher is 1-NN over squared L2 on standardised features
+  (ocrcer-build/src/bank.rs, Bank::search). Under a fixed metric, deleting a
+  prototype that is bitwise identical to one that remains cannot change the
+  winner, and cannot change the margin either -- the margin is to the nearest
+  prototype of a *different* class, and the removed rows were the same class
+  as the rows that stayed.
+
+  So the metric is what changed. The standardisation constants are per-
+  dimension mean and standard deviation taken over every prototype in the
+  bank (Bank::moments), so face composition sets the scale of every dimension,
+  and dropping 5% of the population re-weights all 107 of them slightly.
+
+  That is the whole mechanism. PT Mono lost 1.83 points of word F1 because an
+  unrelated face left the bank -- not because anything about PT Mono or its
+  prototypes changed.
+
+
+6. The shipped model file, before and after
+-------------------------------------------
+  Rebuilt at the four-size configuration the 2026-09-21 writer entry records
+  (build 16,24,32,48 / eval 21,26,36,56):
+
+                                 before (recorded)   after (measured)
+    prototypes                       14832               14088
+    faces                               20                  19
+    file size                         1.55 MB             1.48 MB
+    int8 agrees with f32 on top-1     99.454%             99.453%
+    int8 top-1 accuracy                90.97%              90.87%
+
+  14832 - 14088 = 744 = 186 classes x 4 sizes, as predicted.
+
+
+7. Caveats
+----------
+- Sections 1 and 5 are proofs from the code and the font files; sections 2,
+  3, 4 and 6 are measurements from runs on this machine on this date.
+- The accuracy figures are all oracle-segmentation ceilings on OCRcer's side.
+- The corpus is rendered from authored text, not scanned pages; nothing here
+  speaks to scan noise, blur or skew.
+- The -0.03 / -0.11 cost in section 4 is deterministic, not noise. It is an
+  artefact of bank composition setting the metric, not evidence that the
+  duplicate carried information.
+
+
+8. Follow-up check: does the distribution change actually hold?
+---------------------------------------------------------------
+  Verified by running the corpus generator rather than assuming.
+
+  before the fix:
+    ocrcer-build pages <dir> 24            -> 18 faces, cascadia-mono only
+    ocrcer-build pages <dir> 24 --local    -> 19 faces, cascadia-code AND
+                                              cascadia-mono  (WRONG)
+
+  Cause: two implementations of "which faces may this build read".
+  bank.rs Fonts::load skipped Excluded unconditionally; main.rs run_pages
+  tested `!local && distribution != Shippable`, which under --local skipped
+  nothing. Nothing leaked -- the proprietary rows are all status: ineligible
+  and FontEntry::file returns None for those -- but the newly-valid
+  eligible-present + excluded combination did.
+
+  Fixed by one shared predicate, Distribution::usable(include_local_only),
+  called from both sites.
+
+  after the fix:
+    ocrcer-build pages <dir> 24 --local    -> 18 faces, cascadia-mono only
+    cargo test --workspace                 -> green (97 passed, 11 ignored)

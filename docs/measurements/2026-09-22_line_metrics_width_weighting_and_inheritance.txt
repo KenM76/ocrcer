@@ -1,0 +1,100 @@
+Line metrics: width-weighted histograms and page-level x-height inheritance.
+
+Two changes to `layout::lines`, measured separately because they turn out to
+act on disjoint inputs:
+
+  A. every per-line histogram and median (reference height, baseline, the
+     x-height band, the ascender/cap band) is weighted by component WIDTH
+     rather than counted per component;
+  B. a second pass gives a line whose own x-height came out below
+     `lines.inherit_x_height_below` (0.5) of the page's typical x-height the
+     page's value instead.
+
+A has no switch, so it is isolated by the synthetic corpus containing no
+input it can act on. B is isolated by `--set lines.inherit_x_height_below=0`.
+
+Engine binary t=1790085196, model file t=1790084843 for every run below
+except the two marked "before", which are t=1790082990 / t=1790081786.
+
+=================== 1. THE AUTHORED DIAGNOSTIC CORPUS ===================
+
+Six authored pages rendered at 15/21/30 px in Liberation Sans, each page one
+shape so a failure cannot be blamed on a neighbouring line. Truth is the text
+that was rendered, so it is exact.
+
+  page            CER before    CER after
+  plain             3.226%        3.226%
+  allcaps           2.083%        2.083%
+  leaders         102.008%       16.466%
+  mixed            ~39.9%        13.861%
+  leaders_only    195.062%      195.062%
+
+`leaders` is a text line ending in a run of periods and an amount.
+`mixed` is two text lines with a leaders-only line between them.
+`leaders_only` is a page of nothing but periods: there is no evidence on the
+page to inherit, and it is unchanged by design rather than by accident.
+
+Mechanism confirmed with `--layout` at 21 px: the leader line reported
+`x-height 1.49 (FromCapHeight)` before and `x-height 11.00 (Inherited)`
+after, and reads correctly after.
+
+================= 2. THE SYNTHETIC REGRESSION GATE (625) =================
+
+`bench/pages-cov`, 625 pages, 119155 characters. This corpus contains **no
+dot-leader line** -- see the `leaders` block added to
+`ocrcer-build`'s corpus after this measurement -- so it has nothing to gain
+from either change and can only report their cost.
+
+                     before      after      B off, A on
+  CER               6.554%      6.658%      6.658%
+  WER              27.478%     27.590%     27.590%
+  token recall     74.929%     74.817%     74.817%
+  token precision  77.528%     77.435%     77.435%
+  word F1          76.206%     76.104%     76.104%
+
+The "B off" column is **identical in every digit** to the "after" column, so
+the inheritance pass changes nothing at all on this corpus: no line falls
+below the floor. The entire -0.102 word F1 and +0.104 CER is the cost of
+width weighting, paid on a corpus with no case that width weighting exists to
+fix.
+
+The "before" run carried `--set words.min_separability=0.7` against the older
+model file, which is the value the current model file carries natively, so
+the effective parameter set is the same in both and the delta is
+attributable to the code change.
+
+================ 3. REAL DOCUMENTS, 300 DPI (13 pages) ================
+
+`priv-300`, stride 7, 40099 characters. Truth is the PDFs' own text layers,
+so CER here is partly a measurement of the producer and the layout-free word
+metric is the trustworthy one.
+
+                     B off, A on      both on
+  CER                 25.282%        25.208%
+  WER                 59.475%        59.021%
+  token recall        63.662%        63.974%
+  token precision     59.689%        60.286%
+  word F1             61.611%        62.076%
+
+Inheritance alone: **+0.465 word F1, -0.074 CER** on real documents, against
+exactly zero on the synthetic gate. That is the whole point of the pass --
+the input it acts on is common in real documents and absent from the
+generated corpus.
+
+A "before" run of the same 13 pages reported CER 26.220% and word F1 61.898%,
+but it used a model file carrying `words.min_separability` 0.8 rather than
+0.7 and **no override**, so that pair is confounded and the difference is NOT
+attributed here.
+
+`priv-150`, same 13 documents at half the resolution, after: CER 30.123%,
+word F1 53.502%. Same confound against the recorded 30.485% / 53.583%.
+
+============================ 4. WHAT IS NOT MEASURED ============================
+
+Width weighting's contribution on real documents cannot be isolated, because
+it has no parameter to disable it and the pre-change binary was not kept. The
+argument for it rests on section 1's diagnostic and on the mechanism, not on
+a paired real-document run.
+
+Every `sec` and `ms/page` figure in the underlying run output was taken on a
+machine running other jobs concurrently and is not a timing result.

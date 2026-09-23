@@ -1,0 +1,55 @@
+{
+  "why": "'TOTAL' is one of the three shapes a printed alphabetic word takes, so no case transition in it is anomalous and the penalty must not fire. Each position offers the case twin 0.2 behind, which the penalty could otherwise promote.",
+  "positions": [
+    [
+      [
+        "T",
+        1.0
+      ],
+      [
+        "t",
+        1.2
+      ]
+    ],
+    [
+      [
+        "O",
+        1.0
+      ],
+      [
+        "o",
+        1.2
+      ]
+    ],
+    [
+      [
+        "T",
+        1.0
+      ],
+      [
+        "t",
+        1.2
+      ]
+    ],
+    [
+      [
+        "A",
+        1.0
+      ],
+      [
+        "a",
+        1.2
+      ]
+    ],
+    [
+      [
+        "L",
+        1.0
+      ],
+      [
+        "l",
+        1.2
+      ]
+    ]
+  ]
+}

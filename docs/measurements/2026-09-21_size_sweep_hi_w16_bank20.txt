@@ -1,0 +1,58 @@
+bank: 18540 prototypes from 20 faces at [16.0, 20.0, 24.0, 32.0, 48.0] px/em in 45.2s
+OCRcer matcher: dims 103..107 weighted x16              (a measured candidate, not an authored parameter)
+
+924 pages
+
+                       OCRcer (oracle seg)      ocrs 0.12.2 (end to end)
+  character accuracy       98.74%                    78.74%
+  word accuracy            94.22%                    69.60%
+  characters scored        176141                    176141
+  seconds                   341.7                     339.5
+
+  layout-free, word for word (order and grouping ignored)
+  word recall              94.22%                    85.47%
+  word precision           94.22%                    85.68%
+  word F1                  94.22%                    85.58%
+
+by render size              char accuracy               word F1
+      31 px/em     OCRcer   98.26%  ocrs   79.76%    OCRcer   92.13%  ocrs   86.10%
+      32 px/em     OCRcer   99.79%  ocrs   80.46%    OCRcer   99.03%  ocrs   86.44%
+      33 px/em     OCRcer   98.27%  ocrs   79.26%    OCRcer   92.11%  ocrs   86.20%
+      36 px/em     OCRcer   97.80%  ocrs   78.17%    OCRcer   89.79%  ocrs   86.01%
+      47 px/em     OCRcer   98.30%  ocrs   77.86%    OCRcer   92.61%  ocrs   84.59%
+      48 px/em     OCRcer   99.66%  ocrs   78.43%    OCRcer   98.48%  ocrs   84.91%
+      49 px/em     OCRcer   99.07%  ocrs   77.24%    OCRcer   95.39%  ocrs   84.81%
+
+by text block               char accuracy               word F1
+      currency     OCRcer   98.51%  ocrs   93.40%    OCRcer   92.95%  ocrs   76.24%
+       drawing     OCRcer   99.02%  ocrs   98.58%    OCRcer   95.66%  ocrs   94.81%
+       invoice     OCRcer   98.75%  ocrs   55.89%    OCRcer   94.65%  ocrs   96.15%
+         prose     OCRcer   98.69%  ocrs   96.64%    OCRcer   93.92%  ocrs   94.09%
+     statement     OCRcer   98.70%  ocrs   53.19%    OCRcer   91.54%  ocrs   93.81%
+     technical     OCRcer   99.33%  ocrs   88.24%    OCRcer   97.27%  ocrs   60.47%
+         twins     OCRcer   98.22%  ocrs   87.15%    OCRcer   93.38%  ocrs   61.08%
+
+by face                     char accuracy               word F1
+  Cascadia Code            OCRcer   99.37%  ocrs   77.96%    OCRcer   97.44%  ocrs   82.34%
+  Cascadia Mono            OCRcer   99.37%  ocrs   77.96%    OCRcer   97.44%  ocrs   82.34%
+  Fira Code                OCRcer   98.18%  ocrs   76.92%    OCRcer   91.49%  ocrs   82.78%
+  Inconsolata              OCRcer   99.40%  ocrs   76.59%    OCRcer   97.41%  ocrs   84.43%
+  Inter                    OCRcer   97.58%  ocrs   80.06%    OCRcer   89.35%  ocrs   88.50%
+  JetBrains Mono           OCRcer   98.05%  ocrs   77.66%    OCRcer   90.00%  ocrs   83.08%
+  Lato                     OCRcer   97.49%  ocrs   83.61%    OCRcer   90.54%  ocrs   85.90%
+  Liberation Mono          OCRcer   98.65%  ocrs   78.20%    OCRcer   93.10%  ocrs   82.08%
+  Liberation Sans          OCRcer   98.85%  ocrs   78.67%    OCRcer   94.70%  ocrs   87.40%
+  Liberation Serif         OCRcer   99.40%  ocrs   80.19%    OCRcer   97.26%  ocrs   88.43%
+  Noto Sans                OCRcer   99.36%  ocrs   80.39%    OCRcer   96.90%  ocrs   88.06%
+  Noto Serif               OCRcer   99.75%  ocrs   78.01%    OCRcer   98.75%  ocrs   87.01%
+  Open Sans Condensed      OCRcer   99.82%  ocrs   76.86%    OCRcer   99.11%  ocrs   85.33%
+  PT Mono                  OCRcer   98.20%  ocrs   78.96%    OCRcer   90.65%  ocrs   82.40%
+  PT Sans                  OCRcer   99.34%  ocrs   78.28%    OCRcer   97.02%  ocrs   88.08%
+  Roboto                   OCRcer   97.59%  ocrs   81.10%    OCRcer   91.01%  ocrs   88.60%
+  Roboto Condensed         OCRcer   98.63%  ocrs   79.99%    OCRcer   93.10%  ocrs   89.00%
+  Roboto Mono              OCRcer   97.49%  ocrs   77.94%    OCRcer   87.20%  ocrs   83.25%
+  STIX Two Math            OCRcer   99.58%  ocrs   76.48%    OCRcer   98.04%  ocrs   87.20%
+
+The OCRcer column is a ceiling, not a result: it was given every
+glyph box and every space from the page's own ground truth. The ocrs
+column is end to end from the page. See this binary's module doc.

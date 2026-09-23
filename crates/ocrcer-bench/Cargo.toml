@@ -1,0 +1,97 @@
+[package]
+name = "ocrcer-bench"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+default-run = "ocrcer-bench"
+
+[lib]
+name = "ocrcer_bench"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ocrcer-bench"
+path = "src/main.rs"
+
+[[bin]]
+name = "bless"
+path = "src/bin/bless.rs"
+
+[[bin]]
+name = "vs-ocrs"
+path = "src/bin/vs_ocrs.rs"
+required-features = ["vs-ocrs"]
+
+[[bin]]
+name = "ocr"
+path = "src/bin/ocr.rs"
+required-features = ["pages"]
+
+[[bin]]
+name = "hocr"
+path = "src/bin/hocr.rs"
+required-features = ["pages"]
+
+[[bin]]
+name = "charset-cost"
+path = "src/bin/charset_cost.rs"
+required-features = ["pages"]
+
+[[bin]]
+name = "tune"
+path = "src/bin/tune.rs"
+required-features = ["pages"]
+
+[[bin]]
+name = "feature-weights"
+path = "src/bin/feature_weights.rs"
+required-features = ["pages"]
+
+[features]
+# ocrcer-core now exposes the documented GlyphInput / FEATURE_DIMS /
+# extract (ARCHITECTURE.md section 3.1), so this is on by default. See
+# src/stage.rs — turning it off still leaves the fixture-format and
+# comparison/bless-planning logic buildable and unit-testable on their own.
+extractor = ["dep:ocrcer-core"]
+
+# `pages` is on by default so that a plain `cargo build` builds the
+# measurement binaries. It was off, and twice that produced a benchmark run
+# against a binary the build had silently skipped -- once reported as a clean
+# regression, once as a passing no-op control -- because a bin behind a
+# non-default `required-features` is skipped without a word while its crate
+# still prints "Compiling". The build cost of `ocrcer-build` is smaller than
+# the cost of one false measurement.
+default = ["extractor", "pages"]
+
+# The head-to-head against the engine `pdfcer` ships today. Off by default
+# and confined to this crate, which never ships: `ocrs` and the eleven-crate
+# `rten` stack are MIT OR Apache-2.0 but sit on Apache-2.0-only flatbuffers,
+# and the `ocrs` **model weights** the comparison needs are CC-BY-SA-4.0.
+# None of that may touch `ocrcer-core` or the model file (`CLAUDE.md` rule
+# 2); a benchmark linking a share-alike-weighted competitor is a different
+# thing from a product embedding one, and the feature flag is the line
+# between them. Nothing measured from `ocrs` output is ever fed back into an
+# OCRcer table.
+#
+# The weights are not vendored here and are not downloaded: the comparison
+# takes a path to files already on the machine.
+vs-ocrs = ["dep:ocrs", "dep:rten", "pages"]
+
+# The oracle-segmented corpus reader and the measurements that need only
+# OCRcer: `charset-cost`. Separate from `vs-ocrs` so an OCRcer-only
+# measurement does not link a share-alike-weighted competitor it has no
+# use for. It pulls in `ocrcer-build`, which never ships -- neither does this
+# crate, so that costs build time and nothing else.
+pages = ["dep:ocrcer-build", "extractor"]
+
+[dependencies]
+ocrcer-core = { path = "../ocrcer-core", optional = true }
+ocrcer-build = { path = "../ocrcer-build", optional = true }
+ocrs = { version = "0.12.2", optional = true }
+rten = { version = "0.24", optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"

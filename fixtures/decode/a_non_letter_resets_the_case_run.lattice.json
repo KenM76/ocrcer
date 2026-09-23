@@ -1,0 +1,38 @@
+{
+  "why": "'PART No.' style: an uppercase run, a non-letter, then a title-cased run. The run resets at every non-letter, so neither transition across the space-like character is anomalous and nothing is charged. Without the reset the penalty would tax ordinary drawing annotation.",
+  "params": {
+    "decode.case_shape_penalty": 1.5
+  },
+  "positions": [
+    [
+      [
+        "A",
+        1.0
+      ]
+    ],
+    [
+      [
+        "B",
+        1.0
+      ]
+    ],
+    [
+      [
+        "-",
+        1.0
+      ]
+    ],
+    [
+      [
+        "C",
+        1.0
+      ]
+    ],
+    [
+      [
+        "d",
+        1.0
+      ]
+    ]
+  ]
+}

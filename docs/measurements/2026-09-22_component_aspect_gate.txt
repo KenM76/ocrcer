@@ -1,0 +1,74 @@
+2026-09-22 — lines.rule_aspect: the bound, and the two sweeps that rejected it
+
+WHAT THE PARAMETER IS
+  A component whose longer ink extent exceeds N times its shorter one is not a
+  glyph. Intended as a scale-free companion to lines.furniture_fraction, which
+  is measured against the whole page and therefore cannot see a rule drawn
+  inside one cell of a form.
+
+STEP 1 — THE BOUND, MEASURED BEFORE ANY VALUE WAS CHOSEN
+  cargo run --release -p ocrcer-build -- aspect --local
+  Renders every charset class on every shippable face at 256 px/em and reports
+  max(w,h)/min(w,h), so one number governs a vertical cell rule as well as a
+  horizontal one.
+
+    ratio   char   px        face
+     23.60  '—'    236x10    Open Sans Condensed Light
+     21.33  '|'    12x256    Open Sans Condensed Light
+     16.17  'l'    12x194    Open Sans Condensed Light
+     15.17  'I'    12x182    Open Sans Condensed Light
+     12.83  '_'    154x12    Liberation Mono Regular
+     11.62  'i'    16x186    Open Sans Condensed Light
+     11.00  '–'    198x18    OCRcer Technical Regular
+     11.00  '…'    198x18    OCRcer Technical Regular
+     10.44  '!'    18x188    OCRcer Technical Regular
+      7.69  'j'    32x246    Open Sans Condensed Light
+      7.00  ':'    18x126    OCRcer Technical Regular
+      6.72  ';'    25x168    Liberation Sans Regular
+      5.95  'Ì'    40x238    Open Sans Condensed Light
+      5.95  'Í'    40x238    Open Sans Condensed Light
+      5.88  'ì'    34x200    OCRcer Technical Regular
+
+    187 classes, 3522 face renders at 256 px/em
+    flattest or thinnest class '—' at 23.60:1 -- an aspect gate must sit above this
+
+STEP 2 — SWEEP ON REAL SCANS (the corpus the gate was built for)
+  ./target/release/ocr model/out/ocrcer.ocrw <29 hand-checked scans> \
+      --set lines.column_gap_heights=1.5 --set lines.rule_aspect=$v
+
+    rule_aspect    CER        WER        recall     precision  word F1
+    0 (off)        109.765%   270.659%   44.809%    15.134%    22.626%
+    28             110.746%   274.067%   44.892%    14.988%    22.473%
+    16             112.354%   278.680%   44.884%    14.758%    22.213%
+    10             113.163%   281.024%   44.394%    14.500%    21.860%
+
+  Monotonic in the wrong direction. Precision — the column the gate exists to
+  move — falls fastest.
+
+STEP 3 — PAIRED ISOLATION ON THE SYNTHETIC CORPUS (625 pages, bench/pages-cov)
+  ./target/release/ocr model/out/ocrcer.ocrw bench/pages-cov \
+      --set lines.column_gap_heights=2.5 --set lines.rule_aspect=$v
+
+    rule_aspect 0   CER 12.024%  WER 45.597%  recall 73.849%  precision 63.824%  F1 68.471%
+    rule_aspect 28  CER 12.024%  WER 45.597%  recall 73.849%  precision 63.824%  F1 68.471%
+
+  Identical to every digit. The code does nothing where there are no rules, so
+  step 2's table is the gate's effect and not a side effect of the change.
+
+STEP 4 — THROUGH THE THIRD-PARTY HARNESS
+  scribeocr/ocr-benchmark, 29 pages, mean-of-pages, ignorePunct = true:
+  rule_aspect 28 scored +0.06 against off. That harness's statistic is a
+  box-matched word RECALL with no insertion term, so a precision-only change
+  structurally cannot move it; the figure is recorded but carries no weight.
+
+CONCLUSION
+  Ships at 0 (disabled). The parameter, the gate and `ocrcer-build aspect` are
+  kept; the value is not.
+
+CAVEATS, STATED
+  - The mechanism by which removing emitted components LOWERS precision is not
+    understood. The obvious candidate — a rule inside a band collapsing the
+    band's width-weighted median height — predicts the opposite of what was
+    measured and is therefore not the explanation.
+  - Steps 2 and 3 predate words.min_valley_x_heights, which changes how a short
+    segment splits. Worth re-running.

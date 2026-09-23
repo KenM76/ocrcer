@@ -1,0 +1,64 @@
+bank: 18540 prototypes from 20 faces at [16.0, 20.0, 24.0, 32.0, 48.0] px/em in 45.0s
+OCRcer matcher: dims 103..107 weighted x16              (a measured candidate, not an authored parameter)
+
+1716 pages
+
+                       OCRcer (oracle seg)      ocrs 0.12.2 (end to end)
+  character accuracy       94.39%                    75.89%
+  word accuracy            79.68%                    61.80%
+  characters scored        327119                    327119
+  seconds                   654.3                     594.9
+
+  layout-free, word for word (order and grouping ignored)
+  word recall              79.68%                    75.51%
+  word precision           79.68%                    78.49%
+  word F1                  79.68%                    76.97%
+
+by render size              char accuracy               word F1
+      12 px/em     OCRcer   83.19%  ocrs   67.95%    OCRcer   48.16%  ocrs   51.75%
+      13 px/em     OCRcer   87.22%  ocrs   71.01%    OCRcer   56.12%  ocrs   62.65%
+      14 px/em     OCRcer   92.70%  ocrs   73.71%    OCRcer   73.19%  ocrs   71.30%
+      15 px/em     OCRcer   91.92%  ocrs   74.36%    OCRcer   71.71%  ocrs   75.00%
+      16 px/em     OCRcer   98.70%  ocrs   73.83%    OCRcer   94.69%  ocrs   76.69%
+      17 px/em     OCRcer   94.39%  ocrs   76.19%    OCRcer   79.38%  ocrs   79.85%
+      18 px/em     OCRcer   95.50%  ocrs   76.72%    OCRcer   81.85%  ocrs   79.83%
+      19 px/em     OCRcer   95.34%  ocrs   77.81%    OCRcer   81.10%  ocrs   81.77%
+      20 px/em     OCRcer   98.68%  ocrs   78.86%    OCRcer   94.55%  ocrs   81.66%
+      21 px/em     OCRcer   96.68%  ocrs   77.52%    OCRcer   86.95%  ocrs   82.67%
+      22 px/em     OCRcer   96.17%  ocrs   78.98%    OCRcer   83.04%  ocrs   85.32%
+      23 px/em     OCRcer   97.03%  ocrs   78.45%    OCRcer   87.25%  ocrs   85.15%
+      24 px/em     OCRcer   99.50%  ocrs   81.17%    OCRcer   97.88%  ocrs   85.61%
+
+by text block               char accuracy               word F1
+      currency     OCRcer   93.70%  ocrs   89.66%    OCRcer   77.78%  ocrs   68.55%
+       drawing     OCRcer   94.53%  ocrs   94.08%    OCRcer   79.99%  ocrs   84.90%
+       invoice     OCRcer   94.15%  ocrs   55.10%    OCRcer   78.74%  ocrs   85.58%
+         prose     OCRcer   96.06%  ocrs   95.05%    OCRcer   85.14%  ocrs   87.77%
+     statement     OCRcer   94.01%  ocrs   48.78%    OCRcer   72.69%  ocrs   81.30%
+     technical     OCRcer   94.98%  ocrs   83.72%    OCRcer   83.53%  ocrs   52.01%
+         twins     OCRcer   92.67%  ocrs   84.81%    OCRcer   77.95%  ocrs   56.64%
+
+by face                     char accuracy               word F1
+  Cascadia Code            OCRcer   97.01%  ocrs   78.62%    OCRcer   86.63%  ocrs   80.86%
+  Cascadia Mono            OCRcer   97.01%  ocrs   78.62%    OCRcer   86.63%  ocrs   80.86%
+  Fira Code                OCRcer   96.30%  ocrs   78.23%    OCRcer   84.36%  ocrs   82.44%
+  Inconsolata              OCRcer   95.67%  ocrs   75.61%    OCRcer   81.32%  ocrs   81.18%
+  Inter                    OCRcer   94.68%  ocrs   78.83%    OCRcer   80.16%  ocrs   84.93%
+  JetBrains Mono           OCRcer   96.32%  ocrs   76.43%    OCRcer   85.32%  ocrs   81.87%
+  Lato                     OCRcer   94.35%  ocrs   80.45%    OCRcer   80.61%  ocrs   76.22%
+  Liberation Mono          OCRcer   94.56%  ocrs   77.88%    OCRcer   78.11%  ocrs   79.19%
+  Liberation Sans          OCRcer   94.26%  ocrs   76.06%    OCRcer   79.78%  ocrs   80.53%
+  Liberation Serif         OCRcer   94.68%  ocrs   71.64%    OCRcer   79.68%  ocrs   69.67%
+  Noto Sans                OCRcer   96.34%  ocrs   77.47%    OCRcer   86.73%  ocrs   81.66%
+  Noto Serif               OCRcer   95.93%  ocrs   78.32%    OCRcer   82.95%  ocrs   77.55%
+  Open Sans Condensed      OCRcer   80.56%  ocrs   50.58%    OCRcer   49.71%  ocrs   36.14%
+  PT Mono                  OCRcer   95.83%  ocrs   78.36%    OCRcer   82.76%  ocrs   80.66%
+  PT Sans                  OCRcer   95.91%  ocrs   77.13%    OCRcer   83.56%  ocrs   79.70%
+  Roboto                   OCRcer   94.74%  ocrs   79.22%    OCRcer   80.99%  ocrs   82.00%
+  Roboto Condensed         OCRcer   92.33%  ocrs   77.59%    OCRcer   73.43%  ocrs   77.82%
+  Roboto Mono              OCRcer   94.68%  ocrs   79.00%    OCRcer   77.02%  ocrs   80.17%
+  STIX Two Math            OCRcer   92.30%  ocrs   71.84%    OCRcer   74.39%  ocrs   65.02%
+
+The OCRcer column is a ceiling, not a result: it was given every
+glyph box and every space from the page's own ground truth. The ocrs
+column is end to end from the page. See this binary's module doc.

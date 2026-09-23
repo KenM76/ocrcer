@@ -1,0 +1,159 @@
+Head-to-head vs ocrs 0.12.2 -- tuning corpus, de-duplicated
+===========================================================
+Measured 2026-09-22. Replaces docs/measurements/2026-09-21_vs_ocrs_660_pages_w16_bank20.txt,
+whose corpus and bank both double-counted one font design.
+
+Command
+-------
+  ./target/release/vs-ocrs bench/pages \
+      <pdfcer>/crates/pdfcer-core/assets/models/ocrs \
+      16,20,24,32,48 --geometry-weight 16
+
+Corpus: bench/pages/ -- 625 pages, 18 faces x 7 text blocks x 5 render sizes
+(14/18/21/28/40 px/em), less 5 pages Inconsolata cannot render because the
+currency block contains an em dash and that face has neither dash. (That is an
+independent confirmation of the same-day coverage audit, which found
+Inconsolata missing U+2013 and U+2014 from its cmap.)
+
+TWO VARIABLES CHANGED AT ONCE against the 660-page run, and the delta below
+cannot be attributed to either alone:
+  - the CORPUS lost 35 pages (Cascadia Code, a byte-identical twin of
+    Cascadia Mono, was being scored twice)
+  - the BANK lost that same face, 18,540 prototypes from 20 faces becoming
+    17,610 from 19
+The second is not neutral: the standardisation constants are per-dimension
+moments over the whole bank population, so removing any face re-scales all 107
+dimensions for every remaining prototype. See ARCHITECTURE.md section 11,
+2026-09-22, duplicate-face entry.
+
+Timings below are NOT comparable with the earlier run: unrelated work was
+running on the machine throughout.
+
+bank: 17610 prototypes from 19 faces at [16.0, 20.0, 24.0, 32.0, 48.0] px/em in 45.0s
+OCRcer matcher: dims 103..107 weighted x16              (a measured candidate, not an authored parameter)
+
+
+625 pages
+
+                       OCRcer (oracle seg)      ocrs 0.12.2 (end to end)
+  character accuracy       96.28%                    77.20%
+  word accuracy            85.22%                    65.50%
+  characters scored        119155                    119155
+  seconds                   277.2                     250.8
+
+  layout-free, word for word (order and grouping ignored)
+  word recall              85.22%                    80.21%
+  word precision           85.22%                    82.22%
+  word F1                  85.22%                    81.20%
+
+by render size              char accuracy               word F1
+      14 px/em     OCRcer   92.55%  ocrs   73.64%    OCRcer   72.71%  ocrs   71.25%
+      18 px/em     OCRcer   95.56%  ocrs   76.51%    OCRcer   82.26%  ocrs   79.99%
+      21 px/em     OCRcer   96.50%  ocrs   77.51%    OCRcer   86.26%  ocrs   82.60%
+      28 px/em     OCRcer   98.01%  ocrs   79.90%    OCRcer   90.87%  ocrs   86.20%
+      40 px/em     OCRcer   98.78%  ocrs   78.47%    OCRcer   94.02%  ocrs   85.71%
+
+by text block               char accuracy               word F1
+      currency     OCRcer   95.91%  ocrs   91.48%    OCRcer   83.91%  ocrs   72.10%
+       drawing     OCRcer   96.09%  ocrs   95.45%    OCRcer   84.67%  ocrs   89.18%
+       invoice     OCRcer   96.29%  ocrs   56.41%    OCRcer   85.27%  ocrs   91.18%
+         prose     OCRcer   97.30%  ocrs   96.38%    OCRcer   89.60%  ocrs   91.42%
+     statement     OCRcer   96.24%  ocrs   49.12%    OCRcer   80.08%  ocrs   86.85%
+     technical     OCRcer   97.04%  ocrs   86.43%    OCRcer   89.04%  ocrs   56.26%
+         twins     OCRcer   94.67%  ocrs   86.10%    OCRcer   82.44%  ocrs   58.70%
+
+by face                     char accuracy               word F1
+  Cascadia Mono            OCRcer   97.33%  ocrs   78.32%    OCRcer   87.58%  ocrs   79.68%
+  Fira Code                OCRcer   98.42%  ocrs   78.68%    OCRcer   92.50%  ocrs   84.44%
+  Inconsolata              OCRcer   97.14%  ocrs   74.78%    OCRcer   86.14%  ocrs   83.49%
+  Inter                    OCRcer   95.65%  ocrs   80.96%    OCRcer   82.75%  ocrs   88.24%
+  JetBrains Mono           OCRcer   98.51%  ocrs   77.57%    OCRcer   92.50%  ocrs   84.77%
+  Lato                     OCRcer   97.57%  ocrs   82.10%    OCRcer   89.08%  ocrs   80.07%
+  Liberation Mono          OCRcer   96.05%  ocrs   78.99%    OCRcer   82.92%  ocrs   81.11%
+  Liberation Sans          OCRcer   95.90%  ocrs   76.20%    OCRcer   84.83%  ocrs   84.67%
+  Liberation Serif         OCRcer   97.19%  ocrs   77.18%    OCRcer   89.17%  ocrs   78.59%
+  Noto Sans                OCRcer   99.29%  ocrs   77.15%    OCRcer   96.42%  ocrs   86.85%
+  Noto Serif               OCRcer   97.79%  ocrs   79.04%    OCRcer   89.50%  ocrs   83.07%
+  Open Sans Condensed      OCRcer   87.01%  ocrs   61.58%    OCRcer   61.92%  ocrs   51.25%
+  PT Mono                  OCRcer   95.80%  ocrs   78.59%    OCRcer   81.83%  ocrs   81.94%
+  PT Sans                  OCRcer   97.46%  ocrs   77.61%    OCRcer   88.08%  ocrs   84.80%
+  Roboto                   OCRcer   97.21%  ocrs   79.04%    OCRcer   88.17%  ocrs   85.71%
+  Roboto Condensed         OCRcer   95.11%  ocrs   78.02%    OCRcer   79.25%  ocrs   84.73%
+  Roboto Mono              OCRcer   96.74%  ocrs   78.26%    OCRcer   84.33%  ocrs   83.55%
+  STIX Two Math            OCRcer   92.97%  ocrs   75.35%    OCRcer   77.17%  ocrs   73.31%
+
+The OCRcer column is a ceiling, not a result: it was given every
+glyph box and every space from the page's own ground truth. The ocrs
+column is end to end from the page. See this binary's module doc.
+
+
+Delta against 2026-09-21_vs_ocrs_660_pages_w16_bank20.txt
+---------------------------------------------------------
+                          660 pages     625 pages     delta
+                          bank 20       bank 19
+  OCRcer char accuracy      96.32%        96.28%      -0.04
+  OCRcer word F1            85.30%        85.22%      -0.08
+  ocrs   char accuracy      77.26%        77.20%      -0.06
+  ocrs   word F1            81.12%        81.20%      +0.08
+  margin, word F1           +4.18         +4.02       -0.16
+  characters scored        125815        119155       -6660
+
+The duplicate was costing OCRcer 0.16 points of margin. The same-day
+duplicate-face analysis had PREDICTED about 0.43 points of word-F1 inflation
+for OCRcer and about 0.00 for ocrs, from the duplicated face's above-average
+score. Measured, it is 0.08 and +0.08. The prediction was the right sign and
+roughly three times too large -- recorded because a projection that is not
+checked against its measurement is how a projection becomes a fact.
+
+Losses, reported as prominently as the wins
+-------------------------------------------
+ocrs beats OCRcer on layout-free word F1 in four of seven text blocks, while
+OCRcer holds oracle segmentation and oracle spacing:
+
+    drawing      OCRcer 84.67%   ocrs 89.18%    -4.51
+    invoice      OCRcer 85.27%   ocrs 91.18%    -5.91
+    prose        OCRcer 89.60%   ocrs 91.42%    -1.82
+    statement    OCRcer 80.08%   ocrs 86.85%    -6.77
+
+The first of those is the flagship domain. OCRcer reads MORE characters
+correctly on the drawing block (96.09% against 95.45%) and still loses the
+word metric by 4.51 points, which means its errors are spread across more
+distinct words than ocrs's are. That is the shape of a matcher with no
+decoder: nothing collapses a near-miss back onto the right word, and every
+isolated character error costs a whole word. Chunks 5 and 6 are what address
+it, and this figure is the baseline they will be measured against.
+
+OCRcer wins the other three blocks and by larger margins -- technical
++32.78, twins +23.74, currency +11.81 -- which is why the aggregate is +4.02.
+An aggregate that is the average of a 33-point win and a 7-point loss is not a
+description of an engine that is uniformly better.
+
+By face, ocrs takes three of eighteen on word F1: Inter 88.24 vs 82.75,
+Roboto Condensed 84.73 vs 79.25, PT Mono 81.94 vs 81.83 (0.11 -- a tie).
+Weakest face for both engines: Open Sans Condensed, OCRcer 61.92% word F1
+against ocrs 51.25%.
+
+Against a per-face OCRcer median of 86.86%, the five weakest are Open Sans
+Condensed 61.92 (-24.94), STIX Two Math 77.17 (-9.69), Roboto Condensed 79.25
+(-7.61), PT Mono 81.83 (-5.03), Inter 82.75 (-4.11). The corpus holds exactly
+two condensed faces and they are the first and third weakest. That is a
+pattern in two rows and is recorded as a HYPOTHESIS, not a finding; the test
+is a per-face error breakdown against set width and stroke width, which has
+not been run.
+
+Caveats that travel with every figure here
+------------------------------------------
+- OCRcer was given every glyph box and every space from the page's own ground
+  truth. ocrs ran end to end. This is a matcher measurement, not an engine
+  comparison, and the hand-off gate in PLAN.md section 3 requires end to end on
+  both sides.
+- No decoder, no lexicon, no bigrams, no confusion table. Those are chunks 5-7.
+- The corpus is synthetic: hard black and white, unskewed, noise-free, at
+  exact integer render sizes. That is the regime this design is strongest in.
+- The geometry weight of 16 is a measured candidate, not an authored
+  parameter, and it makes 0-against-O substantially worse. ARCHITECTURE.md
+  section 4.1.
+- bench/pages is the TUNING corpus. The bank's scale ladder was chosen by
+  measuring against it, so its figures are corpus-flattered; bench/holdout is
+  the same text and faces at five different render sizes and is the better
+  estimate.

@@ -1,0 +1,77 @@
+bank: 14832 prototypes from 20 faces at [16.0, 24.0, 32.0, 48.0] px/em
+classes: 187 in charset, 94 of them ASCII
+
+475 pages scored, 102885 characters
+(185 pages skipped: their text is not ASCII, so an
+ASCII-restricted matcher could not reach it and the restriction
+would be scored for an error it caused itself)
+
+                          full charset   ASCII-restricted   delta
+  character accuracy          92.21%             93.60%    +1.39
+  word accuracy               70.70%             75.64%    +4.94
+
+by render size            full charset   ASCII-restricted
+     14 px/em                   85.19%             87.54%
+     18 px/em                   90.21%             92.32%
+     21 px/em                   92.49%             93.21%
+     28 px/em                   96.42%             96.78%
+     40 px/em                   96.72%             98.13%
+
+substitutions the extra classes caused (fixed by restricting), top 25
+     182  'i' -> 'ì'
+     178  '-' -> '–'
+     176  ':' -> '÷'
+     150  'i' -> 'í'
+      60  'i' -> 'î'
+      58  '.' -> '·'
+      56  '0' -> 'Ò'
+      56  '0' -> 'Ô'
+      56  '0' -> 'Ø'
+      54  '-' -> '·'
+      35  '-' -> '÷'
+      31  'a' -> 'â'
+      31  'a' -> 'ä'
+      30  'i' -> 'ï'
+      29  '.' -> '•'
+      26  'N' -> 'Ñ'
+      24  'u' -> 'ü'
+      23  'a' -> 'ã'
+      20  'U' -> 'Ü'
+      18  'A' -> 'û'
+      18  'C' -> 'Ç'
+      17  'm' -> '™'
+      15  'd' -> 'Ü'
+      15  'd' -> 'ü'
+      13  'c' -> '£'
+
+substitutions that survive the restriction — the matcher's own, top 25
+     521  '0' -> 'o'
+     455  'o' -> 'O'
+     415  'O' -> 'o'
+     413  '0' -> 'O'
+     387  'l' -> 'I'
+     253  'O' -> '0'
+     224  'S' -> 's'
+     216  's' -> 'S'
+     216  'u' -> 'U'
+     209  'c' -> 'C'
+     186  'l' -> '1'
+     174  '1' -> 'l'
+     172  'C' -> 'c'
+     166  'v' -> 'V'
+     147  'w' -> 'W'
+     112  '0' -> 'Q'
+     108  'e' -> 'c'
+      96  's' -> '$'
+      95  'l' -> '|'
+      74  'r' -> 'T'
+      72  'I' -> 'l'
+      72  's' -> '5'
+      70  'o' -> '0'
+      70  'r' -> ','
+      60  'i' -> '1'
+
+8019 substitutions with the full charset. Both columns are
+oracle-segmented ceilings, and the restricted column is itself an
+oracle — real input carries no promise that it is ASCII. Read it as
+the headroom a language model has to win back, not as an accuracy.

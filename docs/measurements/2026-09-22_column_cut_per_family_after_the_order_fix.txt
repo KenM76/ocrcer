@@ -1,0 +1,82 @@
+Where the column cut helps and where it hurts, with reading order fixed
+================================================================================
+
+2026-09-22.  target/release/ocr.exe built 13:27:48 (contains the reading-order
+fix; verified by the `x` extent field it prints in --layout, which the previous
+binary did not).  Model model/out/ocrcer.ocrw t=12:10:54.
+words.min_valley_x_heights at the shipped 0.3.
+
+THE THREE FAMILIES THE CUT CAN REACH
+--------------------------------------------------------------------------------
+bench/pages-cov, 90 pages each.  At 2.5 the other four families -- currency,
+prose, technical, twins -- have no line whose widest gap reaches the threshold,
+so they are unchanged by construction
+(docs/measurements/2026-09-22_column_gap_populations.txt).
+
+  invoice (90 pages)          cut off      cut 2.5      change
+    CER                         8.309%     12.600%      +4.291
+    WER                        35.778%     49.511%     +13.733
+    word recall                64.689%     68.200%      +3.511
+    word precision             77.793%     62.799%     -14.994
+    word F1                    70.638%     65.388%      -5.250
+
+  statement (90 pages)        cut off      cut 2.5      change
+    CER                         6.591%     10.332%      +3.741
+    WER                        37.579%     54.167%     +16.588
+    word recall                65.000%     72.381%      +7.381
+    word precision             71.905%     58.387%     -13.518
+    word F1                    68.278%     64.635%      -3.643
+
+  drawing (90 pages)          cut off      cut 2.5      change
+    CER                         4.121%      4.322%      +0.201
+    WER                        21.396%     20.399%      -0.997
+    word recall                81.823%     82.137%      +0.314
+    word precision             82.576%     83.468%      +0.892
+    word F1                    82.198%     82.797%      +0.599
+
+WHAT THE SHAPE SAYS
+--------------------------------------------------------------------------------
+On the two banded families the cut does exactly what it was built to do and
+then costs more than it earns.  Recall rises -- +3.5 on invoice, +7.4 on
+statement -- so the cut really is recovering words that a merged row loses.
+Precision falls by about fifteen points on both, so it is also manufacturing
+words that are not there.  Net word F1 is 3.6 to 5.3 points worse, and CER is
+3.7 to 4.3 points worse.
+
+Drawing is the one family where it is a small net win, and the only one without
+banded rows whose gap tail crosses 2.5 at all (8.3% of its lines).
+
+**The precision collapse is the thing to explain, and it has not been
+measured.** The leading hypothesis is that a short fragment is re-measured on
+its own: a four-glyph piece like `Date` has too few members for a reliable
+x-height, and every glyph in it is then read against the wrong ruler.  That is
+consistent with the cut running before `measure` on purpose -- the reason given
+for that ordering is that a band spanning two boxes has no single correct
+x-height -- but it means a fragment that is too small to measure gets a
+measurement anyway.  The `x_height_source` distribution per fragment length
+would settle it and has not been looked at.
+
+Until that is understood, the parameter cannot be chosen honestly: the sweep
+optimum would be choosing where a defect hurts least rather than where the
+threshold belongs.
+
+PARTIAL: THE REAL-DOCUMENT CORPORA
+--------------------------------------------------------------------------------
+Started and interrupted.  One arm completed, on the 29 scanned pages of the
+scribeocr benchmark (out of repository, D:/Dev/ExcludedPrivate/ocrcer/pages):
+
+  scribe (29 pages)           cut off
+    CER                        94.334%
+    WER                       178.140%
+    word recall                32.242%
+    word precision             17.816%
+    word F1                    22.951%
+
+That is a bad number and it is reported as it stands.  It is also not
+comparable to the 43.40% figure quoted previously for this corpus, which
+predates both the word-valley floor and the reading-order fix; whether this is
+a regression, a different metric, or a different arm is unknown until the pair
+is re-run together.  **No conclusion is drawn from it here.**
+
+Still to run: scribe at 2.5, and both arms on finfilings (60 pages of printed
+financial filings, in domain, never yet scored) and priv-300 (85 pages).

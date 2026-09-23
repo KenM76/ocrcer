@@ -1,0 +1,36 @@
+Hyphen, minus and dash geometry — 2026-09-22
+
+Method: fontTools over the shippable faces in model/fonts.tsv. Ink bounding box
+from the glyph outline (BoundsPen), cap height from OS/2.sCapHeight falling back
+to the H ink bbox. Outline units, not rasterised. Question: is U+2212 separable
+from U+002D by shape alone?
+
+w/h of the ink box, and the ink box's vertical centre as a fraction of cap height
+
+face                   hyphen U+002D          minus U+2212           en dash U+2013         em dash U+2014
+Liberation Sans        w/h  3.12  y 0.386    w/h  6.82  y 0.483    w/h  8.31  y 0.369    w/h 14.95  y 0.369    
+Liberation Serif       w/h  3.48  y 0.360    w/h  9.34  y 0.507    w/h 10.31  y 0.356    w/h 20.35  y 0.356    
+Liberation Mono        w/h  3.50  y 0.403    w/h  6.82  y 0.505    w/h  6.48  y 0.385    w/h  9.11  y 0.385    
+Noto Sans              w/h  3.10  y 0.375    w/h  6.18  y 0.452    w/h  5.38  y 0.375    w/h 11.79  y 0.375    
+Noto Serif             w/h  3.46  y 0.382    w/h  7.26  y 0.501    w/h  8.63  y 0.376    w/h 17.09  y 0.376    
+Open Sans Condensed    w/h  4.02  y 0.378    w/h  8.57  y 0.495    w/h 10.49  y 0.378    w/h 22.98  y 0.378    
+Roboto                 w/h  3.23  y 0.425    w/h  5.53  y 0.499    w/h  6.64  y 0.499    w/h  8.85  y 0.499    
+Roboto Condensed       w/h  2.74  y 0.425    w/h  4.64  y 0.499    w/h  5.57  y 0.499    w/h  7.43  y 0.499    
+Roboto Mono            w/h  5.03  y 0.438    w/h  5.53  y 0.499    w/h  7.19  y 0.499    w/h  7.19  y 0.499    
+Lato                   w/h  3.27  y 0.418    w/h  6.37  y 0.469    w/h  6.15  y 0.412    w/h 10.23  y 0.412    
+PT Sans                w/h  3.27  y 0.411    w/h  5.89  y 0.483    w/h  5.73  y 0.411    w/h  7.89  y 0.411    
+PT Mono                w/h  4.62  y 0.411    w/h  6.44  y 0.483    w/h  5.73  y 0.411    w/h  7.89  y 0.411    
+Inconsolata            w/h  5.42  y 0.505    w/h  6.70  y 0.502    absent                absent                
+Fira Code              w/h  5.49  y 0.455    w/h  4.86  y 0.454    w/h  7.33  y 0.455    w/h  8.22  y 0.455    
+Inter                  w/h  4.07  y 0.429    w/h  5.71  y 0.391    w/h  6.40  y 0.429    w/h 12.80  y 0.429    
+JetBrains Mono         w/h  4.00  y 0.452    w/h  4.00  y 0.452    w/h  5.50  y 0.452    w/h  7.50  y 0.452    
+Cascadia Code          w/h  5.38  y 0.499    w/h  5.38  y 0.499    w/h  5.70  y 0.499    w/h  6.02  y 0.499    
+Cascadia Mono          w/h  5.38  y 0.499    w/h  5.38  y 0.499    w/h  5.70  y 0.499    w/h  6.02  y 0.499    
+STIX Two Math          w/h  3.46  y 0.381    w/h  8.76  y 0.394    w/h  7.72  y 0.381    w/h 16.49  y 0.381    
+
+faces where the hyphen and the minus have a pixel-for-pixel identical ink box
+(same width, same height, same x origin, same y origin, in font units):
+    JetBrains Mono
+    Cascadia Code
+    Cascadia Mono
+count: 3 of 20

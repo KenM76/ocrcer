@@ -1,0 +1,60 @@
+{
+  "why": "The same lattice with 'M' preferred by 2.0 instead of 0.5. The penalty is 1.5, so the match advantage wins and the reading stays 'payMents'. This is the half of the contract that says the term is an overturnable prior and not a filter: a word genuinely printed that way must still be readable.",
+  "params": {
+    "decode.case_shape_penalty": 1.5
+  },
+  "positions": [
+    [
+      [
+        "p",
+        1.0
+      ]
+    ],
+    [
+      [
+        "a",
+        1.0
+      ]
+    ],
+    [
+      [
+        "y",
+        1.0
+      ]
+    ],
+    [
+      [
+        "M",
+        1.0
+      ],
+      [
+        "m",
+        3.0
+      ]
+    ],
+    [
+      [
+        "e",
+        1.0
+      ]
+    ],
+    [
+      [
+        "n",
+        1.0
+      ]
+    ],
+    [
+      [
+        "t",
+        1.0
+      ]
+    ],
+    [
+      [
+        "s",
+        1.0
+      ]
+    ]
+  ]
+}

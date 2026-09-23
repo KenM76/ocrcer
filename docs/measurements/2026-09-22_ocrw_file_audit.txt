@@ -1,0 +1,172 @@
+.ocrw base-file audit — what is actually in the shipped model file
+==================================================================
+Measured 2026-09-22 on D:\Dev\OCRcer\model\out\ocrcer-base.ocrw
+(mtime 2026-09-22 04:23, 1,548,603 bytes).
+
+Method
+------
+The container was parsed byte by byte against the layout in ARCHITECTURE.md
+section 7 — header, meta, table directory, blob — by a standalone Python
+reader written for this audit, not by the project's own code. That matters:
+using ocrcer-build's writer constants to check ocrcer-build's writer output
+would only prove the writer agrees with itself. Face distributions were read
+from model/fonts.tsv directly. Nothing was rebuilt and nothing was modified.
+
+The purpose was to test section 2 and section 7.1 of ARCHITECTURE.md against
+the artifact, on the reasoning that a format specification nobody checks
+decays in the direction of flattering the project.
+
+
+1. Header
+---------
+magic         "OCRW"
+version       1
+model_kind    1  (document recogniser)
+n_tables      4
+meta_len      11,169 bytes
+blob_crc32    present
+reserved      8 bytes
+
+Table directory ends at byte offset 11,397.
+
+
+2. Tables, as emitted
+---------------------
+name             kind        dims            scales   data bytes
+---------------- ----------- --------------- -------- -----------
+prototypes       1 (i8 mat)  [14088, 107]    107      1,507,416
+prototype_class  2 (opaque)  [14088]         0           28,176
+feature_norm     0 (f32)     [2, 107]        0              856
+class_holes      2 (opaque)  [187]           0              187
+
+Sum of table data plus the 107 f32 scales: 1,537,063 bytes (1.47 MB).
+Whole file: 1,548,603 bytes (1.48 MB). The 11,540-byte difference is the
+header, the meta block, the directory and 64-byte data alignment padding.
+
+Arithmetic checks that pass:
+  prototypes      14,088 x 107 x 1 B = 1,507,416   exact
+  prototype_class 14,088 x 2 B       =    28,176   exact
+  feature_norm         2 x 107 x 4 B =       856   exact
+  class_holes        187 x 1 B       =       187   exact
+
+14,088 is the 19-face bank at four sizes: 187 x 19 x 4 = 14,212, less the
+124 rows for the 31 (class, face) pairs the coverage audit of the same date
+found absent from the source faces.
+
+
+3. meta block, 11,169 bytes of UTF-8 JSON
+-----------------------------------------
+Keys present:
+  feature_version  1
+  feature_dims     107
+  prototypes       14088
+  sizes            [16, 24, 32, 48]
+  build_id         "4e02b97b"
+  faces            19 records: {family, style, distribution}
+  charset          187 records: {index, cp, category, twin}
+
+Keys NOT present, against what section 2 claimed before this audit:
+  - no baseline class per charset record
+  - no aspect band per charset record
+  - no params block of any kind
+
+
+4. Licence check — passed
+-------------------------
+model/fonts.tsv, by distribution column:
+  shippable    19
+  local-only    3
+  excluded     12
+
+The base file's face manifest lists 19 faces and every one of them carries
+distribution "shippable" — checked directly, not inferred from the count. The
+export path
+(ocrcer-build main.rs run_write) calls Fonts::load(entries, local) and
+local-only faces enter the bank only when --local is passed; the shipped
+artifact was built without it. run_write additionally refuses to write at all
+if any class has no prototype in a shippable face (uncovered_in_base).
+
+Conclusion: the shipped file contains no feature vector derived from a face
+judged not distributable. This was checked because it was the discrepancy
+that could have been serious, and it is recorded because it passed.
+
+
+5. Discrepancies against ARCHITECTURE.md as it stood before this audit
+----------------------------------------------------------------------
+(a) Section 2 said the charset table carries "codepoint, category, baseline
+    class, authored width-over-cap-height band". The charset is not a table;
+    it is a meta record, and it carries index, codepoint, category and case
+    twin. Baseline class and the band exist in model/charset.tsv and are read
+    by ocrcer-build — baseline class drives build-time assertions on the
+    authored face, the band feeds ClassGate — but neither is emitted.
+
+(b) Section 2 said prototype rows are "each tagged with class, font family,
+    style", and section 7.1 asserted "every prototype row carries the face
+    identifier it was derived from". The in-memory Prototype struct does carry
+    class, face and px_per_em; the writer emits class only. Cost of adding
+    face and size as u16 each, on today's bank: 4 x 14,088 = 56,352 bytes,
+    3.6% of the file.
+
+(c) Section 2 listed proto_index, "pruning buckets keyed by hole count,
+    aspect band, baseline class", estimated ~40 KB. The realised table is
+    class_holes: one u8 per class, 187 bytes. With aspect and baseline
+    pruning disabled (section 4.1 step 2) there is one integer per class to
+    store, not bucket lists.
+
+(d) params does not exist. Pipeline thresholds are Rust constants.
+
+(e) Section 2's "Total ~1.7 MB" assumed a bank of ~12,000 prototypes.
+    Measured today: 1.48 MB at four sizes, with five of the nine blocks
+    present (four tables plus the charset inside meta). Projections, clearly
+    labelled as such:
+      four sizes  + the four missing blocks at their own estimates   ~1.85 MB
+      five sizes  (17,610 prototypes) + the same                     ~2.2 MB
+    The five-size ladder is the one every benchmark figure in the document is
+    quoted at, which makes the second projection the operative one.
+    ocrs, for comparison, is 12.24 MB. That comparison is unaffected.
+
+
+6. Section 3 was checked too, and it passes
+-------------------------------------------
+Section 2 having drifted, the obvious next question is whether section 3 --
+the feature-vector definition, the single most expensive thing in this project
+to get wrong -- had drifted the same way. It has not.
+
+ARCHITECTURE.md section 3's group table, read against the range constants in
+crates/ocrcer-core/src/feature.rs:
+
+  group                                 doc dims   code range      dims
+  4x4 zone ink density                      16     ZONE_DENSITY    0..16
+  4x4 zones x 4 gradient orientations       64     GRADIENT       16..80
+  Horizontal projection profile, 8 bins      8     H_PROJECTION   80..88
+  Vertical projection profile, 8 bins        8     V_PROJECTION   88..96
+  Hole count (Euler number)                  1     HOLE_COUNT        96
+  Crossing counts, 3 horizontal + 3 vertical 6     CROSSINGS      97..103
+  Aspect, ink fraction, above, below         4     GEOMETRY      103..107
+
+16+64+8+8+1+6+4 = 107 = FEATURE_DIMS. Same groups, same sizes, same order.
+
+Two details spot-checked in the body of extract():
+  - the normalisation is centroid-centred onto a 32x32 grid, as section 3 says
+  - HOLE_COUNT's doc comment says "clamped to 0..=2"; hole_count() ends in
+    holes.min(2), so it is
+
+The one known defect in this area is already on the record and is not a
+doc/code drift: the GEOMETRY aspect dimension is (w-h)/(w+h) over the glyph's
+own ink box, while model/charset.tsv's authored band is width over cap height.
+See docs/measurements/2026-09-22_aspect_band_denominator_audit.txt and
+ARCHITECTURE.md section 11 of the same date.
+
+
+7. Caveats
+----------
+- Table sizes are for this bank at this ladder. They scale linearly in
+  prototype count for prototypes and prototype_class, and not at all for
+  feature_norm and class_holes.
+- The ~300 KB / ~30 KB / ~6 KB / ~2 KB figures for lexicon, bigrams,
+  confusions and params are the original estimates from section 2 and have
+  never been measured. Nothing in this file changes that; they are carried
+  forward marked as estimates.
+- No reader exists yet in ocrcer-core. This audit's parser is a throwaway and
+  is not the chunk 3 deliverable.
+- blob_crc32 was read but not verified against the blob.

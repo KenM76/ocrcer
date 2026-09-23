@@ -1,0 +1,101 @@
+# confusions.tsv -- known confusion pairs, their disambiguating context, and
+# how much that context is worth.
+#
+# This and `bigram_priors.tsv` are the two files where prior knowledge is the
+# deliverable rather than a means to one (ARCHITECTURE.md section 2). The
+# evidence that a pair belongs here is in `confusion_candidates.tsv`, which is
+# measured; what is authored here is the TEST that separates the pair and the
+# WEIGHT that test carries.
+#
+# THE ZERO-SUM RULE, which is what keeps this table safe
+#
+# Every row favours one member of a pair over the other by `adjust` log2
+# units, and the compiler splits it evenly: `+adjust/2` to the favoured class
+# and `-adjust/2` to the other, in that context only. So a confusion rule can
+# make a class more likely THAN ITS RIVAL in a named context, and can never
+# make a class more likely in general. That matters because a one-sided prior
+# is indistinguishable from a bias, and a bias in this table would be
+# invisible in every test that looks at the pair.
+#
+# Nothing here is ever a hard rule. The adjustment is added to a score the
+# matcher already produced, so a confident match outvotes it -- which is the
+# behaviour rule 6 demands of the lexicon and which applies identically here.
+#
+# COLUMNS
+#
+#   a, b      the two glyphs, as literal characters
+#   context   when the test applies (see below)
+#   favour    `a` or `b` -- which member the context argues for
+#   adjust    log2 units, split evenly between the two. AUTHORED GUESSES,
+#             all of them, on chunk 8's tuning list. 1.0 means "about twice as
+#             likely as the other, in this context"; the ORDER is the claim,
+#             not the magnitude.
+#   note      what the test actually is, in one line
+#
+# CONTEXTS the decoder can evaluate
+#
+#   digit_neighbour   the adjacent character on either side reads as a digit
+#   letter_neighbour  the adjacent character on either side reads as a letter
+#   upper_run         the preceding character reads as an uppercase letter
+#   word_start        this is the first character of the word
+#   word_end          this is the last character of the word
+#   identifier        the word is identifier-shaped: enough digits, by
+#                     `decode.identifier_digit_fraction`, that the lexicon
+#                     term is suppressed inside it
+#   lexicon_word      the path so far is still a live prefix in the lexicon
+
+#a	b	context	favour	adjust	note
+# --- the classic Latin OCR families ---------------------------------------
+1	l	digit_neighbour	a	1.6	a stroke between two digits is the digit one, not a lowercase L
+1	l	lexicon_word	b	1.4	inside a live dictionary word the same stroke is the letter
+1	l	identifier	a	1.0	part numbers carry digits far more often than a bare lowercase L
+1	I	digit_neighbour	a	1.6	same stroke, same test, against the capital I
+1	I	upper_run	b	1.4	between capitals it is the capital I
+1	I	lexicon_word	b	0.8	a live word wants the letter
+l	I	upper_run	b	1.5	a run of capitals makes the capital far more likely
+l	I	word_start	b	0.6	an initial capital is ordinary and an initial lowercase L is not
+1	|	digit_neighbour	a	1.8	the pipe is a table rule, not a character inside a number
+l	|	lexicon_word	a	1.6	a live word wants a letter, never a pipe
+0	O	digit_neighbour	a	1.8	between digits it is the digit zero
+0	O	lexicon_word	b	1.6	inside a live word it is the letter
+0	O	identifier	a	0.8	identifiers in this domain run to digits
+0	O	upper_run	b	1.2	a run of capitals makes the letter more likely
+O	o	upper_run	a	1.2	case follows its neighbours
+5	S	digit_neighbour	a	1.4	the closed upper bowl is hard at low resolution; context decides
+5	S	lexicon_word	b	1.4	a live word wants the letter
+8	B	digit_neighbour	a	1.4	two counters, one stroke difference; the neighbours decide
+8	B	lexicon_word	b	1.4	a live word wants the letter
+2	Z	digit_neighbour	a	1.2	same diagonal-with-two-bars shape
+2	Z	lexicon_word	b	1.2	a live word wants the letter
+6	G	digit_neighbour	a	1.2	the crossbar is thin and often lost
+6	G	lexicon_word	b	1.2	a live word wants the letter
+9	g	digit_neighbour	a	1.2	bowl over a descending tail in both
+9	g	lexicon_word	b	1.2	a live word wants the letter
+7	T	digit_neighbour	a	1.0	the horizontal stroke over a stem is shared
+7	T	upper_run	b	1.0	a run of capitals makes the letter more likely
+
+# --- the pairs `confusion_candidates.tsv` measured closest ----------------
+# These are pairs the distance stage genuinely cannot separate. The rule for
+# all of them is the same: context, not shape.
+g	q	lexicon_word	a	1.2	`g` is far more common in English than `q` outside `qu`
+(	{	lexicon_word	a	1.0	curly brackets are rare in prose and in title blocks alike
+)	}	lexicon_word	a	1.0	as above, for the closer
+[	{	lexicon_word	a	0.8	square brackets outnumber curly ones in this domain
+]	}	lexicon_word	a	0.8	as above, for the closer
+1	†	digit_neighbour	a	1.4	the dagger is a footnote mark and does not sit inside numbers
+@	®	letter_neighbour	a	1.2	the at-sign sits against letters in an address, the mark does not
+.	…	word_end	a	1.4	a period ends a word; an ellipsis stands alone far more often
+
+# --- the domain's own pairs -----------------------------------------------
+# `ARCHITECTURE.md`'s 2026-09-18 entry settled that U+00D8 and U+2300 are one
+# shape and two classes by design, and that a prior favouring the letter on a
+# CAD toolchain is defensible PROVIDED it is labelled a prior and never folded
+# into the distance. This is that prior, and this is that label.
+Ø	⌀	digit_neighbour	b	1.6	the diameter sign precedes a number; the letter does not
+Ø	⌀	lexicon_word	a	1.6	inside a live word it is the letter
+Ø	⌀	letter_neighbour	a	1.2	between letters it is the letter
+x	×	digit_neighbour	b	0.6	between digits either is plausible; the multiplication sign slightly more
+x	×	lexicon_word	a	1.6	inside a live word it is the letter
+-	–	digit_neighbour	a	0.8	a hyphen-minus is what a keyboard and a CAD exporter both emit
+'	’	lexicon_word	b	0.4	a typographic apostrophe inside a word is ordinary in set prose
+"	”	lexicon_word	b	0.4	as above, for the double quote

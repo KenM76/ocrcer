@@ -1,0 +1,210 @@
+# bigram_priors.tsv -- the authored half of the `bigrams` table.
+#
+# The other half is counted from `lexicon.txt` by a deterministic script
+# (`ocrcer-build`'s `bigrams` module), so that half needs no numbers typed
+# here. What a word list cannot tell you is everything OUTSIDE a word: how
+# digits run together, what a decimal point sits between, that `Ø` precedes a
+# number and `°` follows one, that `M8x1.25` is an ordinary string in this
+# domain. That is what this file supplies.
+#
+# EVERY WEIGHT BELOW IS AN AUTHORED GUESS and the whole file is on chunk 8's
+# tuning list. They are pseudo-counts on the same scale as the counts taken
+# from the lexicon, so a weight of 100 says "about as much evidence as a
+# hundred occurrences in the word list". What is defensible is the ORDER: that
+# a digit is followed by a digit far more often than by a letter, that a
+# currency sign is followed by a digit and almost nothing else, that a word
+# rarely starts with a math symbol. The exact magnitudes are not measured and
+# are not presented as if they were.
+#
+# ROWS
+#
+#   default  <weight>                     every category pair not named below
+#   cat      <prev-cat> <next-cat> <w>    a category-pair pseudo-count
+#   pair     <prev-char> <next-char> <w>  a specific character-pair count
+#
+# Categories are the charset's own `category` column plus `^`, the word
+# boundary: `^` as a prev means the start of a word and as a next means the
+# end of one. A literal character column holds one character; `^` there is
+# the boundary and is written as the two characters `\b` to keep it distinct
+# from the caret class.
+
+default	0.02
+
+# --- category pairs -------------------------------------------------------
+# Start of a word.
+cat	^	lower	100
+cat	^	upper	40
+cat	^	digit	25
+cat	^	punct	8
+cat	^	symbol	3
+cat	^	math	2
+cat	^	currency	6
+
+# After a lowercase letter, overwhelmingly another lowercase letter or the end
+# of the word. An uppercase letter mid-word is the rare camel-case case.
+cat	lower	lower	400
+cat	lower	^	120
+cat	lower	punct	10
+cat	lower	digit	6
+cat	lower	upper	2
+cat	lower	math	2
+cat	lower	symbol	1
+cat	lower	currency	0.2
+
+# After an uppercase letter both an acronym continuing and a word continuing
+# in lowercase are ordinary.
+cat	upper	lower	120
+cat	upper	upper	60
+cat	upper	^	40
+cat	upper	digit	12
+cat	upper	punct	6
+cat	upper	math	1
+cat	upper	symbol	1
+cat	upper	currency	0.2
+
+# After a digit. This row is the one that carries the CAD and invoice domain:
+# a number continues, terminates, or takes a separator or a unit mark.
+cat	digit	digit	200
+cat	digit	^	60
+cat	digit	punct	25
+cat	digit	math	10
+cat	digit	lower	8
+cat	digit	upper	6
+cat	digit	symbol	6
+cat	digit	currency	0.5
+
+cat	punct	^	45
+cat	punct	lower	25
+cat	punct	digit	20
+cat	punct	upper	15
+cat	punct	punct	4
+cat	punct	currency	3
+cat	punct	math	2
+cat	punct	symbol	2
+
+cat	symbol	digit	20
+cat	symbol	^	20
+cat	symbol	lower	8
+cat	symbol	upper	6
+cat	symbol	punct	5
+cat	symbol	math	2
+cat	symbol	symbol	2
+cat	symbol	currency	0.5
+
+cat	math	digit	40
+cat	math	^	10
+cat	math	lower	5
+cat	math	upper	4
+cat	math	punct	3
+cat	math	symbol	2
+cat	math	currency	1
+cat	math	math	1
+
+# A currency sign is followed by a number and by essentially nothing else.
+cat	currency	digit	80
+cat	currency	^	3
+cat	currency	lower	2
+cat	currency	upper	2
+cat	currency	punct	2
+cat	currency	symbol	1
+cat	currency	math	1
+cat	currency	currency	0.5
+
+# --- specific pairs -------------------------------------------------------
+# A decimal point and a thousands separator, which is where the digit/punct
+# category weight almost entirely goes.
+pair	0	.	30
+pair	1	.	30
+pair	2	.	30
+pair	3	.	30
+pair	4	.	30
+pair	5	.	30
+pair	6	.	30
+pair	7	.	30
+pair	8	.	30
+pair	9	.	30
+pair	.	0	40
+pair	.	1	40
+pair	.	2	40
+pair	.	3	40
+pair	.	4	40
+pair	.	5	40
+pair	.	6	40
+pair	.	7	40
+pair	.	8	40
+pair	.	9	40
+pair	,	0	25
+pair	,	5	20
+pair	0	,	20
+pair	9	,	20
+
+# Dimension and part-number syntax. `x` between digits is `M8x1.25` and
+# `100x50`; the word list cannot supply it because it is not a word.
+pair	0	x	12
+pair	2	x	12
+pair	4	x	12
+pair	5	x	12
+pair	6	x	12
+pair	8	x	12
+pair	x	1	12
+pair	x	2	12
+pair	x	3	12
+pair	x	5	12
+pair	0	X	6
+pair	X	1	6
+
+# Fractions, ranges and rates.
+pair	1	/	18
+pair	2	/	18
+pair	3	/	18
+pair	4	/	14
+pair	/	2	18
+pair	/	4	18
+pair	/	8	14
+pair	1	-	10
+pair	-	1	10
+pair	0	-	10
+pair	-	0	10
+pair	1	:	8
+pair	:	1	8
+
+# Unit and annotation marks that attach directly to a number.
+pair	0	%	14
+pair	5	%	14
+pair	0	"	10
+pair	2	"	10
+pair	0	'	8
+pair	1	'	8
+pair	$	0	20
+pair	$	1	40
+pair	$	2	30
+pair	$	5	20
+pair	#	1	12
+pair	#	2	10
+
+# Bracketed and quoted material.
+pair	(	1	10
+pair	(	2	8
+pair	0	)	10
+pair	)	.	12
+pair	)	,	8
+
+# The identifier heads this domain writes constantly: a capital letter
+# immediately followed by a digit. `M8`, `T4`, `Ø12`, `R0.5`.
+pair	M	1	10
+pair	M	2	8
+pair	M	3	8
+pair	M	4	8
+pair	M	5	8
+pair	M	6	10
+pair	M	8	10
+pair	T	1	10
+pair	T	2	10
+pair	T	3	8
+pair	T	4	14
+pair	T	5	10
+pair	R	0	10
+pair	R	1	8
+pair	R	2	8
+pair	D	1	6
+pair	N	1	6

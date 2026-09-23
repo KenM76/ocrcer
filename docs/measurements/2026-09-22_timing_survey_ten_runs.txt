@@ -1,0 +1,103 @@
+Timing survey -- every head-to-head run recorded to date
+========================================================
+Compiled 2026-09-22. NOT a timing benchmark: see "What this is not" below.
+
+Method
+------
+Each head-to-head run in docs/measurements/ prints a "seconds" row for both
+engines. Nobody had read that column. This file collects all ten, divides by
+the run's own page count, and groups by bank size. No new run was made; every
+number below is lifted from a file already in this directory, named in the
+last column.
+
+Source files, and what each one is
+----------------------------------
+  A  2026-09-21_vs_ocrs_660_pages.txt              base bank, no feature weight
+  B  2026-09-21_holdout_w16_bank_base.txt          base bank, w16, held-out sizes
+  C  2026-09-21_vs_ocrs_660_pages_w16.txt          base bank, w16
+  D  2026-09-21_vs_ocrs_660_pages_w16_bank20.txt   5-scale bank, w16
+  E  2026-09-21_size_sweep_w16_bank20.txt          5-scale bank, every integer size
+  F  2026-09-21_size_sweep_hi_w16_bank20.txt       5-scale bank, upper size range
+  G  2026-09-21_holdout_w16_bank20.txt             5-scale bank, held-out sizes
+  H  2026-09-21_vs_ocrs_660_pages_w16_bank12.txt   5-scale bank led by 12 px/em
+  I  2026-09-22_vs_ocrs_625_tuning_w16_bank19.txt  19-face bank, de-duplicated
+  J  2026-09-21_vs_ocrs_660_pages_w16_ladder125.txt 6-scale geometric ladder
+
+The run table, sorted by OCRcer seconds per page
+------------------------------------------------
+  bank        corpus       pages   OCRcer s   ocrs s   OCR s/pg   ocrs s/pg   src
+  14,832 x4   tuning         660      172.0    273.8      0.26       0.41      A
+  14,832 x4   held out       660      202.3    241.4      0.31       0.37      B
+  14,832 x4   tuning         660      229.1    251.3      0.35       0.38      C
+  18,540 x5   size sweep     924      341.7    339.5      0.37       0.37      F
+  18,540 x5   size sweep    1716      654.3    594.9      0.38       0.35      E
+  18,540 x5   tuning         660      258.3    276.5      0.39       0.42      D
+  18,540 x5   held out       660      273.7    264.1      0.41       0.40      G
+  17,610 x5   tuning         625      277.2    250.8      0.44       0.40      I
+  18,540 x5   tuning         660      297.1    251.5      0.45       0.38      H
+  22,248 x6   tuning         660      326.5    249.0      0.49       0.38      J
+
+  Wins: OCRcer 4 (A B C D), ocrs 5 (E G H I J), level 1 (F -- 341.7 vs 339.5,
+  0.6%, not a result either way).
+
+Two findings
+------------
+1. THE PER-PAGE PROJECTION HOLDS. Section 4.1 projected "comfortably under a
+   second per page single-threaded". Observed range 0.26 to 0.49 s/page across
+   every bank and corpus tried. Confirmed as far as uncontrolled wall clock
+   can confirm anything.
+
+2. THE COMPARATIVE PROJECTION DOES NOT. Section 4.1 also said "faster than the
+   neural design it replaces rather than slower". All three runs at the
+   14,832-prototype bank are faster; one of seven at a larger bank is.
+
+   Mean OCRcer seconds per page, grouped by bank:
+
+       14,832 prototypes    0.305    (n=3)
+       17,610 prototypes    0.444    (n=1)
+       18,540 prototypes    0.401    (n=5)
+       22,248 prototypes    0.495    (n=1)
+
+   A bank 1.50x larger (14,832 -> 22,248) costs 1.62x per page. That is close
+   to linear, which is what matching dominating the page looks like.
+
+   ocrs over the same ten runs: 0.35 to 0.42 s/page, no trend against bank
+   size, because nothing about the bank reaches it. A fixed network costs what
+   it costs.
+
+   The 17,610 row sits at 0.444 where the trend wants about 0.38. It is the
+   only run with known unrelated load on the machine. It is left where it fell
+   rather than dropped.
+
+The consequence worth carrying forward
+--------------------------------------
+Bank growth is not free. Every charset class, every face added for coverage,
+every scale added to the ladder buys accuracy with page time on a near-linear
+curve, and ocrs pays nothing for any of it. ARCHITECTURE.md section 9 argued
+the prototype budget on file size and build time -- both trivial, 1.5 MB and
+45 s. The cost that actually binds is per-page matching, and it had not been
+priced anywhere.
+
+What this is not
+----------------
+NOT a controlled timing measurement, and no figure here should be quoted as
+one.
+  - The runs are sequential on a machine carrying varying unrelated load. Run
+    I is known to have had a compile running alongside it.
+  - The harness wall clock includes page rendering and ground-truth scoring
+    alongside recognition, on both sides, in unknown proportion.
+  - The two columns within a run are not perfectly paired: the engines run one
+    after the other, not interleaved.
+  - OCRcer was handed segmentation, spacing and layout from ground truth in
+    every run. ocrs did all three itself. Whatever chunks 2 and 6 cost is
+    added to the OCRcer column and to nothing else.
+
+So: the per-bank TREND is the robust part, holding across four bank sizes and
+three corpora. Any single row's margin is not.
+
+Open item for ocrcer-bench
+--------------------------
+A timing mode that measures recognition alone, on an idle machine, rendering
+and scoring excluded, both engines given the same pages in the same order --
+and once chunks 2 and 6 exist, end to end on both sides, which is the only
+comparison that answers the question section 4.1 asked.

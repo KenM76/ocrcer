@@ -1,0 +1,30 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/ocrcer-core",
+    "crates/ocrcer-build",
+    "crates/ocrcer-bench",
+]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+rust-version = "1.97"
+
+# The glyph tests rasterise every charset class at four sizes, twice over, and
+# unoptimised that is a 514-second gate — long enough that it stops being run,
+# which is how a partial suite gets reported as a full one. Optimising only the
+# two crates that do the rasterising takes the same exhaustive test to 49s
+# (measured 2026-09-21) without trimming a single assertion.
+#
+# Safe for the fixture gates: Rust does not reassociate floating-point
+# arithmetic at any opt-level, so the exact-comparison fixtures in
+# ARCHITECTURE.md section 8.2 produce identical bits optimised or not. Confirmed
+# rather than assumed: the full workspace suite passes under this profile, 58
+# tests across eight binaries with 11 report-only tests ignored, fixture gates
+# included, and the glyph binary reports 52.91s against its 514s unoptimised.
+[profile.test.package.ocrcer-core]
+opt-level = 2
+
+[profile.test.package.ocrcer-build]
+opt-level = 2

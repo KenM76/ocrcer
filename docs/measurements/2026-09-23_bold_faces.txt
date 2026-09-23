@@ -1,0 +1,26 @@
+# Bold faces candidate (model/out-bold/ocrcer.ocrw: 32 faces, 23,740 prototypes) vs shipped Regular-only
+# (model/out/ocrcer.ocrw: 19 faces, 17,610). Binary target/release/ocr.exe 2026-09-23 01:01:53, column_lone_guard 0
+# (byte-identical to the 2026-09-22 cut). Readings, foreground/background one arm at a time.
+== bench/pages-cov, bold candidate (6m40s)
+end-to-end   CER  6.576%  WER 27.688%  recall 76.978%  precision 76.054%  F1 76.513%
+line-matched CER  6.780%
+   control (Regular-only, 2026-09-23 reading): F1 76.675%  CER 6.503%   -> F1 -0.162, CER +0.073
+== finfilings 60 pages (incl. render-defective r000011), bold candidate
+end-to-end   CER 18.546%  WER 35.290%  recall 70.872%  precision 71.120%  F1 70.996%
+line-matched CER 19.058%
+   control (Regular-only, 2026-09-23 reading): F1 68.277%  CER 19.544%  -> F1 +2.719, CER -0.998
+# Not done: the 59-clean-page split the gate asked for (the tool has no page-exclusion flag; r000011 is in both arms).
+# Oddity: line-matched CER exceeds end-to-end CER on both corpora; a line-matched score should not normally be worse. Flagged to ocrcer-bench.
+
+# CORRECTION: the candidate above was a FOUR-size bank (16/24/32/48); the control is five-size (16/20/24/32/48).
+# Re-measured with model/out/ocrcer.ocrw rebuilt at 16/20/24/32/48, 32 faces, 29,675 prototypes (t=1790143043).
+# Binary t=1790142899: the tool flags it older than the model file. The engine sources were unchanged in between; the
+# edits made after the binary was built were bench-metric code (cer.rs), inspect printing and one doc comment. So end-to-end figures stand;
+# the line-matched figures below predate the metric fix and are not quoted.
+== bench/pages-cov, bold five-size
+end-to-end   CER  6.127%  WER 26.803%  recall 77.863%  precision 76.928%  F1 77.392%
+   vs Regular five-size control F1 76.675% CER 6.503%  -> F1 +0.717, CER -0.376   (gate: PASS)
+== finfilings 60 pages, bold five-size
+end-to-end   CER 18.546%  WER 35.450%  recall 70.723%  precision 70.970%  F1 70.846%
+   vs control F1 68.277% CER 19.544%  -> F1 +2.569, CER -0.998
+   top confusions are deletions: e->'' 1447, i->'' 1268, t->'' 1149, r->'' 1100, o->'' 942, a->'' 938

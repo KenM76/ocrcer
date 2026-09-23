@@ -1,0 +1,74 @@
+# feature_weights.tsv -- one weight per feature-vector block.
+#
+# The matcher's distance is a weighted sum over the 107 dimensions of
+# ARCHITECTURE.md section 3.1. Absent this file every weight is 1.0 and each
+# dimension speaks with the same voice.
+#
+# WHY A WEIGHT IS EVER ANYTHING BUT 1.0
+#
+# 103 of the 107 dimensions describe the glyph AFTER it has been normalised
+# onto a 32x32 grid. On that grid a case pair -- o/O, c/C, s/S, v/V, w/W, x/X
+# -- is literally the same shape. Only the four baseline-relative geometry
+# dimensions can separate such a pair, and at equal weight their four votes
+# are outvoted by 103 dimensions of shape noise. That is not a tuning
+# observation; it is a property of the normalisation, and it is the one thing
+# this file exists to correct.
+#
+# WHY THE FILE IS PER BLOCK AND NOT PER DIMENSION
+#
+# A 107-row file would be 107 numbers nobody could justify one at a time,
+# which is exactly what CLAUDE.md rule 1 forbids. The blocks are the units the
+# architecture already names, so a weight on a block is a claim about what
+# that block measures -- a sentence someone can disagree with.
+#
+# WHY A ROW MAY ALSO NAME ONE DIMENSION
+#
+# Section 11's 2026-09-21 weighting entry measured that a single scalar over
+# the geometry block is the wrong parameterisation by itself: within those four
+# dimensions one number cannot separate a pair that differs in height (`o` vs
+# `O`) without also amplifying a pair that does not (`0` vs `O`), and the
+# measurement showed `0`/`O` getting 71% worse at the aggregate optimum. So a
+# row may name a single dimension whose meaning section 3.1 states on its own,
+# and it overrides its block for that dimension alone. The four nameable ones:
+#
+#   geometry.aspect                  dim 103
+#   geometry.ink_fraction            dim 104
+#   geometry.height_above_baseline   dim 105
+#   geometry.depth_below_baseline    dim 106
+#
+# Nothing else is nameable, because nothing else has an individual meaning to
+# write a sentence about -- gradient bin 37 does not.
+#
+# FORMAT
+#
+#   key <TAB> weight <TAB> provenance <TAB> note
+#
+# `key`        a block name, or one of the nameable dimensions above.
+#
+#              EVERY block must appear,
+#              including the ones left at 1.0: a missing row would read as a
+#              default, and the build refuses the file rather than guess.
+# `weight`     finite and non-negative. 1.0 everywhere means the file writes
+#              no table at all, which is exactly what a reader that predates
+#              the table already assumes.
+# `provenance` authored | measured | guess, reported by the build the same way
+#              params.tsv's is, so a weight that is really a guess cannot read
+#              as a result.
+#
+# THE STANDING RULE FOR CHANGING A WEIGHT HERE
+#
+# Section 4.1: the matcher is tuned against the errors the DECODER CANNOT
+# REPAIR, not against the error count. Rule 6 suppresses the lexicon inside
+# identifier-shaped context, so a case error inside a word is one the decoder
+# repairs for free while `0` against `O` inside a part number is one it is
+# forbidden to touch. A weight set that improves the aggregate while worsening
+# an identifier-critical pair is a regression, and any candidate is reported
+# with its per-confusion-pair effect beside its aggregate.
+
+zone_density	1.0	authored	16 coarse ink densities; the bulk shape evidence, and the reference every other block's weight is relative to
+gradient	1.0	authored	64 oriented-gradient bins; the largest block, and the one that carries stroke direction -- down-weighting it would discard what actually separates most letter pairs
+h_projection	1.0	authored	8 row sums; shape evidence of the same kind as zone density and carried at the same weight for the same reason
+v_projection	1.0	authored	8 column sums; as above
+hole_count	1.0	authored	counted on the source bitmap, not the normalised grid, and already used as an exact-match pruning key before the distance is computed -- its weight in the distance is nearly moot
+crossings	1.0	authored	6 scanline crossing counts; a topological cue, unaffected by the normalisation that flattens the case pairs, so it needs no correction
+geometry	6.0	measured	the four baseline-relative dimensions -- aspect, ink fraction, height above baseline, depth below. The ONLY block that can separate a case pair, and the one this file exists for. 6 is the argmax of {1, 6, 12} swept end to end on bench/pages, on a 49-page stride-13 sample (CER 7.228% against 8.109% at 1) and again on the disjoint stride-13 offset-1 sample (7.634% against 8.387%), and it is the best of the three in four of the five render-size strata. Section 4.1's standing rule, measured at the winner: case pairs c/C s/S v/V z/Z fall 56 to 29 while the identifier-critical 0/O is flat at 17 and 0/o improves 7 to 5 -- no identifier-critical pair is worsened. 12 is rejected for that reason and not on its aggregate: it takes 0/o from 7 to 20.

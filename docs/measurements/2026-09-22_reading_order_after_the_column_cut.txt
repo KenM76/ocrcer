@@ -1,0 +1,113 @@
+A banded row came back right-hand-fragment first, and only CER could see it
+================================================================================
+
+2026-09-22.  bench/pages-cov, all 625 pages, stride 1.  Model
+model/out/ocrcer.ocrw t=2026-09-22 12:10:54.  words.min_valley_x_heights at the
+shipped 0.3 throughout.  Before: target/release/ocr.exe built 12:19:24.  After:
+the same source plus one change, built 13:27:48.
+
+WHAT WAS WRONG
+--------------------------------------------------------------------------------
+Reading order was decided after the column cut, by sorting the finished lines
+on their top edge:
+
+    lines.sort_by(|a, b| a.y0.cmp(&b.y0).then(a.x0.cmp(&b.x0)).then(...));
+
+Two fragments of one banded row do not share a top edge.  Whichever fragment
+holds the taller glyph -- a digit, a capital, an ascender -- starts higher, and
+the sort then puts it first regardless of where it sits across the page.  On a
+label-and-value row, which is what an invoice, a statement and a receipt are
+made of, that returns the value before its own label.
+
+Caught on a photographed receipt.  Truth reads
+
+    DATE : 15/01/2019 11:05:16 AM
+
+and the engine returned two lines, in this order:
+
+    ; w01/2019 11:0516 AM
+    Date
+
+With --set lines.column_gap_heights=0 the same page returns one line in the
+right order, which localises it to the cut's fragments rather than to
+recognition.  The layout dump, once it printed each line's x extent, showed the
+two pieces at x 30..63 and x 124..324 -- emitted widest-first.
+
+THE FIX
+--------------------------------------------------------------------------------
+Sort the *bands*, while a row is still one object, then cut each left to right.
+Fragments then leave the stage adjacent and in order and there is nothing to
+sort afterwards.  Three lines moved; no other behaviour was touched.
+
+For a row that is never cut the two orderings are identical -- the band's
+bounding box is the line's, and both sorts are stable -- so the change is
+provably a no-op wherever the cut does not fire.  That is the control below.
+
+BEFORE AND AFTER, EIGHT SETTINGS OF THE CUT
+--------------------------------------------------------------------------------
+  lines.column_gap_heights        CER              WER            word F1
+                            before   after    before   after   before   after
+  0   (cut off)              6.732   6.732    27.637  27.637   76.023  76.023
+  1.0                       22.256  13.434    52.959  45.588   67.509  67.509
+  1.5                       11.263   8.505    34.016  31.357   74.971  74.971
+  2.0                       10.381   8.412    33.672  32.126   74.363  74.363
+  2.5 (shipped)             10.091   8.330    33.611  32.298   74.234  74.234
+  3.0                        9.449   8.277    33.923  33.071   73.736  73.736
+  4.0                        9.025   8.380    35.125  34.882   72.433  72.433
+  6.0                        8.329   7.930    33.295  33.146   73.189  73.189
+
+Word recall and precision are identical at every arm too, to every digit
+printed; only word F1 is shown for width.
+
+WHAT THAT TABLE ESTABLISHES, AND WHY THE SHAPE MATTERS MORE THAN THE SIZE
+--------------------------------------------------------------------------------
+1. The control holds.  At cut off, five metrics are identical to five decimals.
+   The binary provably differs -- it prints a field the old one did not -- so
+   this is a measured no-op and not an unrebuilt binary.  (It was an unrebuilt
+   binary the first time; see the note at the end.)
+
+2. Every order-insensitive metric is untouched at every arm.  Word recall,
+   precision and F1 do not move by a digit anywhere.  That is the signature of
+   a pure reordering: the same words were found, in the same numbers, on the
+   same pages.
+
+3. Every order-sensitive metric improves wherever the cut fires, by 0.4 to 8.8
+   CER points.  The worst arm is the one where the cut fires most.
+
+So the defect was invisible to precisely the metric most often quoted.  A
+bag-of-words F1 cannot see a row read backwards; it was 74.234% before and
+74.234% after.  Had the layout been judged on word F1 alone -- which is the
+natural thing to do when the question is "did the cut split the right places"
+-- this would have gone unnoticed indefinitely.
+
+The corollary is worth keeping: a metric that is invariant under an error class
+is not evidence about that error class.  Reading order needs CER or an explicit
+order check, and nothing else in the suite will catch it.
+
+WHAT IT DOES NOT ESTABLISH
+--------------------------------------------------------------------------------
+The cut is still a net loss on this corpus.  At the shipped 2.5 it costs 1.598
+CER points and 1.789 word F1 against leaving it off, down from 3.359 and 1.789
+before the fix -- so the fix halved the character cost and left the word cost
+exactly where it was.  Choosing the parameter is a separate question and is not
+settled here.
+
+These are rendered pages.  The 29-scan corpus is where the cut and the
+synthetic corpus have disagreed before, and a scan's gaps carry the additional
+spread of its own binarisation.
+
+A NOTE ON THE FIRST RUN OF THIS COMPARISON, WHICH WAS FALSE
+--------------------------------------------------------------------------------
+The first "after" sweep returned byte-identical numbers at every arm and was
+nearly recorded as "the fix changes nothing on rendered pages."  The binary had
+not been rebuilt: `ocr` is declared with required-features = ["pages"], which
+was not in default, so `cargo build --release` skipped it silently while its
+crate printed "Compiling".
+
+Identity with the previous run is exactly what an unrebuilt binary produces,
+and it is also exactly what the no-op control was designed to look like.  The
+two are indistinguishable from the numbers alone.  What settled it was making
+the binary emit something new -- one extra field in the layout dump -- and
+looking for it.
+
+`pages` is now in `default` so a plain build builds the measurement binaries.

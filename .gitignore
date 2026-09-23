@@ -1,0 +1,51 @@
+# built model files - regenerable in minutes by ocrcer-build, never committed
+*.ocrw
+model/build/
+
+# rendered glyph sheets and intermediate feature dumps
+model/cache/
+
+# rust
+target/
+
+# benchmark outputs
+fixtures/results/
+
+# the generated comparison corpus: hundreds of MB of pages that
+# `ocrcer-build pages` reproduces byte for byte from the authored text in
+# `crates/ocrcer-build/src/corpus.rs`. The text is committed; the pixels are
+# not. Distinct from `fixtures/pages`, which holds the small blessed set
+# ARCHITECTURE.md section 8.2 describes and which IS committed.
+bench/pages/
+# the held-out corpus: same generator, render sizes deliberately absent
+# from both `bench/pages/` and every prototype-bank scale, so a bank
+# composition chosen on `bench/pages/` can be checked against sizes it
+# was not chosen on.
+bench/holdout/
+# a diagnostic corpus: every integer render size across a range, to look at
+# accuracy as a curve in resolution rather than at five points.
+bench/sizesweep/
+bench/sizesweep-hi/
+# the same four corpora re-rendered with coverage, which is what every figure
+# dated after ARCHITECTURE.md section 11's truth-box entry is measured on. The
+# two-valued originals are kept beside them only for that entry's side by side
+# and are not what anything should be measured against.
+bench/pages-cov/
+bench/holdout-cov/
+bench/sizesweep-cov/
+bench/sizesweep-hi-cov/
+
+# Third-party evaluation material downloaded from the web: real accounting
+# documents in the many shapes real clients send. It lives OUTSIDE this
+# repository, at D:/Dev/ExcludedPrivate/ocrcer/, and the rule is that it is
+# evaluation *input* and never model *content* - see ARCHITECTURE.md section
+# 11's corpus-provenance entry. These two patterns exist only so that a
+# stray copy made inside the working tree cannot be committed by accident.
+bench/private/
+bench/*-private/
+bench/priv*/
+# and the same for a corpus built from a downloaded dataset, which is third-
+# party material under the identical rule.
+bench/datasets/
+bench/scribe/
+bench/finfilings/

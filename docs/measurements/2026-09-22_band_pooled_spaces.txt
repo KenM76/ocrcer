@@ -1,0 +1,97 @@
+# Band-pooled space rule: measured effect on bench/pages-cov --only invoice
+# ARCHITECTURE.md section 11, "The column cut's precision collapse is spurious
+# spaces inside short fragments, not a mis-measured x-height" -- implementation:
+# crates/ocrcer-core/src/layout/{words,lines}.rs (band_space_rules,
+# split_band_with, group_with_bands), wired into Engine::recognize_lines in
+# crates/ocrcer-core/src/pipeline.rs and into `ocr --layout` in
+# crates/ocrcer-bench/src/bin/ocr.rs.
+#
+# Binary: target/release/ocr.exe, built via
+#   cargo build --release -p ocrcer-bench --features pages
+# and confirmed newer than every edited source file (stat -c '%y %n').
+# Model: model/out/ocrcer.ocrw. Corpus: bench/pages-cov --only invoice (90
+# pages). All numbers below are READINGS from this binary against this model,
+# not projections.
+#
+# Command shape:
+#   ./target/release/ocr model/out/ocrcer.ocrw bench/pages-cov \
+#     --only invoice --set lines.column_gap_heights=<0|2.5> --worst 20
+
+## Gate criterion (RESUME.md section 3 / this task's instructions)
+# inserted spaces ("" -> " ") near the cut-off level (cg=0's count, ~20)
+# deleted spaces (" " -> "") near 377 (the pre-fix cg=2.5 baseline count)
+
+## cg=0 (cut off) -- control, unchanged code path (fragments.len() <= 1 always)
+end-to-end   CER  8.309%  WER 35.778%  recall 64.689%  precision 77.793%  F1 70.638%
+top confusions (aligned, end-to-end), space-relevant rows only:
+     721  " " -> ""
+      20  "" -> " "
+# Byte-identical to the pre-fix baseline in
+# docs/measurements/2026-09-22_column_cut_precision_collapse.txt. Expected:
+# band_space_rules with fragments.len() <= 1 is exactly space_rule_with on the
+# fragment's own gaps, unchanged from before this work. This is a control,
+# confirming the fix does not touch the cut-off arm at all.
+
+## cg=2.5 (cut on) -- band-pooled space rule (this change)
+end-to-end   CER 12.306%  WER 46.978%  recall 65.422%  precision 65.046%  F1 65.234%
+top confusions (aligned, end-to-end), space-relevant rows only:
+     768  " " -> "\n"
+     503  "" -> " "
+     498  " " -> ""
+
+## cg=2.5 (cut on) -- pre-fix baseline, for comparison (from
+## docs/measurements/2026-09-22_column_cut_precision_collapse.txt)
+end-to-end   CER 12.600%  WER 49.511%  recall 68.200%  precision 62.799%  F1 65.388%
+     760  " " -> "\n"
+     727  "" -> " "
+     377  " " -> ""
+
+## Delta, pre-fix -> post-fix, cg=2.5 arm
+inserted spaces ("" -> " "):  727 -> 503   (-224, -30.8%)
+deleted spaces  (" " -> ""):  377 -> 498   (+121, +32.1%)
+CER:                        12.600% -> 12.306%  (-0.294pp)
+WER:                        49.511% -> 46.978%  (-2.533pp)
+recall:                     68.200% -> 65.422%  (-2.778pp)
+precision:                  62.799% -> 65.046%  (+2.247pp)
+F1:                         65.388% -> 65.234%  (-0.154pp)
+
+## Gate assessment: NOT CLEARLY MET
+# Inserted spaces fell substantially (727 -> 503) but are nowhere near the
+# cut-off level of 20 -- the fix recovers roughly a third of the spurious
+# insertions the un-pooled per-fragment rule was making, not the great
+# majority the gate implicitly expects.
+#
+# Deleted spaces moved the WRONG way: 377 -> 498, further from the cut-off
+# arm's 721 but away from the pre-fix 377 this gate asked to hold near, not
+# toward it. Word recall fell 2.8 points as a direct consequence -- pooling
+# is now causing some fragments to under-split real word spaces that the
+# un-pooled (single-fragment) rule used to catch correctly.
+#
+# Net effect on the metric that matters most (word F1) is a wash: 65.388% ->
+# 65.234%, essentially flat, with CER very slightly improved (12.600% ->
+# 12.306%) and WER improved by 2.5 points. The fix is a real, substantial
+# reduction in the specific defect it targeted (spurious intra-word splits),
+# but it introduces a smaller, opposite defect (some real inter-word spaces
+# now pooled into the intra-word class) that the gate as stated does not
+# consider acceptable.
+#
+# Likely mechanism (not verified further -- implementation is exactly as
+# specified in ARCHITECTURE.md section 11 and CLAUDE.md forbids inventing
+# scope beyond the spec): an invoice band frequently contains many narrow,
+# mostly-numeric column fragments alongside one or two fragments with real
+# running text. Pooling all of a band's gaps as x-height multiples means the
+# numerous tight intra-column gaps from the narrow fragments can outweigh the
+# few real word-space gaps from the text-bearing fragment(s) in the same
+# pool, pulling the shared valley threshold up past some real spaces. This is
+# the opposite failure mode from the one the fix targets, on the same
+# mechanism (one shared threshold applied to structurally dissimilar
+# fragments), and is a genuine finding for ocrcer-architect to adjudicate --
+# not a bug in this implementation of the specified algorithm.
+#
+# Per instructions, the full 625-page corpus was NOT run at both arms, since
+# the gate did not clearly pass. cargo test --workspace is green (262 passed,
+# 11 ignored, 0 failed) including a new unit test,
+# a_band_pooled_threshold_keeps_a_monospace_fragment_whole, in
+# crates/ocrcer-core/src/layout/words.rs. No golden fixture under
+# fixtures/expected/ covers the layout stage (only decode/ and glyphs/ exist
+# today), so this change has no fixture-blessing impact to report.

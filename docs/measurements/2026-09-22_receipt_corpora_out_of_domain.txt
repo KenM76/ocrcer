@@ -1,0 +1,93 @@
+Photographed receipts: an accepted loss, and one corpus whose truth cannot
+score CER at all
+================================================================================
+
+2026-09-22.  Binary target/release/ocr t=1790093964, model model/out/ocrcer.ocrw
+t=1790093454.  Both corpora under D:/Dev/ExcludedPrivate/ocrcer/pages, outside
+the repository, per the standing rule that nothing downloaded from the web is
+committed.
+
+WHY THESE WERE RUN AT ALL, AND UNDER WHAT LABEL
+--------------------------------------------------------------------------------
+FEASIBILITY.md section 6 condition 1 scopes this project to printed documents
+and CAD drawing text.  Project rule 7 says losing to ocrs on photographs is an
+accepted outcome rather than a bug to fix.  These two corpora are photographed
+thermal receipts -- perspective, curl, shadow gradient, thermal dropout -- which
+is closer to scene text than to a printed page.
+
+They were run for one reason: a scope boundary that has never been measured is
+an assertion.  The result below is the boundary, and it is reported as
+prominently as a win because rule 8 requires it.
+
+THE NUMBERS
+--------------------------------------------------------------------------------
+  corpus   pages       CER        WER    recall  precision   word F1
+  SROIE      120   136.704%   299.484%   18.136%    5.781%    8.767%
+  CORD-v2     95  1558.343%  3887.463%   16.532%    0.424%    0.827%
+
+SROIE: A REAL LOSS, AND THE CER OVERSTATES IT
+--------------------------------------------------------------------------------
+Reading the first page by hand against its truth, recognition is far better
+than 136% suggests:
+
+  want  TAN CHAY YEE                 read  tan chgy yee
+  want  OJC MARKETING SDN BHD        read  OIC NARKETING SON BHO
+  want  BANDAR SERI ALAM             read  BANOAR SERI AIAM
+  want  TAX INVOICE                  read  TAX mvo=E
+
+Those are wrong in a few characters each, not lost.  What destroys the score is
+structure, and it is two separate things:
+
+  1. Photographic noise becomes lines.  One band on that page came back as
+     `- * *[@cg * gg - -*{*u@{gy gy@SS+- - --** - *** *- ~-- * -~ * - **`,
+     which is a row of background speckle promoted to text.  Every such band is
+     pure insertion, and insertions are what drive precision to 5.781% and CER
+     above 100%.
+  2. The reading-order defect found the same day.  Every label-and-value row
+     came back value first, label second -- `; w01/2019 11:0516 AM` then `Date`
+     where the truth reads `DATE : 15/01/2019 11:05:16 AM`.  A bag-of-words
+     score cannot see that; CER reads the row backwards and charges for all of
+     it.
+
+So this number is a joint measurement of an out-of-domain corpus and a defect,
+and it is worth re-running once the defect is fixed -- not to rescue the score,
+which will still be a loss, but to find out how much of it was ours.
+
+CORD: THE TRUTH IS NOT A PAGE TRANSCRIPT, SO THE CER MEANS NOTHING
+--------------------------------------------------------------------------------
+CORD-v2's truth averages 134 characters per receipt (12,707 characters over 95
+pages).  A receipt of that kind carries several times that much text.  The
+`valid_line` annotation covers labelled *fields* -- menu names, counts, prices,
+totals -- and not the header, the address block, the footer, or the terms.
+
+The engine emits roughly sixteen times the truth's length, which is exactly
+what an engine reading the whole page against a field-subset truth would do.
+CER 1558% is therefore a measurement of the annotation's coverage, not of the
+engine, and it should not be quoted.  Recall 16.532% is the only interpretable
+figure and only as a lower bound: a field the engine read correctly but placed
+on a different reconstructed line still counts.
+
+Action: the CER column for CORD should be deleted rather than explained.  The
+corpus stays as a word-recall spot check.
+
+THE CAVEAT BOTH CORPORA CARRY
+--------------------------------------------------------------------------------
+The converter prints it and it belongs in any report of these numbers: the
+truth's WORDS are the dataset's annotation of the image, and the truth's LINE
+BREAKS were reconstructed here from the word boxes by one deterministic rule
+(sort by box top; break a row when a word's vertical centre leaves the row's
+accumulated y-range; sort within a row by left edge).  Any CER from these
+corpora is scored against that reconstruction, not against a reading of the
+page, and has to say so.
+
+WHAT THIS DOES NOT LICENCE
+--------------------------------------------------------------------------------
+Nothing here is an argument for widening the charset, adding prototype
+categories for thermal print, or building a photographic binariser.
+FEASIBILITY.md section 6 is explicit that scope creep toward scene text turns a
+tractable project into an intractable one.  The value of the measurement is the
+boundary, not a task list.
+
+The one thing it did produce that is in scope: the reading-order defect is not
+a receipt problem.  It fires on any banded label-and-value row, which is what
+an invoice and a statement are made of, and those are in domain.

@@ -1,0 +1,60 @@
+{
+  "why": "The matcher prefers 'M' over 'm' by 0.5 at position 3. With w_match 1.0 and case_shape_penalty 1.5, choosing 'M' gains 0.5 in match and loses 1.5 to the lower->upper transition, so 'payments' must win by 1.0. This is the payMents family the case prior was written for.",
+  "params": {
+    "decode.case_shape_penalty": 1.5
+  },
+  "positions": [
+    [
+      [
+        "p",
+        1.0
+      ]
+    ],
+    [
+      [
+        "a",
+        1.0
+      ]
+    ],
+    [
+      [
+        "y",
+        1.0
+      ]
+    ],
+    [
+      [
+        "M",
+        1.0
+      ],
+      [
+        "m",
+        1.5
+      ]
+    ],
+    [
+      [
+        "e",
+        1.0
+      ]
+    ],
+    [
+      [
+        "n",
+        1.0
+      ]
+    ],
+    [
+      [
+        "t",
+        1.0
+      ]
+    ],
+    [
+      [
+        "s",
+        1.0
+      ]
+    ]
+  ]
+}

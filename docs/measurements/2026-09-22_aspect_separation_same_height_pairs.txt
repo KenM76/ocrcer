@@ -1,0 +1,46 @@
+Aspect separation of same-height confusion pairs — 2026-09-22
+
+Method: fontTools over the shippable faces in model/fonts.tsv. Ink bounding box
+from the glyph outline (BoundsPen). Feature 103 as ARCHITECTURE.md section 3
+defines it, (w - h) / (w + h) of the tight ink box, computed in outline units
+rather than from a raster. Each cell is feature103(first) - feature103(second).
+
+Feature 103 is (w - h) / (w + h) of the tight ink box. For a same-height
+confusion pair the question is whether that dimension separates them at all.
+
+face                  0 vs O        1 vs l        1 vs I        l vs I        5 vs S        2 vs Z        
+Liberation Sans       -0.1756       +0.5542       +0.5318       -0.0224       -0.0878       -0.0969       
+Liberation Serif      -0.2043       +0.1851       +0.1245       -0.0606       -0.0226       -0.1198       
+Liberation Mono       -0.0219       +0.0461       +0.0847       +0.0386       -0.0303       -0.0763       
+Noto Sans             -0.1614       +0.3353       +0.0120       -0.3233       +0.0075       -0.0296       
+Noto Serif            -0.1423       +0.1846       +0.1492       -0.0355       -0.0085       -0.0863       
+Open Sans Condensed   -0.1207       +0.2818       +0.2713       -0.0106       +0.0019       +0.0696       
+Roboto                -0.1171       +0.3379       +0.3199       -0.0180       -0.0631       -0.0436       
+Roboto Condensed      -0.1057       +0.2905       +0.2739       -0.0167       -0.0561       -0.0371       
+Roboto Mono           -0.0355       -0.1822       -0.1936       -0.0114       -0.0407       +0.0018       
+Lato                  -0.1516       +0.5297       +0.5068       -0.0228       -0.0025       -0.0672       
+PT Sans               -0.1067       +0.2779       +0.4993       +0.2214       -0.0639       -0.0863       
+PT Mono               -0.0146       +0.0504       -0.0525       -0.1029       -0.0317       -0.0554       
+Inconsolata           -0.0475       -0.1747       -0.1750       -0.0003       -0.0240       -0.0593       
+Fira Code             -0.0563       +0.0174       +0.0326       +0.0152       -0.0551       -0.0321       
+Inter                 -0.1171       +0.3347       +0.3253       -0.0094       -0.0482       -0.0531       
+JetBrains Mono        +0.0172       -0.0693       +0.0663       +0.1356       -0.0212       +0.0191       
+Cascadia Code         -0.0384       -0.0158       +0.0097       +0.0255       +0.0217       +0.0187       
+Cascadia Mono         -0.0384       -0.0158       +0.0097       +0.0255       +0.0217       +0.0187       
+STIX Two Math         -0.1604       +0.2125       +0.1009       -0.1117       -0.0308       -0.1051       
+
+difference in feature 103 between the two members of the pair
+pair               min    median       max   mean|d|      n
+0 vs O         -0.2043   -0.1067   +0.0172    0.0964     19
+1 vs l         -0.1822   +0.1851   +0.5542    0.2156     19
+1 vs I         -0.1936   +0.1009   +0.5318    0.1968     19
+l vs I         -0.3233   -0.0114   +0.2214    0.0635     19
+5 vs S         -0.0878   -0.0303   +0.0217    0.0336     19
+2 vs Z         -0.1198   -0.0531   +0.0696    0.0566     19
+
+Yardstick. Feature 103 is computed from the SOURCE tight-crop bitmap, not
+from the 32x32 normalised grid, so a pixel of it is a pixel at the render
+size. d/dw of (w-h)/(w+h) is 2h/(w+h)^2. At 24 px/em an authored-face cap
+height is 0.70*24 = 16.8 px and a zero is about 13 px wide, so one pixel of
+width moves this feature by about 0.038. Read every number above against
+that: below 0.038 the pair is inside one pixel of rasterisation.
