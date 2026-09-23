@@ -75,3 +75,62 @@ Shipped. `lines.baseline_split_valley_margin` default changed from 0.0
 `model/params.tsv`. Model rebuilt (`model/out/ocrcer.ocrw`) and
 `ocrcer-bench`/`ocr.exe` rebuilt against it; full test suite and the
 wasm32-unknown-unknown build re-verified after the default change.
+
+## Post-ship fine sweep: 0.2 and 0.25, full finfilings corpus
+
+Only {0.3, 0.4, 0.6, 0.7} had been screened, and only on two pages, before
+0.3 shipped. This sweep checks whether a finer value below 0.3 does better
+on the full 60-page corpus. One heavy run at a time; no STALE in any of
+the three outputs below (`engine binary t=1790197955` > `model file
+t=1790197657` in all three).
+
+Command: `./target/release/ocr.exe model/out/ocrcer.ocrw
+D:/Dev/ExcludedPrivate/ocrcer/pages/finfilings --set
+lines.baseline_split_valley_margin=<v>`
+
+Shipped control, margin 0.3 (60 of 60 pages, re-run to also capture the
+worst-page listing, which the original gate run above did not save):
+  end-to-end   CER 13.161%  WER 30.634%  recall 76.871%  precision 75.572%  F1 76.216%
+  line-matched CER 12.290%
+
+  worst pages (top 12):
+     40.63%  filing__r000583
+     37.10%  filing__r000022
+     31.33%  filing__r000011
+     30.03%  filing__r000044
+     29.03%  filing__r000396
+     24.46%  filing__r000407
+     23.79%  filing__r000517
+     23.11%  filing__r000418
+     21.89%  filing__r000231
+     21.71%  filing__r000033
+     21.58%  filing__r000165
+     20.91%  filing__r000671
+
+margin 0.2 (60 of 60 pages):
+  end-to-end   CER 13.572%  WER 30.662%  recall 76.534%  precision 75.837%  F1 76.184%
+  line-matched CER 12.752%
+
+margin 0.25 (60 of 60 pages):
+  end-to-end   CER 13.209%  WER 30.617%  recall 76.829%  precision 75.632%  F1 76.226%
+  line-matched CER 12.370%
+
+| margin | end-to-end CER | line-matched CER |
+|--------|-----------------|-------------------|
+| 0.2    | 13.572%         | 12.752%           |
+| 0.25   | 13.209%         | 12.370%           |
+| 0.3 (shipped) | 13.161%  | 12.290%           |
+
+Neither 0.2 nor 0.25 beats 0.3 on either finfilings CER (both are worse on
+both metrics), so per this round's gate — beat 0.3 on BOTH finfilings CERs
+before spending a bench/pages-cov run — no further run against
+`bench/pages-cov` was made for either value. 0.3 remains the best value
+found on the full corpus, not just the two-page screen. Default and
+`model/params.tsv` are unchanged by this sweep.
+
+Read alongside the two-page screen above: the ordering there (0.3 best of
+{0.3, 0.4, 0.6, 0.7} on r000308/r000363) and here (0.3 best of {0.2, 0.25,
+0.3} on the full 60-page corpus) agree that 0.3 sits at or near a local
+optimum from both directions tested so far; a denser sweep between 0.25
+and 0.4, or above 0.4, has not been run and would be the next place to
+look if this parameter is revisited.
