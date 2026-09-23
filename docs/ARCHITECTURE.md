@@ -6051,3 +6051,27 @@ yet surfaced in any output format.
 
 r000583 is now the worst page at 54.66. It was not examined in this
 round.
+
+### 2026-09-23 — Worst page named: bounding-box chaining glues pixel-disjoint serif letters into one atom
+
+Measured in `docs/measurements/2026-09-23_worst_page_r000583.md`. On
+r000583 (54.66% CER), `atoms()` merges consecutive components whenever their
+x-ranges overlap. That rule exists for an `i` and its dot. In this serif face,
+a `t` crossbar and an `h` base serif overlap by 1–6 columns at different
+heights, even though the ink never touches. The page has 73 atoms chaining 3
+or more letters, up to 7. An ordinary page (r000572, 4.91%) has 3, none larger
+than 3. Once letters are chained, no vertical cut separates them cleanly, and
+`max_splits = 3` cannot carve a 7-letter atom into enough pieces. The
+underline strip changes nothing on this page. The split gate costs 0.9 points.
+
+Decision: the cheapest fix comes before any non-vertical cut. The letters are
+already separate components, so the segmenter should not glue them together
+in the first place. Next experiment: merge overlapping components only when
+the overlap is a real fraction of the narrower one's width (an i-dot sits
+entirely inside its stem's columns; a kerned serif overlaps by a few columns),
+as a new guess-labelled parameter. Each piece is matched on its own members'
+pixels, not on a column crop that picks up the neighbour's serif. Gates are
+unchanged: beat finfilings on both CERs (16.756 / 16.634), and keep pages-cov
+within 0.05 of 6.089. Drop-fall or contour cuts and a width-scaled
+`max_splits` stay queued behind this. They address touching ink, which this
+page does not have.
