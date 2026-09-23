@@ -306,6 +306,24 @@ pub struct Params {
     /// Guess: ships `false` pending the readings in the measurement file
     /// above; not this crate's call to flip.
     pub underline_strip: bool,
+
+    /// Whether [`pair_cells`] runs on the row/fragment groups
+    /// [`group_with_bands`] builds. `0` leaves them as the column cut left
+    /// them: a narrow fragment joins whichever line shares its row. `1` runs
+    /// [`pair_cells`], deferring such a fragment past the full wrapped text
+    /// of the column it sits beside.
+    ///
+    /// `ARCHITECTURE.md` section 11, 2026-09-23 ("Worst pages, round 3: form
+    /// cells spliced into the wrong line of a wrapped label"): the column
+    /// cut correctly separates a genuine same-row column pair, but pairs
+    /// each fragment with whichever other fragment shares its row, which is
+    /// wrong exactly when that row is only the first line of a wrapped
+    /// multi-line cell -- the value or marker then lands mid-label instead
+    /// of after it, on every occurrence, on three of the four worst
+    /// finfilings pages measured that round. A guess, on the chunk-8 tuning
+    /// list; ships `0` pending the sweep in
+    /// `docs/measurements/2026-09-23_cell_pairing.txt`.
+    pub cell_pairing: u32,
 }
 
 /// The shipped values, taken from the parameter block rather than restated.
@@ -343,7 +361,7 @@ pub enum XHeightSource {
 /// is the page y coordinate of the row *just below* flat-bottomed ink, which
 /// is the convention [`crate::feature::GlyphInput::baseline_dy`] expects: a
 /// glyph whose bottom row is the last ink row has `baseline_dy == height`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TextLine {
     pub members: Vec<usize>,
     pub x0: u32,
@@ -475,7 +493,148 @@ pub fn group_with_bands(
     for n in sizes {
         out.push((&mut rest).take(n).collect());
     }
+    if p.cell_pairing != 0 {
+        out = pair_cells(out);
+    }
     out
+}
+
+/// Re-orders row/fragment groups so a narrow column fragment that shares a
+/// row with only the *first* line of a wrapping left-column cell is deferred
+/// until after the cell's full wrapped text, instead of being spliced into
+/// its middle.
+///
+/// `ARCHITECTURE.md` section 11, 2026-09-23 ("Worst pages, round 3..."):
+/// [`split_at_column_gaps`] correctly separates a genuine same-row column
+/// pair, but pairs each fragment with whichever *other* fragment shares its
+/// row -- wrong exactly when the row's wide fragment is only the first line
+/// of a multi-line cell. Ground truth on the three pages that showed this
+/// (`filing__r000044`, `filing__r000396`, `filing__r000407`) orders a
+/// wrapped label's full text, every line, before its value, each on its own
+/// line -- never spliced mid-label.
+///
+/// A row is touched only when exactly one of its fragments' columns
+/// continues, unbroken, into one or more immediately following
+/// single-fragment rows (the wrap); every other fragment on that row is held
+/// back and emitted, left to right, as its own row immediately after the
+/// last continuation row consumed. A row with no such continuation -- the
+/// ordinary single-line label/value case, or the ambiguous case where more
+/// than one fragment appears to continue -- is passed through untouched, so
+/// this is a strict refinement: nothing here can make a genuine same-row
+/// pair worse than leaving it alone.
+fn pair_cells(groups: Vec<Vec<TextLine>>) -> Vec<Vec<TextLine>> {
+    // How much of the narrower of two fragments' x-ranges must overlap for
+    // one to be read as the same column as the other. Loose enough that a
+    // wrapped line ending a word early or late does not break the match,
+    // tight enough that an unrelated column elsewhere on the page cannot
+    // pass. Chosen for this fix; not independently tunable.
+    const COLUMN_OVERLAP_MIN: f32 = 0.4;
+    // How far the gap between two consecutive lines of a wrap may drift from
+    // the first observed gap in the run before the run is read as having
+    // broken into a new element rather than continuing the same cell.
+    // Chosen for this fix; not independently tunable.
+    const GAP_RATIO_MIN: f32 = 0.4;
+    const GAP_RATIO_MAX: f32 = 2.2;
+
+    let mut out: Vec<Vec<TextLine>> = Vec::with_capacity(groups.len());
+    let mut i = 0;
+    while i < groups.len() {
+        if groups[i].len() < 2 {
+            out.push(groups[i].clone());
+            i += 1;
+            continue;
+        }
+        let row = groups[i].clone();
+        let mut continuing: Option<usize> = None;
+        for (idx, frag) in row.iter().enumerate() {
+            let run = wrap_run_len(&groups, i + 1, frag, COLUMN_OVERLAP_MIN, GAP_RATIO_MIN, GAP_RATIO_MAX);
+            if run > 0 {
+                if continuing.is_some() {
+                    // More than one fragment on this row appears to
+                    // continue: ambiguous, leave the row untouched.
+                    continuing = None;
+                    break;
+                }
+                continuing = Some(idx);
+            }
+        }
+        let Some(wide_idx) = continuing else {
+            out.push(row);
+            i += 1;
+            continue;
+        };
+        let run = wrap_run_len(
+            &groups,
+            i + 1,
+            &row[wide_idx],
+            COLUMN_OVERLAP_MIN,
+            GAP_RATIO_MIN,
+            GAP_RATIO_MAX,
+        );
+
+        out.push(vec![row[wide_idx].clone()]);
+        for group in &groups[i + 1..i + 1 + run] {
+            out.push(group.clone());
+        }
+        for (idx, frag) in row.into_iter().enumerate() {
+            if idx != wide_idx {
+                out.push(vec![frag]);
+            }
+        }
+        i += 1 + run;
+    }
+    out
+}
+
+/// How many of the single-fragment groups starting at `start` continue
+/// `anchor`'s column in one consistent, unbroken run.
+fn wrap_run_len(
+    groups: &[Vec<TextLine>],
+    start: usize,
+    anchor: &TextLine,
+    overlap_min: f32,
+    gap_ratio_min: f32,
+    gap_ratio_max: f32,
+) -> usize {
+    let mut n = 0;
+    let mut prev = anchor;
+    let mut first_gap: Option<f32> = None;
+    let mut j = start;
+    while j < groups.len() && groups[j].len() == 1 {
+        let cand = &groups[j][0];
+        if !columns_overlap(prev, cand, overlap_min) {
+            break;
+        }
+        let gap = cand.baseline - prev.baseline;
+        if gap <= 0.0 {
+            break;
+        }
+        if let Some(fg) = first_gap {
+            let ratio = gap / fg;
+            if !(gap_ratio_min..=gap_ratio_max).contains(&ratio) {
+                break;
+            }
+        } else {
+            first_gap = Some(gap);
+        }
+        n += 1;
+        prev = cand;
+        j += 1;
+    }
+    n
+}
+
+/// Whether `a` and `b` share at least `min_frac` of the narrower of their
+/// x-ranges.
+fn columns_overlap(a: &TextLine, b: &TextLine, min_frac: f32) -> bool {
+    let lo = a.x0.max(b.x0);
+    let hi = a.x1.min(b.x1);
+    if hi <= lo {
+        return false;
+    }
+    let overlap = (hi - lo) as f32;
+    let narrower = (a.x1 - a.x0).min(b.x1 - b.x0) as f32;
+    narrower > 0.0 && overlap / narrower >= min_frac
 }
 
 /// Gives a line with no x-height evidence of its own the page's.
@@ -1822,5 +1981,99 @@ mod tests {
         let band = band_of(&comps);
         let out = split_baselines(band, &comps, &Params::default());
         assert_eq!(out.len(), 1, "one shared baseline must not split");
+    }
+
+    /// A minimal `TextLine` for [`pair_cells`] tests: only the fields that
+    /// function reads (`x0`, `x1`, `baseline`) are meaningful, the rest are
+    /// placeholders.
+    fn tl(x0: u32, x1: u32, y0: u32, baseline: f32) -> TextLine {
+        TextLine {
+            members: vec![],
+            x0,
+            y0,
+            x1,
+            y1: y0 + 10,
+            baseline,
+            x_height: 10.0,
+            cap_height: 14.0,
+            x_height_source: XHeightSource::Observed,
+            median_height: 10,
+        }
+    }
+
+    /// A single-line label beside its value, with nothing below to
+    /// continue -- `pair_cells` must leave it exactly as
+    /// `split_at_column_gaps` produced it.
+    #[test]
+    fn a_single_line_label_and_value_row_is_unchanged() {
+        let label = tl(10, 200, 60, 67.0);
+        let value = tl(220, 260, 58, 65.0);
+        let groups = vec![vec![label.clone(), value.clone()]];
+        let out = pair_cells(groups);
+        assert_eq!(out.len(), 1, "a genuine single-row pair must stay one row");
+        assert_eq!(out[0].len(), 2);
+        assert_eq!(out[0][0].x0, label.x0);
+        assert_eq!(out[0][1].x0, value.x0);
+    }
+
+    /// A label that wraps to a second line, with its value sharing the
+    /// first line's row: the value must come back after the label's full
+    /// two-line text, on its own row, per the ground truth named in
+    /// `ARCHITECTURE.md` section 11, 2026-09-23 ("Worst pages, round 3").
+    #[test]
+    fn a_wrapped_two_line_label_puts_the_value_after_line_two() {
+        let label1 = tl(10, 200, 60, 67.0);
+        let value = tl(220, 260, 58, 65.0);
+        let label2 = tl(10, 140, 80, 87.0);
+        let groups = vec![vec![label1.clone(), value.clone()], vec![label2.clone()]];
+        let out = pair_cells(groups);
+        assert_eq!(out.len(), 3, "label line 1, label line 2, then the value");
+        assert_eq!(out[0], vec![label1.clone()]);
+        assert_eq!(out[1], vec![label2.clone()]);
+        assert_eq!(out[2], vec![value.clone()]);
+    }
+
+    /// Two wrapped label/value cells back to back must be paired
+    /// independently: the second cell's value must not leak into the
+    /// first's, and vice versa.
+    #[test]
+    fn two_consecutive_wrapped_cells_pair_independently() {
+        let label1a = tl(10, 200, 60, 67.0);
+        let value1 = tl(220, 260, 58, 65.0);
+        let label1b = tl(10, 140, 80, 87.0);
+        let label2a = tl(10, 205, 130, 130.0);
+        let value2 = tl(220, 258, 128, 128.0);
+        let label2b = tl(10, 138, 150, 150.0);
+        let groups = vec![
+            vec![label1a.clone(), value1.clone()],
+            vec![label1b.clone()],
+            vec![label2a.clone(), value2.clone()],
+            vec![label2b.clone()],
+        ];
+        let out = pair_cells(groups);
+        assert_eq!(
+            out,
+            vec![
+                vec![label1a],
+                vec![label1b],
+                vec![value1],
+                vec![label2a],
+                vec![label2b],
+                vec![value2],
+            ]
+        );
+    }
+
+    /// A plain left-hand paragraph with no right-column fragment at all --
+    /// every row already has exactly one fragment -- must pass through
+    /// `pair_cells` untouched.
+    #[test]
+    fn a_plain_paragraph_with_no_right_fragments_is_unchanged() {
+        let p1 = tl(10, 300, 10, 20.0);
+        let p2 = tl(10, 280, 30, 40.0);
+        let p3 = tl(10, 260, 50, 60.0);
+        let groups = vec![vec![p1.clone()], vec![p2.clone()], vec![p3.clone()]];
+        let out = pair_cells(groups.clone());
+        assert_eq!(out, groups);
     }
 }

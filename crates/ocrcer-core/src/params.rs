@@ -83,6 +83,7 @@ pub struct Lines {
     pub debris_heights: f32,
     pub thin_debris_heights: f32,
     pub underline_strip: u32,
+    pub cell_pairing: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -261,6 +262,14 @@ impl Params {
             thin_debris_heights: 3.4288,
             // Measured, `ARCHITECTURE.md` section 11, 2026-09-23 ("Underline strip ships").
             underline_strip: 1,
+            // Guess, `ARCHITECTURE.md` section 11, 2026-09-23 ("Worst pages,
+            // round 3..."): 0 is today's behaviour (a narrow column
+            // fragment joins whichever line shares its row), 1 runs
+            // `pair_cells`, which defers such a fragment past the full
+            // wrapped text of the column it sits beside. Off until measured
+            // against both corpora; see
+            // `docs/measurements/2026-09-23_cell_pairing.txt`.
+            cell_pairing: 0,
         },
         words: Words {
             min_gaps: 3,
@@ -456,6 +465,7 @@ impl Params {
             "lines.column_lone_guard" => &mut self.lines.column_lone_guard,
             "lines.baseline_split" => &mut self.lines.baseline_split,
             "lines.underline_strip" => &mut self.lines.underline_strip,
+            "lines.cell_pairing" => &mut self.lines.cell_pairing,
             "words.min_gaps" => &mut self.words.min_gaps,
             "words.pitch_min_glyphs" => &mut self.words.pitch_min_glyphs,
             "words.pitch_cell_merge" => &mut self.words.pitch_cell_merge,
@@ -473,7 +483,7 @@ impl Params {
 
     /// Every name this build understands, for a loader that wants to report
     /// which ones a file left at their defaults.
-    pub const NAMES: [&'static str; 64] = [
+    pub const NAMES: [&'static str; 65] = [
         "binarize.window",
         "binarize.k",
         "binarize.r",
@@ -500,6 +510,7 @@ impl Params {
         "lines.debris_heights",
         "lines.thin_debris_heights",
         "lines.underline_strip",
+        "lines.cell_pairing",
         "words.min_gaps",
         "words.min_separability",
         "words.lone_gap_x_heights",
@@ -641,13 +652,14 @@ fn f32_fields(p: &Params) -> [f32; 50] {
     ]
 }
 
-fn u32_fields(p: &Params) -> [u32; 14] {
+fn u32_fields(p: &Params) -> [u32; 15] {
     [
         p.binarize.window,
         p.lines.min_area,
         p.lines.column_lone_guard,
         p.lines.baseline_split,
         p.lines.underline_strip,
+        p.lines.cell_pairing,
         p.words.min_gaps,
         p.words.pitch_min_glyphs,
         p.words.pitch_cell_merge,
@@ -700,6 +712,7 @@ impl Params {
             debris_heights: self.lines.debris_heights,
             thin_debris_heights: self.lines.thin_debris_heights,
             underline_strip: self.lines.underline_strip != 0,
+            cell_pairing: self.lines.cell_pairing,
         }
     }
 

@@ -1,0 +1,149 @@
+Cell pairing (lines.cell_pairing) — measurement log, 2026-09-23
+=================================================================
+
+Source: docs/ARCHITECTURE.md section 11, "Worst pages, round 3: form cells
+spliced into the wrong line of a wrapped label" and
+docs/measurements/2026-09-23_worst_pages_round3.md.
+
+Mechanism reported: after a band is split at a column cut, pipeline.rs's
+Line::band assignment joins a narrow right-column fragment to the
+left-column line sharing its baseline. When the left label wraps, the value
+is spliced mid-label. Reported on filing__r000044, filing__r000396,
+filing__r000407 (finfilings).
+
+--- Step 1: ground-truth convention -----------------------------------
+
+Read directly from the .truth.json `lines` arrays (flat list of strings,
+reading order) for all three named pages. In every case the wrapped
+label's full text comes first, one truth line per wrapped line, and the
+value comes strictly afterward as its own separate truth line. Truth
+never splices a value between a label's wrap lines.
+
+filing__r000044.truth.json:
+  0 'Monthly net realized gain(loss) –'
+  1 'Month 1'
+  2 '0.00000000'
+(label wraps across lines 0-1, value is line 2, after both)
+
+filing__r000396.truth.json:
+  10 'i. Revenue sharing split'
+  11 'ii. Non-revenue sharing'
+  12 'split (other than administrative fee)'
+(checkbox values 'Yes'/'No' each appear on their own truth line, after
+the full label text, never interleaved with it)
+
+filing__r000407.truth.json:
+  2 'i. Full name'
+  3 'J.P. Morgan S.A. DTVM'
+  9 'v. Is the custodian an affiliated person of the'
+  10 'Fund or its investment adviser(s)?'
+  11 'Yes'
+  12 'No'
+(2-line wrapped question, then each checkbox answer on its own line,
+strictly after the full question text)
+
+Convention followed by the fix: a narrow fragment sharing a row with the
+first line of a wrapping left-column cell is deferred until after the
+cell's full wrapped text, then emitted on its own line — never spliced
+mid-label.
+
+--- Step 2: implementation ---------------------------------------------
+
+New param `lines.cell_pairing: u32`, default 0 (today's behaviour),
+labelled `guess` in model/params.tsv. When set to 1,
+layout/lines.rs::pair_cells runs after group_with_bands' existing
+column-cut grouping: for each row with >=2 fragments, it looks for
+exactly one fragment whose column continues, via consistent baseline
+spacing and column overlap, into one or more subsequent single-fragment
+rows (wrap_run_len / columns_overlap). If found, that fragment is
+emitted first, the continuation rows follow it in order, and the row's
+other (narrow) fragments are appended afterward, each on its own line.
+Ambiguous rows (more than one fragment looks like it continues) and
+single-fragment rows fall through unchanged.
+
+Unit tests added to crates/ocrcer-core/src/layout/lines.rs (all passing):
+  - a_single_line_label_and_value_row_is_unchanged
+  - a_wrapped_two_line_label_puts_the_value_after_line_two
+  - two_consecutive_wrapped_cells_pair_independently
+  - a_plain_paragraph_with_no_right_fragments_is_unchanged
+
+cargo test --workspace --release: all tests pass (173 ocrcer-core tests
+plus other crates; 11 pre-existing report-only ignored tests unrelated).
+cargo build -p ocrcer-core --target wasm32-unknown-unknown: succeeds.
+#![forbid(unsafe_code)] and zero-dependency invariants unchanged; no new
+dependencies, no unsafe code.
+
+--- Step 3: measurement --------------------------------------------------
+
+Model rebuild (write 16,20,24,32,48 21,26,36,56):
+  params  65 rows: 10 authored, 18 measured, 37 guess
+  weights 7 blocks: 6 authored, 1 measured, 0 guess
+  wrote model/out/ocrcer.ocrw: 29675 prototypes, 32 faces, 9 tables, 3.15 MB
+  int8 top-1 agreement with f32: 23618/23740 = 99.486%
+  int8 top-1 accuracy: 21873/23740 = 92.14%
+No STALE (engine binary newer than model file).
+
+Per-page screening, --only on the three named pages, --set
+lines.cell_pairing=1 vs control (cell_pairing=0):
+
+  filing__r000044:
+    end-to-end   30.032% -> 8.550%   (large improvement)
+    line-matched 33.279% -> 11.093%  (large improvement)
+
+  filing__r000396:
+    end-to-end   29.035% -> 28.994%  (marginal improvement)
+    line-matched 19.548% -> 17.413%  (improvement)
+
+  filing__r000407:
+    end-to-end   24.464% -> 36.622%  (REGRESSION, +12.158pp)
+    line-matched 22.123% -> 20.279%  (improvement)
+
+Root cause of the r000407 regression (checked via --raw diffs): the
+geometric heuristic (column overlap + consistent line-to-line baseline
+spacing) cannot distinguish a genuine multi-line wrap-continuation of one
+cell's label from an entirely separate subsequent field-label row that
+merely sits in the same left-hand column at the same normal line
+spacing. r000407 is a dense per-field form (i./ii./iii./... labels, each
+one line, all at the same left margin and line pitch), so a label's
+value fragment gets wrongly deferred past the next, unrelated field's
+label. Example (control correct; cell_pairing=1 wrong):
+  control:   "ii. LEI, if any 5493001LS7J56NZZ3G07\niii. State, if applicable"
+  cp1:       "ii. LEI, if any\niii. State, if applicable\n5493001LS7J56NZZ3G07"
+A similar reordering appeared in the page's numbered checkbox list
+further down (item boundaries and checkbox marks shuffled by one row).
+
+Full finfilings corpus (60 pages), --set lines.cell_pairing=1:
+  end-to-end   CER 12.968%  (gate: < 13.161)   PASS
+  line-matched CER 10.744%  (gate: < 12.290)   PASS
+  (control, prior session: end-to-end 13.161%, line-matched 12.290%)
+
+bench/pages-cov (625 pages), --set lines.cell_pairing=1:
+  end-to-end   CER  6.987%  (gate: <= 6.114, control 6.064%)   FAIL
+  line-matched CER  6.930%
+Worst-page list is dominated by the corpus's "twins" (two-column
+synthetic) category and other narrow/technical layouts (e.g.
+stix-two-math regular twins 14px 38.41%, open-sans-condensed light
+twins 14px 34.06%), consistent with the same column-adjacency ambiguity
+diagnosed on r000407: pages-cov's synthetic two-column layouts hit the
+same failure mode as a dense real-world field list.
+
+--- Step 4: decision -----------------------------------------------------
+
+finfilings gate: PASS. bench/pages-cov gate: FAIL (6.987% > 6.114%).
+Both gates must pass to ship as default. Per the task's contingency,
+default stays 0 (today's behaviour). No change to Params::DEFAULT or
+model/params.tsv's default value; lines.cell_pairing remains an
+off-by-default, guess-labelled escape hatch (--set lines.cell_pairing=1)
+for further algorithmic work, not shipped as the default pipeline
+behaviour.
+
+No further model/ocr.exe rebuild was needed since the compiled default
+was never changed (all measurement runs above used the --set override,
+never a default flip).
+
+--- Step 5 -----------------------------------------------------------
+
+This file is the complete reading log for the 2026-09-23 cell-pairing
+investigation. docs/ARCHITECTURE.md was not edited. Scratch files under
+target/runtime-diag/ (per-page --raw diffs, full-corpus run outputs) were
+deleted after this file was written.
