@@ -35,7 +35,7 @@
 use crate::confidence;
 use crate::decode::viterbi::{self, Cand, Hyp, Tables, WordLattice};
 use crate::image::{binarize, components, deskew};
-use crate::layout::{lines, segment, words};
+use crate::layout::{lines, segment, underline, words};
 use crate::ocrw::Model;
 use crate::Error;
 
@@ -191,7 +191,7 @@ impl Engine {
         //    rejected whole.
         let line_p = p.lines();
         let (labels, comps) = if line_p.underline_strip {
-            let stripped = lines::strip_underlines(&mut mask, page.width, page.height, &line_p);
+            let stripped = underline::strip_underlines(&mut mask, page.width, page.height, &line_p);
             (stripped.labels, stripped.components)
         } else {
             let (labels, count) =
