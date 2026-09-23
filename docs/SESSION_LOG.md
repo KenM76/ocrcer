@@ -832,3 +832,81 @@ Two questions for Ken, newly recorded this filing: whether "commit after
 each passing change" extends to his other project trees, and the still-open
 `rustfmt` pass go/no-go. Clippy's 45 warnings are recorded as report-only,
 no action requested.
+
+---
+
+## 2026-09-23 — Chunk 9, continued further still: worst-pages round 2 diagnosed, line-fusion fix ships (largest real-filings gain to date)
+
+**Request:** re-diagnose the worst `finfilings` pages against the
+`merge_overlap_frac=0.4` control from the prior continuation, and act on
+whatever that diagnosis found.
+
+**Reconnaissance performed.** A targeted re-diagnosis of the (then) three
+worst pages — `r000583`, `r000308`, `r000363` — rather than a corpus-wide
+sweep, in `docs/measurements/2026-09-23_worst_pages_round2.md`.
+
+**The finding that split one page into two mechanisms.** `r000583`
+(40.63% CER) is the same serif-bbox-chaining defect as before, worked down
+from 54.66% by the earlier `merge_overlap_frac` fix but not resolved — its
+tightest chains, where one component's ink genuinely sits mostly inside the
+other's column range, clear the "always merges" branch a fraction threshold
+cannot gate. `r000308` (34.45%) and `r000363` (32.27%) turned out to be a
+different, previously undocumented mechanism: `group_with_bands` fuses two
+ordinary, cleanly-separated body-text lines into one x-interleaved band
+whenever a document's leading is tight enough (~1.7 x-heights here, against
+`r000583`'s ~2.0–2.2). Reading order was ruled out on all three pages by
+direct comparison of end-to-end and line-matched CER. The mechanism
+survives the existing two-baseline split pass, and rather than write a
+fourth new rule, the diagnosis named finding out *why the split pass
+doesn't fire* as the next step.
+
+**The finding that explained the miss and the fix that followed from it.**
+The split test's valley search excluded a fixed 2-pixel-row margin around
+each candidate baseline peak — a raw pixel count, not scaled to type size.
+At this corpus's body sizes, descenders (`g p q y j`) reach several pixels
+past their own baseline, past that fixed margin, and were being counted as
+ink inside the valley, hiding genuine two-line fusions from the split test.
+Fix: scale the margin to the line's own x-height
+(`lines.baseline_split_valley_margin`, 0.0 = legacy fixed margin, the off
+switch). Screened at {0.3, 0.4, 0.6, 0.7} on the two known-fused pages (0.3
+won both), then gated full-corpus on both standing corpora.
+
+**Shipped, and the largest single gain on the real-filings corpus to
+date.** `finfilings` end-to-end CER 16.089%→**13.161%**, line-matched CER
+15.910%→**12.290%** — both pass their gates by roughly 3 points, not
+fractions of one. `pages-cov` moved from 6.057% to 6.064%, a 0.007-point
+loss inside the 0.05 no-worse tolerance and recorded as a loss, not
+silently absorbed, per rule 8. `lines.baseline_split_valley_margin` ships
+at 0.3, provenance `measured`.
+
+**New controls for every later gate: `finfilings` end-to-end CER 13.161,
+line-matched CER 12.290; `pages-cov` CER 6.064.**
+
+**A disk correction, not independently re-verified here (no shell in this
+filing dispatch):** D: is reported at **273 GB free** after an outside
+cleanup — supersedes the prior two sessions' "38 GB" and "~10 GB" figures,
+both themselves unverified. The margin is now wide enough that disk
+pressure is no longer read as a live constraint, but the next session with
+a shell should still confirm before relying on it.
+
+**Delivered:** two dated entries in `ARCHITECTURE.md` §11 ("Worst pages,
+round 2" and "Line fusion fix"); `docs/measurements/2026-09-23_worst_pages_round2.md`,
+`_line_fusion_fix.txt`; `lines.baseline_split_valley_margin` in
+`crates/ocrcer-core/src/params.rs` / `model/params.tsv`, shipped at 0.3; a
+new `personal_rag/ocr` lesson on fixed-pixel margins near a profile valley
+needing to scale with x-height, filed this session by `ocrcer-librarian`.
+
+**Open, carried forward, reprioritised:** the worst `finfilings` pages are
+unknown again at the new 0.3 control and need re-listing before a third
+rule is proposed — `r000583`'s unresolved bbox-chaining residual is
+expected to stay near the top since this fix didn't touch it, but that is
+a carried expectation, not yet re-measured; `baseline_split_valley_margin`
+below 0.3 (0.2, 0.25) was not screened; non-vertical/contour cuts and a
+width-scaled `max_splits` for `r000583`'s residual chains; the small
+checkbox/form-field fragmentation named on `r000308`; and everything
+already carried forward from earlier today (the dense-table trace, italic,
+ligature share, the lone-guard diff, `baseline_split_sep`/`support`
+(a distinct, still-unswept pair from the earlier merged-line fix),
+`rule_aspect` re-measurement, the `ocrs` head-to-head, SROIE,
+recognition-gated chopping research, ALTO/hOCR output, the `rustfmt` pass,
+and the `/usage` calibration — now six sessions).

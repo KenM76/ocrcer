@@ -482,6 +482,89 @@ swept full-corpus, 0.5/0.7 only on the one-page screen).
 **Token spend:** not measured against `/usage` this continuation either;
 the calibration debt is carried forward again, now across five sessions.
 
+**Measured 2026-09-23, continued once more — worst pages round 2
+diagnosed, line-fusion fix ships, largest single gain on the real-filings
+corpus to date.** Full narrative: `ARCHITECTURE.md` §11, the two entries
+"Worst pages, round 2" and "Line fusion fix:
+`lines.baseline_split_valley_margin` 0.3, measured"; evidence in
+`docs/measurements/2026-09-23_worst_pages_round2.md`,
+`_line_fusion_fix.txt`.
+
+- **Worst-pages round 2, diagnostic only, no default changed.** Re-diagnosed
+  the three worst `finfilings` pages at the `merge_overlap_frac=0.4`
+  control (finfilings 16.089%/15.910%, pages-cov 6.057%). `r000583`
+  (40.63% CER) is the same serif-bbox-chaining mechanism as before, worked
+  down from 54.66% by the prior fix but not resolved — its tightest chains,
+  where one component's ink genuinely sits mostly inside the other's column
+  range, clear the "always merges" branch a fraction threshold cannot gate,
+  and a fixed 3-cut budget with vertical-only cuts cannot separate a
+  7-letter chain. `r000308` (34.45%) and `r000363` (32.27%) are a
+  **different, previously undocumented mechanism**: `group_with_bands`
+  fuses pairs of ordinary, cleanly-separated body-text lines into one
+  x-interleaved band on this document's tight leading (~1.7 x-heights,
+  against `r000583`'s ~2.0–2.2). Reading order ruled out on all three pages
+  (line-matched ≈ end-to-end). This mechanism survives the existing
+  `lines.baseline_split=1` two-baseline split post-pass; the diagnosis
+  named finding out *why the split pass doesn't fire* as the next step,
+  preferring a fix to the split pass over a new rule. A smaller checkbox/
+  form-field column-cut fragmentation was also named on `r000308` (well
+  under 10% of that page's characters, not the driver).
+- **Root cause of the split-pass miss, found and fixed the same session.**
+  `split_point`'s valley test excluded a fixed 2-pixel-row margin around
+  each candidate baseline peak — not scaled to type size. At body sizes a
+  line's own descenders (`g p q y j`) reach several pixels past baseline,
+  past that fixed margin, and were counted as ink inside the valley, hiding
+  genuine two-line fusions from the split test. **Shipped:
+  `lines.baseline_split_valley_margin`, default 0.3, provenance measured**
+  (0.0 keeps the legacy fixed margin as an off switch). Screened first at
+  {0.3, 0.4, 0.6, 0.7} on the two known-fused pages (0.3 best: `r000308`
+  34.45%→14.50%, `r000363` 32.27%→18.90%), then gated full-corpus on both
+  standing corpora: `finfilings` end-to-end CER 16.089%→**13.161%**,
+  line-matched 15.910%→**12.290%** (passes by 2.928pp and 3.620pp
+  respectively); `pages-cov` CER 6.057%→6.064% (+0.007, within the 0.05
+  no-worse tolerance, recorded as a small loss per rule 8, not silently
+  absorbed). **This is the largest single gain on the real-filings corpus
+  to date.**
+- **New controls for later gates: `finfilings` end-to-end CER 13.161,
+  line-matched CER 12.290; `pages-cov` CER 6.064.** Session started this
+  leg at 16.089/15.910/6.057. Margin values below 0.3 were not screened —
+  queued next.
+- **Worst pages are now unknown at the new control** and need re-listing
+  before a third rule is proposed; `r000583`'s residual bbox-chaining
+  mechanism is expected to remain near the top since this fix did not touch
+  it, but that is a carried expectation, not yet re-measured.
+
+**Disk, corrected this filing.** The prior entry's "99% full, ~10 GB free"
+figure is **superseded**: D: now shows **273 GB free**, reported after an
+outside cleanup — not from any build-directory deletion recorded in this
+project's own sessions. Still not independently re-verified by this filing
+(no shell in this dispatch); the next session with a shell should confirm
+before relying on it, though the margin is now wide enough that disk space
+is no longer read as the live constraint the prior two sessions' readings
+implied.
+
+**Open, carried forward, reordered by priority per this filing's brief:**
+(1) re-list the worst `finfilings` pages against the new 0.3 control; (2)
+sweep `baseline_split_valley_margin` below 0.3 (0.2, 0.25) — not yet
+screened; (3) `r000583`'s residual bbox-chaining/serif mechanism —
+candidate fixes are non-vertical (drop-fall/contour-following) cuts and a
+width-scaled `max_splits`, queued since 2026-09-22's research, now with two
+consecutive worst-page diagnoses pointing at the same page; (4) the small
+checkbox/form-field column-cut fragmentation named on `r000308` (well under
+10% of that page, not urgent). Then the existing queue, unchanged in kind:
+`filing__r000022`'s dense-table trace; italic; the ligature error-share
+count on the bold bank; the lone-guard per-page diff;
+`baseline_split_sep`/`support` (a different pair of constants, from the
+earlier merged-line fix, still unswept); `lines.rule_aspect`
+re-measurement; the `ocrs` head-to-head, stale; SROIE not re-run;
+recognition-gated chopping (research only); ALTO/hOCR underline output
+(awaiting Ken's go); the one-time `rustfmt` pass (awaiting Ken's go); the
+`/usage` calibration, now six sessions outstanding; and whether "commit
+after each passing change" extends to Ken's other project trees.
+
+**Token spend:** not measured against `/usage` this continuation either;
+the calibration debt is carried forward again, now across six sessions.
+
 ---
 
 ## Next up
