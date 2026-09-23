@@ -6123,3 +6123,22 @@ affects only a rejected value.
 New controls: finfilings 16.089 / 15.910, pages-cov 6.057. Not measured on
 the full corpus: 0.35, 0.45 and 0.5. The one-page screen showed 0.5 slightly
 worse than 0.3 there.
+
+### 2026-09-23 — Worst pages, round 2: whole-line fusion on tight leading is the next target
+
+Measured in `docs/measurements/2026-09-23_worst_pages_round2.md`. r000583
+(40.63%) is the same serif-chaining mechanism as before, just smaller now.
+r000308 (34.45%) and r000363 (32.27%) are a different one. Line grouping
+fuses two ordinary adjacent text lines into one band. On r000308, 4 fused
+bands hold 26% of the page's components. On r000363, the fused bands'
+x-height reads about 26px against a true 13px. Word splitting then sees two
+interleaved rows and finds no gaps. Reading order is ruled out on all three
+pages (line-matched equals end-to-end).
+
+This mechanism survives the two-baseline split post-pass
+(`lines.baseline_split = 1`). Next experiment: find out why that split does
+not fire on these bands. The candidates are the separation or support
+thresholds (both guesses), or the band's shape. Fix whichever it is,
+preferring the split pass over a new rule. Gates are unchanged against the
+current controls: beat finfilings 16.089 / 15.910, and keep pages-cov
+within 0.05 of 6.057.
