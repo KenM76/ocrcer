@@ -1,0 +1,77 @@
+# Line fusion fix: lines.baseline_split_valley_margin
+
+Mechanism named in docs/measurements/2026-09-23_worst_pages_round2.md,
+section (b)/(c): `split_point`'s valley test used a fixed two-bin margin
+around each baseline peak that does not scale with type size. At this
+corpus's body size, a peak's own descenders (g p q y j) land several
+pixels past its own baseline -- more than two bins -- and were counted as
+valley evidence of a third line between two real ones, hiding genuine
+two-line fusions from `split_baselines`'s split test. Fix: scale the
+margin to `baseline_split_valley_margin * median_body` (0.0 = legacy fixed
+two-bin margin, the off switch).
+
+Diagnostic instrumentation (`OCRCER_DEBUG_SPLIT`-gated eprintln!s in
+`split_baselines`/`split_point`) was used to confirm the mechanism directly
+on filing__r000308's three largest fused bands and has been removed from
+the shipped code; see git history for the working-tree diff this document
+describes, not any remaining code.
+
+## Screening: two known-fused pages only
+
+Command: `./target/release/ocr.exe model/out/ocrcer.ocrw <page> --only
+filing__rXXXXXX --set lines.baseline_split_valley_margin=<v>`, one page per
+process.
+
+Control (margin 0.0, i.e. unset/legacy):
+  r000308 end-to-end CER 34.45%
+  r000363 end-to-end CER 32.27%
+
+| margin | r000308 CER | r000363 CER |
+|--------|-------------|--------------|
+| 0.3    | 14.50%      | 18.90%       |
+| 0.4    | slightly worse than 0.3 (not separately logged) |
+| 0.6    | slightly worse than 0.3 (not separately logged) |
+| 0.7    | slightly worse than 0.3 (not separately logged) |
+
+0.3 was the best of {0.3, 0.4, 0.6, 0.7} on both pages. Chosen as the sole
+candidate for the full-corpus gate run.
+
+## Full-corpus gate: finfilings
+
+Command: `./target/release/ocr.exe model/out/ocrcer.ocrw
+D:/Dev/ExcludedPrivate/ocrcer/pages/finfilings --set
+lines.baseline_split_valley_margin=0.3`
+
+Control (shipped default before this fix, margin 0.0):
+  end-to-end CER 16.089%
+  line-matched CER 15.910%
+
+Result at margin 0.3 (60 of 60 pages, no STALE):
+  end-to-end   CER 13.161%  WER 30.634%  recall 76.871%  precision 75.572%  F1 76.216%
+  line-matched CER 12.290%  (reading-order-independent)
+
+Gate: end-to-end < 16.089 AND line-matched < 15.910 -- PASSES, by a wide
+margin (2.928pp and 3.620pp respectively). No second value needed.
+
+## Full-corpus gate: bench/pages-cov
+
+Command: `./target/release/ocr.exe model/out/ocrcer.ocrw bench/pages-cov
+--set lines.baseline_split_valley_margin=0.3`
+
+Control: CER 6.057%, F1 77.392%
+
+Result at margin 0.3:
+  end-to-end   CER 6.064%  WER 26.682%  recall 78.002%  precision 77.052%  F1 77.524%
+  line-matched CER 6.064%  (reading-order-independent)
+
+Gate: CER <= 6.107 (control + 0.05, the no-worse-by-0.05 tolerance this
+file's neighbours use) -- PASSES (6.064 <= 6.107, +0.007pp against
+control, within noise).
+
+## Outcome
+
+Shipped. `lines.baseline_split_valley_margin` default changed from 0.0
+(guess/off) to 0.3 (measured), in `crates/ocrcer-core/src/params.rs` and
+`model/params.tsv`. Model rebuilt (`model/out/ocrcer.ocrw`) and
+`ocrcer-bench`/`ocr.exe` rebuilt against it; full test suite and the
+wasm32-unknown-unknown build re-verified after the default change.

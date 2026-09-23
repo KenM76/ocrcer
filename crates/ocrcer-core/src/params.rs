@@ -78,6 +78,7 @@ pub struct Lines {
     pub baseline_split: u32,
     pub baseline_split_sep: f32,
     pub baseline_split_support: f32,
+    pub baseline_split_valley_margin: f32,
     pub rule_run_heights: f32,
     pub debris_heights: f32,
     pub thin_debris_heights: f32,
@@ -219,6 +220,12 @@ impl Params {
             baseline_split_sep: 0.6,
             // Guess, same entry.
             baseline_split_support: 0.25,
+            // Measured, `ARCHITECTURE.md` section 11, 2026-09-23 ("Line
+            // fusion fix"): finfilings end-to-end CER 16.089 -> 13.161,
+            // line-matched 15.910 -> 12.290; pages-cov CER 6.057 -> 6.064
+            // (within the no-worse-by-0.05 gate). See
+            // docs/measurements/2026-09-23_line_fusion_fix.txt.
+            baseline_split_valley_margin: 0.3,
             // Measured, `ARCHITECTURE.md` section 11, 2026-09-23
             // ("Underlines are stripped from the pixels of over-wide
             // components"): `ocrcer-build aspect` (extended 2026-09-23)
@@ -402,6 +409,7 @@ impl Params {
             "lines.column_gap_heights" => &mut self.lines.column_gap_heights,
             "lines.baseline_split_sep" => &mut self.lines.baseline_split_sep,
             "lines.baseline_split_support" => &mut self.lines.baseline_split_support,
+            "lines.baseline_split_valley_margin" => &mut self.lines.baseline_split_valley_margin,
             "lines.rule_run_heights" => &mut self.lines.rule_run_heights,
             "lines.debris_heights" => &mut self.lines.debris_heights,
             "lines.thin_debris_heights" => &mut self.lines.thin_debris_heights,
@@ -465,7 +473,7 @@ impl Params {
 
     /// Every name this build understands, for a loader that wants to report
     /// which ones a file left at their defaults.
-    pub const NAMES: [&'static str; 63] = [
+    pub const NAMES: [&'static str; 64] = [
         "binarize.window",
         "binarize.k",
         "binarize.r",
@@ -487,6 +495,7 @@ impl Params {
         "lines.baseline_split",
         "lines.baseline_split_sep",
         "lines.baseline_split_support",
+        "lines.baseline_split_valley_margin",
         "lines.rule_run_heights",
         "lines.debris_heights",
         "lines.thin_debris_heights",
@@ -577,7 +586,7 @@ fn find_changed_u32(before: &Params, after: &Params) -> f32 {
     f32::NAN
 }
 
-fn f32_fields(p: &Params) -> [f32; 49] {
+fn f32_fields(p: &Params) -> [f32; 50] {
     [
         p.binarize.k,
         p.binarize.r,
@@ -596,6 +605,7 @@ fn f32_fields(p: &Params) -> [f32; 49] {
         p.lines.column_gap_heights,
         p.lines.baseline_split_sep,
         p.lines.baseline_split_support,
+        p.lines.baseline_split_valley_margin,
         p.lines.rule_run_heights,
         p.lines.debris_heights,
         p.lines.thin_debris_heights,
@@ -685,6 +695,7 @@ impl Params {
             baseline_split: self.lines.baseline_split != 0,
             baseline_split_sep: self.lines.baseline_split_sep,
             baseline_split_support: self.lines.baseline_split_support,
+            baseline_split_valley_margin: self.lines.baseline_split_valley_margin,
             rule_run_heights: self.lines.rule_run_heights,
             debris_heights: self.lines.debris_heights,
             thin_debris_heights: self.lines.thin_debris_heights,

@@ -210,6 +210,30 @@ pub struct Params {
     ///
     /// A guess, on the chunk-8 list.
     pub baseline_split_support: f32,
+    /// How many bins on either side of each baseline peak
+    /// [`split_point`]'s valley sum skips, as a fraction of the band's
+    /// median body height. `0.0` keeps the historical fixed two-bin margin.
+    ///
+    /// `ARCHITECTURE.md` section 11, 2026-09-23 ("Line fusion fix"): a fixed
+    /// two-bin margin is a pixel count, not a fraction of anything, so it
+    /// does not scale with type size. On real prose at this corpus's body
+    /// size, a peak's own descenders (`g p q y j`) reach several pixels
+    /// below their own baseline -- well past two bins -- and their weight
+    /// then falls inside the valley window and is counted as evidence of a
+    /// third baseline rather than recognised as the peak's own ink; a
+    /// second baseline's own leading edge shows the mirror case, landing a
+    /// couple of bins short of its own peak. Both pollute the valley sum
+    /// that is supposed to measure the empty gap between two real lines,
+    /// and on real filings text this alone was enough to fail
+    /// [`Params::baseline_split_support`]'s valley test on genuine
+    /// two-line fusions. Scaling the margin with the band's own median body
+    /// height, the same scale [`Params::baseline_split_sep`] already reads
+    /// distance between peaks against, keeps each peak's own descender
+    /// population out of its neighbour's evidence instead of only working
+    /// at one specific type size. A guess, on the chunk-8 list; `0.0` is the
+    /// off switch that reproduces the shipped-before-this-fix margin
+    /// exactly.
+    pub baseline_split_valley_margin: f32,
 
     /// The run floor for [`crate::layout::underline::strip_underlines`], as a multiple of the page's
     /// median glyphish-component height. Only a component whose width is at
@@ -1145,10 +1169,13 @@ fn band_from(members: Vec<usize>, components: &[Component]) -> Band {
 /// enough and it is baseline wobble on one line, not a second one. A split
 /// fires only when the secondary peak's support is at least
 /// [`Params::baseline_split_support`] of the primary's, *and* the weight
-/// strictly between the two peaks' immediate (±1 bin) neighbourhoods is no
-/// more than that same fraction of the secondary peak's support -- a real
-/// valley between them, not a populated slope. The cut is the midpoint
-/// between the two peaks.
+/// strictly between the two peaks' immediate neighbourhoods -- a margin of
+/// [`Params::baseline_split_valley_margin`] times `median_body` on each side,
+/// scaled with type size rather than a fixed bin count so a peak's own
+/// descenders are not counted as evidence of a line between it and its
+/// neighbour -- is no more than that same fraction of the secondary peak's
+/// support: a real valley between them, not a populated slope. The cut is
+/// the midpoint between the two peaks.
 fn split_point(body: &[&Component], median_body: u32, p: &Params) -> Option<f32> {
     if body.len() < 2 || median_body == 0 {
         return None;
@@ -1180,7 +1207,17 @@ fn split_point(body: &[&Component], median_body: u32, p: &Params) -> Option<f32>
     }
 
     let (a, b) = (i1.min(i2), i1.max(i2));
-    let valley: u64 = if b >= a + 4 { hist[a + 2..=b - 2].iter().sum() } else { 0 };
+    // A fixed two-bin margin (`0.0`) reproduces the historical behaviour
+    // exactly; see [`Params::baseline_split_valley_margin`] for why a
+    // scaled margin is the fix.
+    let margin = if p.baseline_split_valley_margin > 0.0 {
+        ((f64::from(p.baseline_split_valley_margin) * f64::from(median_body)).round() as usize)
+            .max(1)
+    } else {
+        2
+    };
+    let valley: u64 =
+        if b >= a + 2 * margin { hist[a + margin..=b - margin].iter().sum() } else { 0 };
     if (valley as f64) > f64::from(p.baseline_split_support) * (support2 as f64) {
         return None;
     }
@@ -1693,6 +1730,46 @@ mod tests {
         for b in &out {
             assert_eq!(b.members.len(), 5);
         }
+    }
+
+    /// The mechanism `baseline_split_valley_margin` fixes (`ARCHITECTURE.md`
+    /// section 11, 2026-09-23, "Line fusion fix"): a fixed two-bin valley
+    /// margin does not scale with type size, so a peak's own descenders --
+    /// landing a few pixels past its own baseline, more than two bins away
+    /// -- get counted as evidence of a third baseline between two real
+    /// lines rather than recognised as the first line's own ink. The
+    /// legacy fixed margin (`0.0`) reproduces the fusion on this input; a
+    /// margin scaled to `median_body` sees past the descender tail and
+    /// splits correctly.
+    #[test]
+    fn a_descender_tail_no_longer_hides_a_real_two_line_fusion() {
+        let mut comps = Vec::new();
+        for k in 0..5u32 {
+            comps.push(c(1 + k, 10 + k * 15, 22, 10, 18)); // line 1 body, y1 = 40
+        }
+        // Line 1's own descenders, a few pixels past its own baseline --
+        // well beyond the historical two-bin margin, but still line 1's
+        // ink, not evidence of a line between it and line 2.
+        comps.push(c(20, 200, 25, 10, 18)); // y1 = 43
+        comps.push(c(21, 220, 25, 10, 18)); // y1 = 43
+        comps.push(c(22, 240, 26, 10, 18)); // y1 = 44
+        comps.push(c(23, 260, 26, 10, 18)); // y1 = 44
+        for k in 0..5u32 {
+            comps.push(c(30 + k, 10 + k * 15, 46, 10, 18)); // line 2 body, y1 = 64
+        }
+
+        let fixed_margin = Params { baseline_split_valley_margin: 0.0, ..Params::default() };
+        let out = split_baselines(band_of(&comps), &comps, &fixed_margin);
+        assert_eq!(out.len(), 1, "the legacy fixed two-bin margin must reproduce the fusion");
+
+        let scaled_margin = Params { baseline_split_valley_margin: 0.3, ..Params::default() };
+        let out = split_baselines(band_of(&comps), &comps, &scaled_margin);
+        assert_eq!(
+            out.len(),
+            2,
+            "a margin scaled to type size must see past the descender tail and split"
+        );
+        assert!(out[0].y1 < out[1].y1, "upper band must come first");
     }
 
     /// A mixed-case line with a descender must not split: the descender's
