@@ -620,3 +620,119 @@ independently locate in any 2026-09-23 source — flagged in `ROADMAP.md`
 rather than silently resolved either way.
 
 - 2026-09-23 (architect): the DejaVu Serif / Bitstream Vera question is **withdrawn as unverified**. It came from a session summary, with no measurement or record behind it. Reopen only if a font audit of the filings finds the face. This supersedes ROADMAP open question 7.
+
+---
+
+## 2026-09-23 — First git commits, underline-strip debris diagnosis, split gate ships, underline strip ships
+
+**Request:** continue chunk 9 from the merged-line/bold-weight state recorded
+earlier today — diagnose why the underline-strip rule was still failing its
+real-filings gate, resolve the `0$` touching-atom threshold miss on
+`filing__r000022`, and, once Ken approved it, make the project's first git
+commits.
+
+**Delivered:** `lines.thin_debris_heights` (rule 2 part 3b, the strip-debris
+width+height gate); `segment.split_min_x_heights` 1.15 → 1.09; underline
+strip shipped (`lines.underline_strip` = 1); underline code moved out of
+`lines.rs` into `layout/underline.rs`; a fixed params-census swap bug in the
+build report; five git commits; four new `personal_rag/ocr` lessons.
+
+**The finding that closed the underline-strip regression.** Two rules had
+already failed the real-filings gate (`ARCHITECTURE.md` §11, the "fails the
+real-filings gate" entries). The trace that finally explained it: erasing a
+bordered box's rules correctly removed the furniture, but the box's own
+left/right sides survived the strip as new components 10–22× the line
+height tall — too narrow for the existing width-keyed furniture filter,
+too short for the existing height-keyed debris filter. Tallest-first line
+grouping then seeded a band on the sliver and fused two real prose lines
+(89→69 lines on one page, 91→72 on another), which read, before the trace,
+as unrelated broad letter deletions. Fixed with a joint width-and-height
+gate on strip-produced pieces specifically (`lines.thin_debris_heights`,
+base value measured at 3.4288 from the shipped font bank, ×1.5 headroom a
+labelled guess). Filed as
+`personal_rag/ocr/lesson_20260923_strip_debris_thin_slivers_need_width_and_height_gate.md`
+— generalises past this project: a pixel-erasure pass's own frame is
+exactly the shape its debris filter needs a joint test for.
+
+**The `0$` atom turned out to be a threshold miss, not a segmentation-design
+gap.** The 11px-wide touching-glyph atom on `filing__r000022` never reached
+the cut-candidate search at all — `segment.split_min_x_heights` (1.15) ×
+x-height (10) gated it out before a profile was even computed. Computed for
+diagnosis, the profile had an unambiguous valley the existing rule would
+have cut correctly. Swept {1.0, 0.85, 1.09} against both `finfilings` and
+`pages-cov`: **1.0 won biggest on `finfilings`** (CER 17.064%→16.885%) **but
+failed the `pages-cov` gate** (CER 6.127%→6.330%, clean-text
+over-segmentation against a 0.05 tolerance). **1.09 passed both**:
+`finfilings` CER 17.064%→**16.932%**, line-matched 16.942%→16.843%, F1
+73.615%→74.047%; `pages-cov` CER 6.127%→**6.089%**, F1 77.392%→77.429%.
+1.09 rather than the more natural-looking 1.10, because `1.10f32` widens to
+`1.1000000238` in `f64` — `10 × 1.10 (widened)` is still `> 11.0`, so the
+11px atom would have missed its own gate under the strict `<` comparison.
+Two lessons filed: on the float-widening boundary miss, and on the general
+rule that a cut-search width gate needs both a real and a clean corpus in
+its own gate, not just the corpus that motivated the change.
+
+**Underline strip ships, measured at the 1.09 split gate.** `finfilings`
+CER 16.932%→**16.756%** (line-matched 16.843%→16.634%, F1
+74.047%→**74.405%**); `pages-cov` unchanged (6.089%/77.429%).
+`lines.underline_strip` = 1, provenance `measured`. Erased bands are now
+also recorded as `RuleSegment`s in the layout output — unconsumed by any
+output format yet, but this is the data Ken's ALTO/hOCR underline-
+preservation direction (recorded in `ARCHITECTURE.md` §11, not yet
+scheduled as a chunk) would read from. `r000583` is now the worst
+`finfilings` page at 54.66% CER, not examined this round.
+
+**A build-report bug was caught and fixed the same session.** The build
+report's params census had measured and authored figures swapped. Fixed;
+any earlier log or report quoting that census before the fix carries the
+swapped figures, not silently corrected retroactively.
+
+**Code health, checked this session and reported (not independently
+re-verified by the librarian filing — no shell in that dispatch):** 45
+`clippy` warnings (top lint `needless_range_loop`, 13 occurrences);
+`rustfmt` drift in 63 files against no committed `rustfmt.toml`; 1 `unwrap`
+and 11 `expect` in `ocrcer-core`, all reported as guarding internal
+invariants rather than untrusted input. A one-time `rustfmt` pass is
+recorded as pending Ken's call, not run.
+
+**A disk-pressure incident, reported this session:** D: hit 100% free space
+mid-session; an agent deleted two untracked scratch files (`aspect_err.txt`,
+`aspect_out.txt`) under that pressure, and stale `target/` build
+directories were cleaned. 38 GB free afterward is reported but not
+independently re-verified in this filing.
+
+**First git commits, approved by Ken.** The tree had been untracked through
+the previous session (`RESUME.md`: "zero commits, no remote"). Five commits
+now exist on `master`: `4c85f69` initial snapshot, `9436f50` LF line-ending
+pin plus binary-fixture marking, `a8a24be` split-gate ship, `f9dcd8f`
+underline-strip code moved into `layout/underline.rs`, `3772a41`
+underline-strip ship plus the build-report fix. `.gitattributes` pins LF
+everywhere (`* text=auto eol=lf`, plus explicit `binary` for
+`.pbm`/`.png`/`.ocrw`) specifically because fixtures are compared
+byte-for-byte and a checkout-time CRLF rewrite would change their hashes.
+**Standing rule from here forward: commit after each passing change,**
+recorded in `ROADMAP.md`'s Standing rules.
+
+**Delivered:** six dated entries in `ARCHITECTURE.md` §11 (underline-strip
+diagnosis and shipping, split-gate sweep);
+`docs/measurements/2026-09-23_underline_strip*.txt`,
+`_underline_strip_damage.md`,
+`_underline_r000055_and_touching_r000022.md`,
+`_split_gate_and_strip_3b.txt`; `lines.thin_debris_heights`,
+`segment.split_min_x_heights` (1.09), `lines.underline_strip` (1) in
+`crates/ocrcer-core/src/params.rs` / `model/params.tsv`;
+`crates/ocrcer-core/src/layout/underline.rs` (moved out of `lines.rs`); five
+git commits; four `personal_rag/ocr` lessons (strip-debris width+height
+gate, f32→f64 threshold widening, dual-corpus cut-search gating, Tesseract
+confidence-gated chopping as research). `cargo test --workspace --release`:
+304 tests, 0 failed.
+
+**Open, carried forward:** `filing__r000022`'s dense-table trace (still
+inferred, not pixel-verified); italic, now with `filing__r000583` as
+concrete worst-page evidence (54.66% CER); the ligature error-share count on
+the bold bank; the lone-guard per-page diff; `baseline_split_sep`/`support`
+unswept; `lines.rule_aspect` re-measurement; the `ocrs` head-to-head still
+stale; SROIE not re-run; recognition-gated chopping (Tesseract-style,
+unmeasured, research only); ALTO/hOCR underline formatting output (awaiting
+Ken's go to schedule); the `/usage` calibration still not run, now carried
+across four sessions; and the one-time `rustfmt` pass, pending Ken's call.

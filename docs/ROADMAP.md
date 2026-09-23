@@ -303,6 +303,108 @@ whether a *new* DejaVu Serif face is actually in question.
 **Token spend:** not measured against `/usage` this session; the
 calibration debt is carried forward again.
 
+**Measured 2026-09-23, continued — split gate, underline strip shipped,
+first git commits.** Full narrative: `ARCHITECTURE.md` §11, the six entries
+from "Underline strip fails the real-filings gate" through "Underline strip
+ships (rule 2 with part 3b)"; evidence in
+`docs/measurements/2026-09-23_underline_strip*.txt`,
+`_underline_strip_damage.md`, `_underline_r000055_and_touching_r000022.md`,
+`_split_gate_and_strip_3b.txt`.
+
+- **Two mechanisms diagnosed on the underline-strip regression.** Stripping
+  a bordered box's rules correctly erased the furniture but left the box's
+  sides behind as 10–22×h slivers that dodged both the width-based
+  furniture filter and the height-based debris filter; tallest-first line
+  grouping seeded a band on a sliver and fused two real prose lines (89→69
+  lines on one page). Fixed by a joint width-and-height debris gate on
+  strip-produced pieces (`lines.thin_debris_heights`, measured base value
+  3.4288, ×1.5 headroom a labelled guess). Separately, the `0$` touching-atom
+  case on `filing__r000022` turned out to be a threshold problem, not a
+  cutting-technique problem — the valley existed but the search gate never
+  ran at that width. Lesson filed:
+  `personal_rag/ocr/lesson_20260923_strip_debris_thin_slivers_need_width_and_height_gate.md`.
+- **Split gate `segment.split_min_x_heights` 1.15 → 1.09, measured.**
+  Swept {1.0, 0.85, 1.09} against both corpora. 1.0 won biggest on
+  `finfilings` (CER 17.064%→16.885%) but **failed pages-cov** (CER
+  6.127%→6.330%, over-segmentation on clean text, against a 0.05 gate).
+  **1.09 passes both**: `finfilings` CER 17.064%→**16.932%** (line-matched
+  16.942%→16.843%, F1 73.615%→74.047%); `pages-cov` CER 6.127%→**6.089%**
+  (F1 77.392%→77.429%). 1.09 rather than the more natural 1.10 because
+  `1.10f32` widens to `1.1000000238` in `f64`, which would still reject the
+  11px `0$` atom under the strict `<` gate. Two lessons filed:
+  `personal_rag/ocr/lesson_20260923_f32_to_f64_widening_moves_threshold_boundaries.md`,
+  `personal_rag/ocr/lesson_20260923_gate_a_cut_search_width_change_on_both_corpora.md`.
+  Recognition-gated chopping (Tesseract chops only the least-confident blob
+  and undoes non-improving chops) is recorded as the next candidate if a
+  plain width gate stops passing both corpora — **not measured**, research
+  only (`docs/measurements/2026-09-22_research_classical_techniques.md`
+  addendum; lesson
+  `personal_rag/ocr/lesson_20260923_tesseract_chops_only_low_confidence_blobs_and_undoes_non_improving_ones.md`).
+- **Underline strip ships (rule 2 with part 3b), measured at the 1.09 split
+  gate.** `finfilings` CER 16.932%→**16.756%** (line-matched
+  16.843%→16.634%, F1 74.047%→**74.405%**); `pages-cov` unchanged
+  (6.089%/77.429%). `lines.underline_strip` = 1, provenance `measured`.
+  Erased bands are also now recorded as `RuleSegment`s in the layout output
+  — not yet surfaced in any output format, but this is what the ALTO/hOCR
+  underline-preservation direction (raised by Ken, recorded in
+  `ARCHITECTURE.md` §11, not yet scheduled) would consume.
+- **New controls for later gates:** `finfilings` F1 **74.405**, CER
+  **16.756**, line-matched **16.634**; `pages-cov` F1 **77.429**, CER
+  **6.089**.
+- **Underline-strip code moved out of `lines.rs` into
+  `layout/underline.rs`, a pure move** (no behaviour change). `cargo test
+  --workspace --release`: **304 tests, 0 failed.**
+- **Build report bug fixed:** the params census in the build report had
+  measured and authored figures swapped. Fixed same session. Any earlier
+  log or report quoting that census before the fix carries the swapped
+  figures — not retroactively corrected here.
+- **`r000583` is now the worst `finfilings` page at 54.66% CER**, having
+  been overtaken by the fixes above; not examined this round.
+
+**Code-health snapshot, 2026-09-23 (reported this session; not
+independently re-run by `ocrcer-librarian` — no shell available in this
+dispatch to verify clippy/rustfmt output directly):** 45 `clippy` warnings
+(top single lint: `needless_range_loop`, 13 occurrences); `rustfmt` drift in
+63 files (no `rustfmt.toml` committed, so there is no pinned style to drift
+from yet); 1 `unwrap` and 11 `expect` in `ocrcer-core`, all reported as
+guarding internal invariants rather than untrusted input. **A one-time
+`rustfmt` pass is pending Ken's decision** — see *Open questions for the
+operator* below.
+
+**Disk-pressure incident, reported this session, not independently
+re-verified:** D: hit 100% free space mid-session; an agent deleted two
+untracked scratch files (`aspect_err.txt`, `aspect_out.txt`) under that
+pressure, and stale `target/` build directories were cleaned. 38 GB free is
+reported as the result — this figure is **unverified from here** (no shell
+available in this dispatch to run a disk-space check); the next session
+with a shell should confirm before relying on it as free headroom.
+
+**First git commits, approved by Ken 2026-09-23.** The repository was
+untracked through 2026-09-22 (per the earlier `RESUME.md`, "zero commits,
+no remote, every file untracked"); five commits now exist on `master`:
+`4c85f69` initial snapshot, `9436f50` LF line-ending pin + binary fixture
+marking, `a8a24be` split-gate ship, `f9dcd8f` underline-strip code move,
+`3772a41` underline-strip ship + build-report fix. `.gitattributes` pins
+`* text=auto eol=lf` (plus explicit `binary` for `.pbm`/`.png`/`.ocrw`)
+specifically because fixtures are compared byte-for-byte and a
+checkout-time CRLF rewrite would change their hashes. **Standing rule from
+here forward: commit after each passing change** — see *Standing rules*
+below.
+
+**Queued, carried forward:** `filing__r000022`'s dense-table trace (9% of
+sampled deletions, still inferred not pixel-verified); italic, still queued,
+with `filing__r000583` now the concrete worst-page evidence at 54.66% CER;
+a ligature error-share count on the bold bank; the lone-guard per-page
+diff; `baseline_split_sep`/`support` unswept; `lines.rule_aspect`
+re-measurement; the `ocrs` head-to-head still stale; SROIE not re-run;
+recognition-gated chopping (above, unmeasured); ALTO/hOCR underline
+formatting output from the new `RuleSegment` data (awaiting Ken's go to
+schedule it as a chunk); DejaVu Serif still withdrawn per the architect's
+2026-09-23 note below.
+
+**Token spend:** not measured against `/usage` this continuation either;
+the calibration debt is carried forward again, now across four sessions.
+
 ---
 
 ## Next up
@@ -564,6 +666,13 @@ this entry decides by adding a line to `charset.tsv`.
    DejaVu Sans and the wording drifted. Needs a direct answer from Ken or
    the next session before it is filed either way.
 
+8. **A one-time `rustfmt` pass, raised 2026-09-23.** The code-health
+   snapshot found `rustfmt` drift in 63 files against no committed
+   `rustfmt.toml`; a one-time formatting pass is pending Ken's call before
+   it is run, per the `CLAUDE.md` global rule against commissioning a
+   fan-out "to bring files to a standard" without a plan for how that pass
+   is reviewed. Not run this session.
+
 **Decided 2026-09-22: declined**, and not on cost. Measured across the 19
 shippable faces, three of them draw U+2212 and U+002D as the same outline and a
 fourth reverses the width cue, so no authored rule separates the two. The
@@ -578,3 +687,9 @@ ground-truth normalisation that has to be declared in the report. See
 Chunks are capped at roughly 1.5 M billable tokens. Implementation runs on
 Sonnet subagents; Opus decides and reviews. A gate that did not pass means the
 chunk is not done, and saying so is the cheapest thing in the project.
+
+**Under git since 2026-09-23, first commits approved by Ken.** `.gitattributes`
+pins `* text=auto eol=lf` (LF everywhere) because fixtures are compared
+byte-for-byte and a checkout-time CRLF rewrite would change their hashes;
+`.pbm`/`.png`/`.ocrw` are also marked binary explicitly. **Commit after each
+passing change from here forward** — not batched at session end.
