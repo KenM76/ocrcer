@@ -6101,3 +6101,25 @@ pages too, so the chaining was not confined to scanned serif filings. The
 new controls are finfilings 16.113 / 16.068 and pages-cov 6.057. Only 0.3,
 0.5 and 0.7 were screened, and only on one page. Values below 0.3 are
 unmeasured.
+
+### 2026-09-23 — `segment.merge_overlap_frac` 0.3 → 0.4, measured
+
+The previous entry screened only 0.3, 0.5 and 0.7, and only on one page. This
+round ran the full finfilings corpus at other values:
+
+| frac | finfilings end-to-end CER | line-matched CER | pages-cov CER |
+|---|---|---|---|
+| 0.15 | 16.232 | 16.259 | not run |
+| 0.2 | 16.167 | 16.210 | not run |
+| 0.3 (control) | 16.113 | 16.068 | 6.057 |
+| 0.4 | **16.089** | **15.910** | 6.057 |
+
+The architect re-ran 0.4 on finfilings independently and got the same result
+to the digit. The 0.2 row's word-level figures in the measurement file are
+identical to 0.4's. That looks like a transcription slip on the 0.2 line; it
+affects only a rejected value.
+
+0.4 beats 0.3 on both finfilings CERs, and pages-cov does not move. It ships.
+New controls: finfilings 16.089 / 15.910, pages-cov 6.057. Not measured on
+the full corpus: 0.35, 0.45 and 0.5. The one-page screen showed 0.5 slightly
+worse than 0.3 there.

@@ -297,14 +297,9 @@ impl Params {
             max_splits: 3,
             valley_fraction: 0.5,
             min_piece_x_heights: 0.2,
-            // Measured, `ARCHITECTURE.md` section 11, 2026-09-23,
-            // "Worst page named": bbox chaining of pixel-disjoint serif
-            // letters. finfilings end-to-end CER 16.113% (< 16.756 gate),
-            // line-matched 16.068% (< 16.634 gate); pages-cov CER 6.057%
-            // (<= 6.139 gate, control 6.089%). All three gates passed at
-            // frac=0.3 out of {0.3, 0.5, 0.7} screened on the worst page.
-            // `docs/measurements/2026-09-23_atom_merge_overlap.txt`.
-            merge_overlap_frac: 0.3,
+            // Measured, `ARCHITECTURE.md` section 11, 2026-09-23
+            // ("Atom merge by overlap fraction: 0.4").
+            merge_overlap_frac: 0.4,
         },
         matching: Matching { top_k: 5 },
         confidence: Confidence { lm_floor: 0.8 },
