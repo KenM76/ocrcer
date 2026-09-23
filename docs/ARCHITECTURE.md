@@ -6168,3 +6168,36 @@ This is the largest single gain on the real-filings corpus to date. It ships.
 New controls: finfilings 13.161 / 12.290, pages-cov 6.064. Values below 0.3
 were not screened. The pages-cov movement (+0.007) is within tolerance but is
 a small loss, recorded as one.
+
+### 2026-09-23 — Worst pages, round 3: form cells spliced into the wrong line of a wrapped label; the next target
+
+Measured in `docs/measurements/2026-09-23_worst_pages_round3.md`.
+- r000044 (30.03%), r000396 (29.03%) and r000407 (24.46%) share one
+  mechanism. When a band is split at a column cut, each narrow right-column
+  fragment (a value box, a checkbox, a list marker) is joined to whichever
+  left-column line shares its baseline. If the left label wraps to two or more
+  lines, the value lands in the middle of the label: after line 1, before
+  line 2.
+- The evidence: r000044 has the same symmetric `""↔"0"` pair 108 times, and
+  r000396 has a 9.5-point gap between end-to-end and line-matched CER, the
+  largest measured.
+- r000011 is a ground-truth defect already on record: two overprinted
+  renderings of one paragraph. No engine fix applies.
+- r000022 is unchanged: touching digits and header fusion.
+- A smaller mechanism recurs on two pages: checkbox glyphs have no class and
+  match to `®`/`~`/`B`.
+
+Decision: pair by cell, not by line. A narrow fragment is emitted after the
+full wrapped text of the left-column cell it sits beside. The cell runs from
+that fragment's row down to the line before the next right-column fragment
+starts (or until the left column's line spacing breaks). A genuine
+single-line label/value row keeps today's output, so this cannot break the
+ordinary two-column case. Before coding, the implementer must confirm from
+the ground truth how these pages order and break a wrapped label and its
+value. The fix follows the truth's convention, not a guess about it.
+
+The fix sits behind a switch that defaults to today's behaviour until
+measured. Gates are unchanged against the current controls: finfilings
+13.161 / 12.290 (beat both), pages-cov ≤ 6.114. Checkbox glyphs are a charset
+question for later (a class for ☐/☑, or a declared "not text" drop). They are
+not bundled into this change.
