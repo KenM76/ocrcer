@@ -6432,3 +6432,30 @@ not the cut budget. The order of work:
 Controls were reproduced exactly: pages-cov 6.064 (487.5 s / 625 pages) and
 finfilings 12.708 / 11.602 (1019.5 s / 60 pages). These are the first
 recorded wall times for either corpus.
+
+### 2026-09-24 — r000583: cut candidates are ruled out; next is a per-letter stage autopsy
+
+Measured in `docs/measurements/2026-09-24_cut_candidates_r000583.md` (commit
+`dff0d0b`). The diagnosis traced 352 wide atoms and 54 bbox-merged atoms, and
+confirmed 20 of them visually against the page. The valley generator offers
+the real between-letter minima. The zero-cut atoms sampled were single
+glyphs (g, d, x) whose internal neck is correctly rejected. Only one atom was
+a near-miss, and its minimum sits inside a `d`. So neither relaxing
+`valley_fraction` nor a contour source is supported by this page. The
+concavity-pair research addendum stays on file for pages that do show
+missing minima.
+
+Decision: stop guessing the stage. The next diagnostic is an **autopsy**:
+take 20–30 deleted letters (t, f, i, l, r, o) from the aligned diff, and for
+each one record the first stage at which it is lost:
+- binarization or components (no ink or no component);
+- line or word grouping (the component is assigned to another line or
+  dropped as furniture);
+- atoms or the lattice (no edge spans exactly that letter);
+- match (an edge exists, but the correct class is pruned or scored badly);
+- decoder (the correct class scores well, but Viterbi picks a path that
+  absorbs the letter, for example a wide edge read as `m`/`æ`).
+
+The confusions `h→m`, `i→m`, `t→æ`, `e→æ` make the decoder's wide-edge
+preference the leading suspect. That is a reading, not a finding. The fix
+goes wherever the tally points, and nowhere else.
