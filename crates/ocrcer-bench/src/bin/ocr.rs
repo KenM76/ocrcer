@@ -3,7 +3,7 @@
 //! ```text
 //! ocr <model.ocrw> <pages-dir> [--limit N] [--stride N] [--offset N]
 //!     [--only SUBSTRING]
-//!     [--oracle] [--worst N] [--line-pages]
+//!     [--oracle] [--worst N] [--line-pages] [--csv PATH]
 //! ```
 //!
 //! # What makes this different from every other figure in this crate
@@ -90,6 +90,18 @@ fn main() -> ExitCode {
     // because it duplicates that section's shape and is a diagnostic, not
     // part of the headline two lines.
     let mut line_pages = false;
+    // Per-page CER at full precision (fraction, not the 2-decimal percent the
+    // worst-pages listing rounds to), one row per page in corpus order, for
+    // every page -- not just the worst N. `--worst 625` on a 625-page corpus
+    // gets close, but rounds to two decimal places and only sorts one metric
+    // at a time; diffing two runs (e.g. a control against a `--set` variant)
+    // to find which pages moved needs both metrics at a precision finer than
+    // the deltas being hunted for. Added 2026-09-23 for the pages-cov
+    // cell-pairing regression hunt (docs/measurements/
+    // 2026-09-23_cell_pairing_pagescov_regressors.md) rather than kept as
+    // one-off instrumentation, because "which pages moved between two runs"
+    // is a recurring diagnostic need, not specific to that investigation.
+    let mut csv: Option<String> = None;
     // Parameter overrides, applied to the loaded engine before any page is
     // read. For running the full diagnostic at a candidate point of a `tune`
     // sweep — which is how a winning row gets explained rather than just
@@ -160,6 +172,13 @@ fn main() -> ExitCode {
             "--raw" => raw = true,
             "--no-decode" => no_decode = true,
             "--line-pages" => line_pages = true,
+            "--csv" => {
+                i += 1;
+                match args.get(i) {
+                    Some(v) if !v.is_empty() => csv = Some(v.clone()),
+                    _ => return usage("--csv needs a path"),
+                }
+            }
             other if model.is_empty() => model = other.to_string(),
             other if dir.is_empty() => dir = other.to_string(),
             other => return usage(&format!("unexpected argument {other:?}")),
@@ -208,6 +227,7 @@ fn main() -> ExitCode {
         show,
         &set,
         line_pages,
+        csv.as_deref(),
     ) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
@@ -222,7 +242,8 @@ fn usage(why: &str) -> ExitCode {
     eprintln!(
         "usage: ocr <model.ocrw> <pages-dir> [--limit N] [--stride N] [--offset N]
        [--only SUBSTRING] [--oracle] [--worst N] [--show N] [--line-pages]
-       [--set <name>=<value>] [--distances] [--layout] [--raw] [--no-decode]"
+       [--set <name>=<value>] [--distances] [--layout] [--raw] [--no-decode]
+       [--csv PATH]"
     );
     ExitCode::FAILURE
 }
@@ -342,6 +363,7 @@ fn run(
     show: usize,
     set: &[(String, f32)],
     line_pages: bool,
+    csv: Option<&str>,
 ) -> Result<(), String> {
     let engine = engine_with(model, set)?;
     let m = engine.model();
@@ -369,6 +391,7 @@ fn run(
     let mut subs: BTreeMap<(String, String), usize> = BTreeMap::new();
     let mut ink_pixels = 0u64;
     let mut read_nanos = 0u128;
+    let mut csv_rows: Vec<(String, Option<f64>, Option<f64>)> = Vec::new();
 
     for pgm in &chosen {
         let stem = pgm.file_stem().unwrap_or_default().to_string_lossy().to_string();
@@ -395,6 +418,10 @@ fn run(
         }
         e2e.add(&stem, &reference, &read);
         let s = score(&reference, &read);
+        if csv.is_some() {
+            let l = line_matched_score(&reference, &read);
+            csv_rows.push((stem.clone(), s.cer(), l.cer()));
+        }
         by_size.entry(truth.px_per_em.round() as u32).or_default().add(&s);
         by_family.entry(truth.family.clone()).or_default().add(&s);
         align_substitutions(&reference, &read, &mut subs);
@@ -486,6 +513,17 @@ gap         the layout stages and decoder move CER by {:+.3} points
         for (c, stem) in e2e.line_pages.into_iter().take(worst) {
             println!("  {:6.2}%  {stem}", c * 100.0);
         }
+    }
+
+    if let Some(path) = csv {
+        use std::io::Write;
+        let mut f = std::fs::File::create(path).map_err(|e| format!("{path}: {e}"))?;
+        writeln!(f, "stem,cer,line_matched_cer").map_err(|e| format!("{path}: {e}"))?;
+        for (stem, cer, lm_cer) in &csv_rows {
+            let fmt = |v: &Option<f64>| v.map_or(String::new(), |x| format!("{x:.8}"));
+            writeln!(f, "{stem},{},{}", fmt(cer), fmt(lm_cer)).map_err(|e| format!("{path}: {e}"))?;
+        }
+        println!("\ncsv     {} ({} rows)", path, csv_rows.len());
     }
     Ok(())
 }
