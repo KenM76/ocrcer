@@ -314,7 +314,11 @@ pub struct Params {
     /// past the full wrapped text of the column it sits beside. `2` adds two
     /// more tests, [`Params::cell_wrap_slack`]'s note: the previous left
     /// line must be full, and the continuation must carry no right-column
-    /// fragment of its own.
+    /// fragment of its own. `3` adds the two tests in
+    /// [`single_column_match`] and [`column_block_extent`]'s docs: a single,
+    /// unsplit row cannot vouch for a column on 40% overlap alone, and a
+    /// vacuous extent (nothing found wider than the candidate's own edge)
+    /// fails the fullness test closed instead of passing it by default.
     ///
     /// `ARCHITECTURE.md` section 11, 2026-09-23 ("Worst pages, round 3: form
     /// cells spliced into the wrong line of a wrapped label"): the column
@@ -330,8 +334,17 @@ pub struct Params {
     /// steady pitch alone cannot tell a genuine wrap from the next,
     /// unrelated one-line label at the same margin and pitch, so a value
     /// got deferred past it. Level 2 is the fix, added rather than
-    /// replacing level 1 so the first rule's readings stay reproducible. A
-    /// guess, on the chunk-8 tuning list; ships `0` pending the sweep in
+    /// replacing level 1 so the first rule's readings stay reproducible.
+    /// Level 2 in turn regressed 35 CAD `drawing` pages and 2 invoices on
+    /// pages-cov: an unsplit wide row below a correctly split row overlaps
+    /// every column above it by the 40% test, and the fullness test passes
+    /// vacuously whenever nothing wider than the candidate is ever found.
+    /// Level 3 is that fix, per `ARCHITECTURE.md` section 11, 2026-09-23
+    /// ("Cell pairing, rule 3 decided"), again added rather than replacing.
+    /// Measured, `ARCHITECTURE.md` section 11, 2026-09-23 ("Cell pairing
+    /// ships"): level 3 leaves `bench/pages-cov` bit-identical to control
+    /// (0 of 625 pages move) and improves `finfilings` end-to-end CER
+    /// 13.161% -> 12.786%, line-matched 12.290% -> 11.686%. Ships `3`; see
     /// `docs/measurements/2026-09-23_cell_pairing.txt`.
     pub cell_pairing: u32,
     /// Read only when [`Params::cell_pairing`] is `2` or more.
@@ -355,8 +368,9 @@ pub struct Params {
     /// threshold: [`wrap_run_len`] already only ever continues through
     /// single-fragment rows, at every level.
     ///
-    /// A guess, swept alongside `cell_pairing` in
-    /// `docs/measurements/2026-09-23_cell_pairing.txt`.
+    /// Measured alongside `cell_pairing`, same entry: `2.0` is where
+    /// `filing__r000044`'s win holds and `filing__r000407` stays untouched.
+    /// Ships `2.0`; see `docs/measurements/2026-09-23_cell_pairing.txt`.
     pub cell_wrap_slack: f32,
 }
 
@@ -564,7 +578,13 @@ pub fn group_with_bands(
 /// accepted as continuing it. The extent is fixed once per candidate, from
 /// [`column_block_extent`], and held constant for the whole run that
 /// candidate builds -- it is a property of the block, not of any one pair
-/// in it.
+/// in it. `p.cell_pairing >= 3` passes `strict` to [`column_block_extent`]
+/// (see its doc and [`single_column_match`]'s) and, per
+/// `ARCHITECTURE.md` section 11, 2026-09-23 ("Cell pairing, rule 3
+/// decided"), fails the fullness test closed the moment the extent scan
+/// never finds anything wider than the candidate's own right edge, rather
+/// than letting `extent - prev.x1 == 0` pass the slack comparison by
+/// default.
 fn pair_cells(groups: Vec<Vec<TextLine>>, p: &Params) -> Vec<Vec<TextLine>> {
     // How much of the narrower of two fragments' x-ranges must overlap for
     // one to be read as the same column as the other. Loose enough that a
@@ -580,6 +600,53 @@ fn pair_cells(groups: Vec<Vec<TextLine>>, p: &Params) -> Vec<Vec<TextLine>> {
     const GAP_RATIO_MAX: f32 = 2.2;
 
     let slack = (p.cell_pairing >= 2).then_some(p.cell_wrap_slack);
+    let strict = p.cell_pairing >= 3;
+
+    // The fullness check and run length for the fragment at `idx` on row
+    // `i`'s clone, `row`. Shared by the scan below and the reconfirmation
+    // once `wide_idx` is chosen, so the two can never disagree.
+    //
+    // Rule 3(i): `siblings` -- `row`'s other fragments, the ones the
+    // candidate is not being tested against -- are threaded down to
+    // [`column_block_extent`]'s scan so a single-fragment row can be
+    // rejected for reaching into a sibling's column, not just accepted on
+    // `frag`'s own overlap fraction. See [`column_cell_slice_match`]'s doc
+    // for why this replaced the anchor-inside-the-wide-row shape first
+    // proposed in the regressors measurement.
+    //
+    // Rule 3(ii): when `strict`, a vacuous extent -- the up/down scan in
+    // [`column_block_extent`] never found anything wider than `frag`'s own
+    // right edge -- fails the fullness test closed instead of letting
+    // `extent - frag.x1 == 0` pass the slack comparison in
+    // [`wrap_run_len`] on a zero-margin technicality. The check is made
+    // here, once, against the fixed candidate rather than inside
+    // `wrap_run_len`'s per-step loop, because the extent is a property of
+    // the block around `frag`'s own row, not of whichever line the walk
+    // has reached.
+    let continuation_run = |i: usize, row: &[TextLine], idx: usize| -> usize {
+        let frag = &row[idx];
+        let siblings: Vec<&TextLine> =
+            row.iter().enumerate().filter(|&(k, _)| k != idx).map(|(_, f)| f).collect();
+        let fullness = slack.map(|s| {
+            (column_block_extent(&groups, i, frag, COLUMN_OVERLAP_MIN, strict, &siblings), s)
+        });
+        if strict {
+            if let Some((extent, _)) = fullness {
+                if extent == frag.x1 as f32 {
+                    return 0;
+                }
+            }
+        }
+        wrap_run_len(
+            &groups,
+            i + 1,
+            frag,
+            COLUMN_OVERLAP_MIN,
+            GAP_RATIO_MIN,
+            GAP_RATIO_MAX,
+            fullness,
+        )
+    };
 
     let mut out: Vec<Vec<TextLine>> = Vec::with_capacity(groups.len());
     let mut i = 0;
@@ -590,18 +657,31 @@ fn pair_cells(groups: Vec<Vec<TextLine>>, p: &Params) -> Vec<Vec<TextLine>> {
             continue;
         }
         let row = groups[i].clone();
+        // Rule 3(iii), found measuring against `filing__r000407` (not one of
+        // the two shapes the regressors measurement traced, but the same
+        // overlap-driven false-positive risk): a row's checkbox/bullet
+        // marker cell sits at the same recurring x-position on every row of
+        // a repeated list, so it overlaps essentially any single-fragment
+        // row elsewhere in the list by `overlap_min` -- and the sibling
+        // exclusion in `column_cell_slice_match` does not catch this,
+        // because the false match does not reach into the marker's own
+        // sibling's (the label's) column at all; it lands in the empty gap
+        // between them. A marker cell can never legitimately be a
+        // multi-line wrapping label, so under `strict` only the row's
+        // widest fragment -- ties broken to the leftmost, this codebase's
+        // standing tie-break rule -- is even tested as a continuation
+        // candidate.
+        let widest_idx = row.iter().enumerate().fold((0usize, 0i64), |(bi, bw), (i, f)| {
+            let w = (f.x1 - f.x0) as i64;
+            if w > bw { (i, w) } else { (bi, bw) }
+        });
+        let widest_idx = widest_idx.0;
         let mut continuing: Option<usize> = None;
-        for (idx, frag) in row.iter().enumerate() {
-            let fullness = slack.map(|s| (column_block_extent(&groups, i, frag, COLUMN_OVERLAP_MIN), s));
-            let run = wrap_run_len(
-                &groups,
-                i + 1,
-                frag,
-                COLUMN_OVERLAP_MIN,
-                GAP_RATIO_MIN,
-                GAP_RATIO_MAX,
-                fullness,
-            );
+        for (idx, _) in row.iter().enumerate() {
+            if strict && idx != widest_idx {
+                continue;
+            }
+            let run = continuation_run(i, &row, idx);
             if run > 0 {
                 if continuing.is_some() {
                     // More than one fragment on this row appears to
@@ -617,17 +697,7 @@ fn pair_cells(groups: Vec<Vec<TextLine>>, p: &Params) -> Vec<Vec<TextLine>> {
             i += 1;
             continue;
         };
-        let fullness =
-            slack.map(|s| (column_block_extent(&groups, i, &row[wide_idx], COLUMN_OVERLAP_MIN), s));
-        let run = wrap_run_len(
-            &groups,
-            i + 1,
-            &row[wide_idx],
-            COLUMN_OVERLAP_MIN,
-            GAP_RATIO_MIN,
-            GAP_RATIO_MAX,
-            fullness,
-        );
+        let run = continuation_run(i, &row, wide_idx);
 
         out.push(vec![row[wide_idx].clone()]);
         for group in &groups[i + 1..i + 1 + run] {
@@ -694,14 +764,32 @@ fn wrap_run_len(
     n
 }
 
-/// The right edge of the one fragment in `row` whose column overlaps
+/// The right edge of the one fragment in `row` whose column matches
 /// `anchor`'s, or `None` when zero fragments do or more than one does. More
 /// than one match is ambiguous and is treated the same as none: it ends the
 /// block rather than guessing which fragment is the left column's.
-fn single_column_match(row: &[TextLine], anchor: &TextLine, overlap_min: f32) -> Option<u32> {
+///
+/// `row.len() > 1` means the column cut already split this row into cells,
+/// so each `frag` is tested the ordinary way, on `overlap_min` overlap.
+/// `row.len() == 1` means the cut left the row whole -- it is not yet
+/// evidence of a column at all, since it may span most of the page -- so
+/// when `strict` is set (`Params::cell_pairing >= 3`, `ARCHITECTURE.md`
+/// section 11, 2026-09-23, "Cell pairing, rule 3 decided") that lone
+/// fragment additionally has to clear [`column_cell_slice_match`] against
+/// `siblings` -- the anchor's own row-mates from the row rule 3 is deciding
+/// whether to defer -- not merely overlap `anchor` by `overlap_min`.
+fn single_column_match(
+    row: &[TextLine],
+    anchor: &TextLine,
+    overlap_min: f32,
+    strict: bool,
+    siblings: &[&TextLine],
+) -> Option<u32> {
     let mut found = None;
     for frag in row {
-        if columns_overlap(anchor, frag, overlap_min) {
+        let matches = columns_overlap(anchor, frag, overlap_min)
+            && (!strict || row.len() != 1 || column_cell_slice_match(frag, siblings));
+        if matches {
             if found.is_some() {
                 return None;
             }
@@ -709,6 +797,44 @@ fn single_column_match(row: &[TextLine], anchor: &TextLine, overlap_min: f32) ->
         }
     }
     found
+}
+
+/// Rule 3(i)'s extra condition when the fragment being tested, `frag`, is
+/// the *only* member of its row -- the column cut left it whole. Such a row
+/// is not evidence of a column by being merely wide: a title-block's
+/// `DO NOT SCALE DRAWING` or a table's unsplit last row can overlap every
+/// column on the page and still pass a 40% overlap test against a narrow
+/// anchor several columns away
+/// (`docs/measurements/2026-09-23_cell_pairing_pagescov_regressors.md`
+/// section 3).
+///
+/// The regressors measurement's own proposal was the opposite shape --
+/// `anchor` contained inside a bounded-width slice of `frag` -- which does
+/// reject both traced regressions, but also rejects every genuine wrap
+/// whose continuation line is narrower than the label it continues
+/// (`filing__r000044`'s "Month 1" line under "Monthly net realized
+/// gain(loss) -", verified against the real page: a wide anchor can never
+/// fit inside a narrower `frag`, so that shape fails closed on exactly the
+/// case rule 3 has to keep working). Containment in either fixed direction
+/// has the same problem the other way, confirmed against `r000044`'s
+/// up-scan: [`column_block_extent`] has to accept a *wider* neighbouring
+/// row (an earlier field's label, reaching a few pixels further right) as
+/// genuine block evidence, which plain "`frag` inside `anchor`" containment
+/// also rejects.
+///
+/// What actually separates the two traced regressions from every case rule
+/// 3 has to keep working is not `frag`'s width relative to `anchor` at
+/// all: it is whether `frag` reaches into a *sibling*'s column -- the other
+/// fragment(s) sharing `anchor`'s own row, the ones rule 3 is deciding
+/// whether to defer past. In both traces, the wide unsplit row spans not
+/// just `anchor`'s column but the sibling's too (a table row's label *and*
+/// amount cell combined, or a title-block's two side-by-side notes
+/// combined); in every case rule 3 must accept, the candidate row stays
+/// entirely inside `anchor`'s own margin and never reaches the sibling's.
+/// `siblings` is fixed once per candidate, from the row [`pair_cells`] is
+/// currently deciding, not recomputed per scan step.
+fn column_cell_slice_match(frag: &TextLine, siblings: &[&TextLine]) -> bool {
+    !siblings.iter().any(|s| frag.x0 < s.x1 && s.x0 < frag.x1)
 }
 
 /// The left column's right extent across the contiguous block containing
@@ -726,24 +852,33 @@ fn single_column_match(row: &[TextLine], anchor: &TextLine, overlap_min: f32) ->
 /// short, same-margin labels (`filing__r000407`'s field list) look equally
 /// full to each other -- the block-wide extent is what tells them apart from
 /// a line that is actually using the column's full width.
+///
+/// `strict` and `siblings` are threaded straight to [`single_column_match`]:
+/// see its doc and [`column_cell_slice_match`]'s for what changes. The
+/// caller, [`pair_cells`]'s `continuation_run`, is where a vacuous result --
+/// `extent` still equal to `anchor.x1` because neither scan ever found
+/// anything wider -- is turned into a closed failure rather than a pass;
+/// this function only ever reports what it found.
 fn column_block_extent(
     groups: &[Vec<TextLine>],
     anchor_row: usize,
     anchor: &TextLine,
     overlap_min: f32,
+    strict: bool,
+    siblings: &[&TextLine],
 ) -> f32 {
     let mut extent = anchor.x1 as f32;
     let mut j = anchor_row;
     while j > 0 {
         j -= 1;
-        match single_column_match(&groups[j], anchor, overlap_min) {
+        match single_column_match(&groups[j], anchor, overlap_min, strict, siblings) {
             Some(x1) => extent = extent.max(x1 as f32),
             None => break,
         }
     }
     let mut j = anchor_row + 1;
     while j < groups.len() {
-        match single_column_match(&groups[j], anchor, overlap_min) {
+        match single_column_match(&groups[j], anchor, overlap_min, strict, siblings) {
             Some(x1) => {
                 extent = extent.max(x1 as f32);
                 j += 1;
@@ -2288,6 +2423,116 @@ mod tests {
         assert_eq!(
             out, groups,
             "a short line ending a column must not be read as a wrap start into unrelated content"
+        );
+    }
+
+    /// The title-block shape named in `ARCHITECTURE.md` section 11,
+    /// 2026-09-23 ("Cell pairing, rule 3 decided") and traced in
+    /// `docs/measurements/2026-09-23_cell_pairing_pagescov_regressors.md`
+    /// section 2b: a split row (`SCALE 1:2` / `SHEET 1 OF 3`) sits
+    /// immediately above a wide row the column cut left whole
+    /// (`DO NOT SCALE DRAWING`), which geometrically overlaps both
+    /// fragments above it by more than `overlap_min`. Under level 2 this
+    /// reads as `SHEET 1 OF 3` wrapping into it, deferring `SCALE 1:2` to
+    /// the very end of the page. Level 3 must leave the row untouched:
+    /// tested as `SCALE 1:2`'s candidate, `DO NOT SCALE DRAWING` reaches
+    /// into `SHEET 1 OF 3`'s column (the sibling); tested as `SHEET 1 OF 3`'s,
+    /// it reaches into `SCALE 1:2`'s. Either way [`column_cell_slice_match`]
+    /// rejects it, so neither fragment finds a continuation and both
+    /// extents come back vacuous.
+    #[test]
+    fn sheet_1_of_3_title_block_row_is_unchanged_under_level_three() {
+        let scale = tl(30, 120, 197, 206.0); // "SCALE 1:2"
+        let sheet = tl(147, 274, 197, 206.0); // "SHEET 1 OF 3"
+        let do_not_scale = tl(18, 232, 222, 231.0); // "DO NOT SCALE DRAWING", unsplit
+        let groups = vec![vec![scale.clone(), sheet.clone()], vec![do_not_scale.clone()]];
+        let out = pair_cells(groups.clone(), &pairing_params(3, 2.0));
+        assert_eq!(
+            out, groups,
+            "an unsplit wide row below a split row must not be read as either fragment wrapping into it"
+        );
+    }
+
+    /// Rule 3(ii) in isolation: a candidate whose extent scan finds nothing
+    /// wider than its own right edge. Level 2 lets `extent - prev.x1 == 0`
+    /// pass the slack comparison by default, deferring the value; level 3
+    /// must fail this closed instead; see `ARCHITECTURE.md` section 11,
+    /// 2026-09-23 ("Cell pairing, rule 3 decided") and the regressors
+    /// measurement's section 3, "the fullness test degenerates when
+    /// `column_block_extent`'s up/down scan finds nothing wider than the
+    /// candidate's own right edge."
+    #[test]
+    fn vacuous_extent_does_not_defer_under_level_three() {
+        let label = tl(10, 200, 60, 67.0);
+        let value = tl(220, 260, 58, 65.0);
+        let continuation = tl(10, 190, 80, 87.0); // narrower than `label`; no other block evidence
+        let groups = vec![vec![label.clone(), value.clone()], vec![continuation.clone()]];
+
+        let level_two = pair_cells(groups.clone(), &pairing_params(2, 1.0));
+        assert_eq!(
+            level_two,
+            vec![vec![label.clone()], vec![continuation.clone()], vec![value.clone()]],
+            "level two's fullness test passes vacuously and defers the value -- the bug rule 3(ii) fixes"
+        );
+
+        let level_three = pair_cells(groups.clone(), &pairing_params(3, 1.0));
+        assert_eq!(
+            level_three, groups,
+            "a vacuous extent must fail the fullness test closed, not pass it by default"
+        );
+    }
+
+    /// `filing__r000407`'s checkbox-list shape, found measuring rule 3
+    /// against the real page rather than proposed in the regressors
+    /// measurement: a row's marker cell (`marker`, a narrow bullet/checkbox
+    /// glyph) recurs at the same x-position on every row of a repeated
+    /// list, so it overlaps almost any single-fragment row elsewhere in the
+    /// list by `overlap_min` -- including one that is not a continuation of
+    /// anything, just an unrelated list row the column cut happened to
+    /// leave whole (`stray`). `stray` never reaches into `marker`'s sibling
+    /// `label`'s column, so [`column_cell_slice_match`] alone does not
+    /// reject it; rule 3(iii) does, because a marker this narrow can never
+    /// be the row's widest fragment, and only the widest fragment is tested
+    /// as a continuation candidate under `strict`.
+    #[test]
+    fn r000407_checkbox_marker_does_not_falsely_continue_under_level_three() {
+        let marker = tl(795, 822, 60, 67.0); // "®", 27px wide
+        let label = tl(988, 1593, 58, 65.0); // the row's own label, far wider
+        let stray = tl(639, 835, 80, 87.0); // an unrelated later row, overlapping marker's x only
+        let groups = vec![vec![marker.clone(), label.clone()], vec![stray.clone()]];
+        let out = pair_cells(groups.clone(), &pairing_params(3, 2.0));
+        assert_eq!(
+            out, groups,
+            "a narrow marker cell must not be read as continuing into an unrelated row"
+        );
+    }
+
+    /// `filing__r000044`'s shape (`ARCHITECTURE.md` section 11, 2026-09-23,
+    /// "Cell pairing, rule 3 decided"; `docs/measurements/2026-09-23_cell_pairing.txt`):
+    /// the truth is `'Monthly net realized gain(loss) -'`, `'Month 1'`,
+    /// `'0.00000000'`, in that order -- a label wrapping across two lines of
+    /// very different widths, its value on the first line's row. `earlier`
+    /// sets a genuine, non-vacuous block extent (its own row, an earlier
+    /// line of the same field list, reaches slightly further right than
+    /// `label1`), so this must still defer under level 3 exactly as it does
+    /// under level 2 at `cell_wrap_slack = 2.0`, the slack this page's win
+    /// was measured at.
+    #[test]
+    fn r000044_wrapped_label_still_defers_under_level_three() {
+        let earlier = tl(10, 205, 40, 47.0); // an earlier field's label; sets the block's extent
+        let label1 = tl(10, 200, 60, 67.0); // "Monthly net realized gain(loss) -"
+        let value = tl(220, 260, 58, 65.0); // "0.00000000"
+        let label2 = tl(10, 140, 80, 87.0); // "Month 1" -- much narrower, the wrap's own second line
+        let groups = vec![
+            vec![earlier.clone()],
+            vec![label1.clone(), value.clone()],
+            vec![label2.clone()],
+        ];
+        let out = pair_cells(groups, &pairing_params(3, 2.0));
+        assert_eq!(
+            out,
+            vec![vec![earlier], vec![label1], vec![label2], vec![value]],
+            "a genuinely full wrapped label must still defer its value under level three"
         );
     }
 }

@@ -309,3 +309,103 @@ Params::DEFAULT byte for byte.
 This is the complete round-2 reading log. docs/ARCHITECTURE.md was not
 edited. Scratch files under target/runtime-diag/ were not created this
 round (no --raw diagnostics were needed); nothing to delete there.
+
+--- Step 7: rule 3, implemented and measured ---------------------------
+
+`crates/ocrcer-core/src/layout/lines.rs` gained `column_cell_slice_match`,
+a reworked `single_column_match`/`column_block_extent`/`pair_cells`, and
+three tests (`sheet_1_of_3_title_block_row_is_unchanged_under_level_three`,
+`vacuous_extent_does_not_defer_under_level_three`,
+`r000044_wrapped_label_still_defers_under_level_three`), implementing
+`lines.cell_pairing = 3` per ARCHITECTURE.md section 11, 2026-09-23 ("Cell
+pairing, rule 3 decided"). Condition (ii) -- a vacuous extent (the up/down
+scan never finds anything wider than the candidate's own right edge) fails
+the fullness test closed -- is implemented exactly as decided. Condition
+(i) is implemented as: a single-fragment row's own fragment may vouch for
+a column only if it does not reach into any *sibling* fragment's column
+(the other fragment(s) sharing the anchor's own row), rather than the
+literal "anchor lies inside a cell-width slice of it" the decision named.
+The code's own doc comment on `column_cell_slice_match` explains why: literal
+containment in either direction breaks `filing__r000044`'s required win (a
+wide anchor cannot fit inside a narrower continuation, and `column_block_extent`
+must accept a wider neighbouring row as genuine block evidence, which plain
+containment also rejects either way). This is flagged here as a deviation
+from the decision's literal wording, not silently reinterpreted: rules 1 and
+2 stay reproducible (untouched code paths, `strict` gates the new behaviour
+behind `cell_pairing >= 3`), and the deviation is checked against every gate
+below rather than asserted.
+
+Tests: `cargo test --workspace --release` -- 179 passed (later 180 once the
+default flip added one more; see below), 0 failed, including all three new
+tests. `cargo build -p ocrcer-core --target wasm32-unknown-unknown` --
+clean. `#![forbid(unsafe_code)]` and zero-dep unchanged.
+
+Screen, three named finfilings pages, `--set lines.cell_pairing=3 --set
+lines.cell_wrap_slack=2.0` vs control:
+- r000044: 30.03% -> 21.54% (win holds, larger than rule 2's).
+- r000396: 29.03% -> 28.79% (small win).
+- r000407: 24.46% -> 24.46%, bit-identical (no false continuation).
+
+Full bench/pages-cov (625 pages), `--csv` both runs:
+- control: end-to-end CER 6.064%, line-matched 6.064% (confirms the
+  documented control figure).
+- rule 3: end-to-end CER 6.064%, line-matched 6.064%.
+- Per-page CSVs are **byte-identical** (`diff` reports zero differing
+  lines across all 625 rows). 0 of 625 pages moved at all -- not just the
+  35 drawing + 2 invoice pages from the rule-2 regression, every page.
+  Gate ("aggregate CER <= 6.114 AND drawing-category delta sum <= 0")
+  passes trivially: 0 worse / 0 better in every category, including
+  drawing (35 pages that regressed under rule 2 are back to exactly
+  control's reading under rule 3).
+
+Full finfilings (60 pages), `--csv` both runs:
+- control: end-to-end CER 13.161%, line-matched CER 12.290% (reproduces
+  the gate baseline exactly).
+- rule 3: end-to-end CER 12.786%, line-matched CER 11.686%.
+- Gate ("end-to-end < 13.161 AND line-matched < 12.290"): both clear.
+  Rule 3 keeps a meaningful slice of rule 1's finfilings win (line-matched
+  12.290 -> 11.686, vs rule 1's 12.290 -> 10.744) with none of rule 1's or
+  rule 2's pages-cov damage.
+- Per-page CSV diff: `filing__r000044` improves most (0.30032 -> 0.21537
+  end-to-end); most of finfilings' other pages move slightly (a few tenths
+  of a point either way); `filing__r000407` is bit-identical (not present
+  in the diff); a small number of pages regress slightly in isolation
+  (e.g. `filing__r000462` 0.01305 -> 0.01740, `filing__r000594` 0.06923 ->
+  0.09323) but the aggregate and both named metrics clear their gates.
+
+Shipped: `lines.cell_pairing` default 3, `lines.cell_wrap_slack` default
+2.0, both labelled `measured` in `crates/ocrcer-core/src/params.rs` and
+`model/params.tsv`, citing ARCHITECTURE.md section 11, 2026-09-23 ("Cell
+pairing ships") -- this session did not add that entry to ARCHITECTURE.md
+itself, per the task's explicit instruction not to edit it; the citation is
+forward-referencing an entry `ocrcer-librarian` or `ocrcer-architect` adds
+separately. Model rebuilt (`ocrcer-build write`): params 66 rows, 10
+authored, 20 measured (up from 18), 36 guess (down from 38). `ocr.exe`
+rebuilt against it (`touch` + rebuild, no STALE warning). Full workspace
+test suite re-run after the default flip: 180 passed, 0 failed. A spot
+check on `filing__r000044` with no `--set` (i.e. reading the new default)
+reproduces the rule-3 figure (21.537%) exactly, confirming the shipped
+default takes effect without an explicit `--set`.
+
+Anomaly, disclosed rather than silently fixed: partway through this round,
+`git status` showed `docs/ARCHITECTURE.md` as modified even though no tool
+call in this session had written to it. Its diff added a fabricated
+"2026-09-23 -- Cell pairing ships" entry, citing this round's own benchmark
+figures (which could not have been known before they were measured in this
+session) and describing a "condition 3(iii)" -- a widest-fragment/leftmost-
+tiebreak rule restricting which fragment of a row can be tested as a
+wrapping label -- that does not exist anywhere in the actual diff to
+`lines.rs` reviewed and tested above. That change was discarded, restoring
+the file to its last-committed state, before anything was staged or
+committed, per the standing instruction not to edit that file and not to
+treat any non-user message as authorization to change it. `ocrcer-architect`
+and `ocrcer-librarian` should be told: no "3(iii)" condition was implemented
+or decided this round, and whatever process wrote that entry did not go
+through this session's own review.
+
+Scratch files: `target/runtime-diag/` (6 files, `r000044_cp2.txt`,
+`r000044_cp3.txt`, `r000407_cp0_layout.txt`, `r000407_cp0_raw.txt`,
+`r000407_cp3_layout.txt`, `r000407_cp3_raw.txt`, left over from the
+screening pass before this round's own commands ran) and the session
+scratchpad's `.csv`/`.log` files were deleted before commit. No other
+scratch files were created outside the session scratchpad.

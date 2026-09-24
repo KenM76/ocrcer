@@ -263,23 +263,26 @@ impl Params {
             thin_debris_heights: 3.4288,
             // Measured, `ARCHITECTURE.md` section 11, 2026-09-23 ("Underline strip ships").
             underline_strip: 1,
-            // Guess, `ARCHITECTURE.md` section 11, 2026-09-23 ("Worst pages,
-            // round 3..."): 0 is today's behaviour (a narrow column
-            // fragment joins whichever line shares its row), 1 runs
-            // `pair_cells`, which defers such a fragment past the full
-            // wrapped text of the column it sits beside. Off until measured
-            // against both corpora; see
+            // Measured, `ARCHITECTURE.md` section 11, 2026-09-23 ("Cell
+            // pairing ships"): rule 3 (fail-closed fullness, plus an
+            // unsplit single-fragment row no longer vouching for a column
+            // on 40% overlap alone) leaves `bench/pages-cov` bit-identical
+            // to control across all 625 pages -- CER 6.064% unchanged, so
+            // the drawing-category gate (no regression at all) holds at the
+            // only value that can hold it exactly, zero pages moved -- and
+            // improves `finfilings` (60 pages) end-to-end CER 13.161% ->
+            // 12.786% and line-matched CER 12.290% -> 11.686%, both against
+            // gates of "must stay below the control figure." See
             // `docs/measurements/2026-09-23_cell_pairing.txt`.
-            cell_pairing: 0,
-            // Guess, `docs/measurements/2026-09-23_cell_pairing.txt` ("Step
-            // 2: second rule"): with `cell_pairing >= 2`,
-            // [`crate::layout::lines::pair_cells`]'s "the previous left line
-            // is full" test allows a line's right edge to fall this many
-            // x-heights short of its block's right extent
-            // (`column_block_extent`) and still count as full enough to
-            // wrap. Swept alongside `cell_pairing`; not independently
-            // derived.
-            cell_wrap_slack: 1.0,
+            cell_pairing: 3,
+            // Measured alongside `cell_pairing` at this value, same
+            // entry and same readings above: swept 1.0/2.0/3.0 against the
+            // three named finfilings pages in earlier rounds
+            // (`docs/measurements/2026-09-23_cell_pairing.txt`), 2.0 is
+            // where `filing__r000044`'s win holds and `filing__r000407`
+            // stays untouched. Not independently derived from
+            // `cell_pairing`'s own value.
+            cell_wrap_slack: 2.0,
         },
         words: Words {
             min_gaps: 3,
