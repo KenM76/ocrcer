@@ -6878,3 +6878,59 @@ The contract:
    - Report wall time with the add-on on and off, and report the add-on
      size.
    - With the add-on absent, behaviour must be byte-identical to today.
+
+### 2026-09-24 — Operator: add Qwen3.5-0.8B as an option; plan for 8 GB RAM and 2–4 GB VRAM
+
+The operator asked for "Qwen3-0.8B … given the additional capabilities". No
+Qwen3-0.8B exists. The model with those capabilities is **Qwen3.5-0.8B**,
+which is Apache-2.0 and accepts image input. **This reading is an
+inference** and is flagged to him.
+
+From its model card, read 2026-09-24:
+- ~0.9 B parameters, including the vision encoder.
+- 24 layers, arranged as `6 × (3 × (Gated DeltaNet → FFN) → 1 × (Gated
+  Attention → FFN))`.
+- Hidden size 1024. FFN 3584.
+- Gated attention: 8 Q heads and 2 KV heads of dimension 256.
+- Gated DeltaNet: 16 heads of dimension 128.
+- A padded vocabulary of 248,320.
+- A 262 K context.
+
+This is a **different architecture** from the Qwen3/Qwen2.5 path that chunk
+16a is building. Supporting it means adding:
+- the Gated DeltaNet linear-attention recurrence;
+- gated attention;
+- the ViT-style vision encoder.
+
+It is an extension, not a config flag.
+
+**How the vision capability is used: image-conditioned rescoring, and only
+that.** For a low-confidence line, the model sees the line crop and scores
+each of the OCR's n-best candidates by p(candidate | image). It never
+transcribes freely. That keeps the rule-6 guarantee: it cannot introduce a
+string the OCR did not propose. It is also the use most likely to help,
+because the rescorer sees the pixels, not just the language.
+
+**Memory budget: 8 GB system RAM, with 2–4 GB VRAM when a GPU is used.**
+These are projections, to be replaced by measured peaks:
+- Qwen3-0.6B: ~0.65 GB at Q8, ~1.2 GB at f16.
+- Qwen3.5-0.8B: ~0.95 GB at Q8, ~1.8 GB at f16.
+- KV and DeltaNet state for OCR-length lines are small (well under
+  100 MB).
+- Every option fits the 2 GB floor at Q8. f16 fits only at 4 GB for
+  Qwen3.5-0.8B.
+
+The GPU is **optional**:
+- It is a `gpu` cargo feature using `wgpu` compute shaders. `wgpu` is pure
+  Rust, compiled into the binary, and drives the Vulkan, DX12 or Metal
+  driver the machine already has. The user downloads nothing extra, which
+  meets the operator's condition.
+- It relaxes 2026-09-24's "std only" for that feature alone. The CPU path
+  stays std-only, stays the default, and is the fallback whenever no
+  adapter or not enough VRAM is found.
+- The GPU is built after the CPU path is verified, because the CPU path is
+  its reference.
+
+Order: 16a (Qwen3/Qwen2.5 CPU, in progress) → 16b (OCR rescoring, gated) →
+16c (Qwen3.5 text) → 16d (Qwen3.5 vision) → 16e (GPU). Each stage is gated as
+in PLAN.
