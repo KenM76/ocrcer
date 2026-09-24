@@ -541,3 +541,28 @@ Sources:
 - Fuzzy Labs, "Checkbox Detection with OpenCV": https://www.fuzzylabs.ai/blog-post/checkbox-detection-with-opencv
 - J. Rodriguez, "Checkbox Detection: OpenCV vs YOLO": https://www.jeremias-rodriguez.com/blog/checkbox-detection-opencv-vs-yolo
 - Loichau, "Apply computer vision on the questionaire image to detect ticked checkboxes": https://loichau997.medium.com/apply-computer-vision-on-the-questionaire-image-to-detect-ticked-checkboxes-646e9245d293
+
+## Addendum 2026-09-24: concavity-pair chops (Tesseract's chopper), as a cut-candidate source
+
+Read, not measured. Sources: Tesseract `wordrec/chop.h` / `chopper.cpp`
+reference docs, and the "Breaking down Tesseract OCR" summary.
+
+- A chop candidate is a **pair of points on the outline**. At least one is
+  a concave vertex of a polygonal approximation of the outline; the other
+  is an opposite concave vertex or the nearest outline segment. The split is
+  the straight segment between them, so it need not be vertical.
+- A concavity is outline that does not lie on the convex hull. The candidate
+  point in it is the one furthest from the hull line, as a local extremum.
+  Separating one joined ASCII pair can take up to about 3 chop pairs.
+- Chops are tried in priority order on the lowest-confidence blob. A chop
+  that does not improve recognition is undone but kept, so the associator
+  (the segmentation search) can still use it later.
+
+How this relates to OCRcer: our lattice already plays the associator's role,
+and recognition already arbitrates between candidate cuts. Concavity pairs
+would be an extra candidate source, next to projection minima. They are the
+natural way to handle serif chains joined at the baseline, where the
+vertical projection has no minimum because the serif spans the gap. A
+concavity above the serif and one below it (or the baseline) define a short,
+nearly vertical cut through the serif. Whether r000583 needs this depends on
+the cut-candidate diagnosis (`2026-09-24_cut_candidates_r000583.md`).
