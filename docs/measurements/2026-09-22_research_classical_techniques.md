@@ -714,3 +714,57 @@ physical.
 
 Sources: [The State of the Art of Document Image Degradation Modelling — Baird](https://link.springer.com/chapter/10.1007/978-1-84628-726-8_12),
 [Augraphy](https://arxiv.org/pdf/2208.14558).
+
+## Addendum 2026-09-24: per-page adaptive prototypes (document-specific shape model)
+
+Every glyph on a CAD sheet or a filing is usually set in one or two faces,
+and those faces are often missing from the bank (SHX stroke fonts, scanner
+blur). The classical answer is to let the page train itself. Two papers
+describe it:
+- **Kae & Learned-Miller (CVPR 2010).** They bootstrap from a subset of
+  words recognised with high precision, build document-specific character
+  models from them, and re-read the page. *Read from the abstract only; the
+  PDF host failed its certificate check.*
+- **Lee & Smith (Google, ICDAR 2011), on Tesseract.** Two correction paths,
+  image and language, each checked by the other. They report word error
+  down 25% on scanned books, and most of that gain comes in the first
+  iteration. That is *their* measurement on books, not ours.
+
+What carries over to OCRcer, and why it fits the contract:
+1. **Harvest.** Take glyphs from words that are confident after pass 1:
+   calibrated confidence above a threshold, and either a lexicon hit or a
+   clean identifier shape. Choosing words with the lexicon is a selection
+   step. It never rewrites anything, so rule 6 is untouched.
+2. **Document prototypes.** Run the harvested glyphs through the *same*
+   `ocrcer-core` extractor (rule 4). Hold them in a per-page, in-memory
+   extension of the bank, tagged `doc`. That needs no format change, no
+   `.ocrw` version bump, no new dependency, and it stays wasm-safe.
+3. **Re-match only low-margin glyphs** against bank ∪ doc prototypes. Doc
+   prototypes get a small distance discount, fitted on the training split
+   (rule 1). High-margin glyphs keep their pass-1 result, which caps the
+   extra cost.
+4. **Cluster consistency (Lee & Smith's Master/Reject).** A pass-1 glyph
+   whose features sit closer to a large doc cluster of a *different* class
+   than to its own class is a correction candidate. This check is purely
+   image-side, so it is safe inside identifiers. Lee & Smith also cluster
+   *pairs* of glyphs, and that fixes segmentation errors like `rn`/`m`
+   without a new segmentation pass.
+5. **Determinism.** Harvest in a fixed order (line, then x), cluster
+   deterministically, and break ties as §8.2 does. Golden fixtures stay
+   meaningful.
+
+What does NOT carry over:
+- **The document cache lexicon** (P = max(cache, base)). It reinforces a
+  *consistent* error, the same misread on every occurrence, with high
+  confidence. That is exactly the failure rule 6 exists to prevent in
+  identifier-heavy CAD text. Park it. Revisit it only for prose regions,
+  gated off in identifier context.
+
+Proposed as a candidate chunk after 13. Chunk 13 harvests real-scan
+prototypes *offline* with ground truth; this harvests them *online*,
+without it. Chunk 13's forced-alignment code is the natural base.
+Expected cost is one extra match on low-margin glyphs only, which has not
+been measured yet. Accuracy has not been measured either.
+
+Sources: [Kae & Learned-Miller, CVPR 2010](https://mlanthology.org/cvpr/2010/kae2010cvpr-improving/),
+[Lee & Smith, Improving Book OCR by Adaptive Language and Image Models](https://tesseract-ocr.github.io/docs/Improving_Book_OCR_by_Adaptive_Language_and_Image_Models.pdf).
