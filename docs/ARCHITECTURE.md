@@ -6459,3 +6459,39 @@ each one record the first stage at which it is lost:
 The confusions `h→m`, `i→m`, `t→æ`, `e→æ` make the decoder's wide-edge
 preference the leading suspect. That is a reading, not a finding. The fix
 goes wherever the tally points, and nowhere else.
+
+### 2026-09-24 — r000583 is italic: add italic faces to the bank first; `char_bonus` after, deslant held
+
+Measured in `docs/measurements/2026-09-24_letter_autopsy_r000583.md` (commit
+`ca7f557`). The autopsy traced 21 deleted or absorbed letters:
+- **10** have no cut candidate between letters that touch (ff, ri, fie);
+- **6** have the correct class missing from the matcher's shortlist;
+- **4** are decoder losses, where two good single-letter edges lose to one
+  merged edge;
+- the remaining 1 is split across these categories in the doc.
+
+Five crops, checked visually, are all **italic** serif: the page's
+forward-looking-statements boilerplate. Even the correctly matched italic
+letters score worse distances than the upright text on the same page. The
+agent reports the same signature on other bad pages. That is a reading
+until the italic share is counted.
+
+This is the evidence the italic item was queued behind (entry of 2026-09-23:
+"one page in six is lost to an unrepresented style… measured the way bold
+was"). Decision, following the protocol's cheapest-fix-first rule:
+
+1. **Add italic (and bold-italic where available) faces of the families
+   already in the bank**, licence-cleared as before. Rebuild the bank whole.
+   No charset, feature or normalisation change, and no format bump. This
+   attacks the 6 shortlist misses and the distance penalty directly. It
+   also attacks part of the 10 no-cut cases: an italic `f`/`ff`/`fi`
+   prototype lets a lattice edge over a slanted ligature-like pair match as
+   something. Gates are the usual ones.
+2. **Then re-sweep `decode.char_bonus`** on top of the new bank. The autopsy
+   reverse-engineered about 5.9 from two cases, but that is two cases, and
+   the right bonus depends on the distances the new bank produces. Sweeping
+   it first would tune to a bank that is about to change.
+3. **Held: per-line deslant** (estimate the slant, shear before
+   segmentation). This is the structural answer to slanted touching letters,
+   but it adds a pipeline stage and changes what the extractor sees on
+   italic lines. It is decided on the residual after steps 1–2, not before.
