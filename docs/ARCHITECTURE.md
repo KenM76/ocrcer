@@ -6231,3 +6231,21 @@ cues:
 
 `cell_wrap_slack` is a new guess, swept. The switch stays default 0 until
 both gates pass.
+
+### 2026-09-23 — Cell pairing, rule 2: fixes r000407, still fails pages-cov; stays off
+
+Readings are in `docs/measurements/2026-09-23_cell_pairing.txt`, commit
+`663f730`. The full-line and own-row tests make r000407 bit-identical to the
+control at every slack. r000044 keeps rule 1's win at slack ≥ 2.0. But
+pages-cov is 6.639 / 6.730 / 6.848 at slack 1 / 2 / 3, against a gate of
+≤ 6.114. Rule 1 was 6.987. finfilings was not run, because the failing gate
+was checked first.
+
+The twins pages named as examples in rule 1's round turned out not to move.
+The pages that actually carry the pages-cov regression have not been
+identified. Line-matched CER regresses too (6.609), so the damage is lines
+being joined or split differently, not just reordered.
+
+Next: list pages-cov per-page CER at control vs rule 2 (slack 2.0). Name the
+top regressors and the layout shape they share before any rule 3. The switch
+stays default 0.
