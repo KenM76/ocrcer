@@ -44,14 +44,25 @@ split):
   (124 rows) — below `parquet_corpus.py`'s own `--min-chars` floor, so it
   would never have been rendered into a page in the first place and has no
   business being training material either.
-- Everything else is a candidate. Each candidate row is assigned a
-  deterministic fraction in `[0, 1)` from a hash of its `(dataset, row_id)`
-  key; a fraction under 0.0523 is `train`, the next 0.0131 is `validation`,
-  everything else is left unlisted (neither trained on nor scored — simply
-  not needed at this corpus size). This produced **427 train, 103
-  validation** — both within a few rows of the ~400/~100 target, and both
-  numbers are a property of the fixed fractions and the fixed row set, not a
-  knob tuned to hit a target after the fact.
+- Any remaining row whose word-5-gram shingle containment against a score
+  row exceeds `NEAR_DUP_THRESHOLD` is `excluded` (4,255 rows) — see
+  "Near-duplicate check" below.
+- Everything else is a candidate. Candidates are sorted by a deterministic
+  fraction in `[0, 1)` derived from a hash of each row's `(dataset, row_id)`
+  key (`sample_fraction`, unchanged), and the lowest `MULTIFINBEN_TRAIN_TARGET`
+  (427) fractions are `train`, the next `MULTIFINBEN_VAL_TARGET` (103) are
+  `validation`; everything past that is left unlisted (neither trained on nor
+  scored). This is a **count-based prefix of the sorted survivors**, not a
+  fixed fraction window: because the near-duplicate check removes some
+  candidates before this step, a fixed window would produce a train/validation
+  size that drifts every time the near-dup exclusion count changes. Selecting
+  the lowest N surviving fractions instead reaches the same 427/103 targets
+  regardless of how many rows the near-dup check removes, while staying fully
+  deterministic (same hash, no RNG, no post-hoc size tuning). Row order in
+  the manifest is still index order, not fraction order — selection uses the
+  fraction sort internally, then a second pass emits rows in their original
+  `(shard, row)` order so the file's row ordering is unaffected by the
+  refill mechanism.
 
 **`cord-v2`** and **`sroie`**: both datasets' official splits are used
 whole, no sampling needed.
@@ -84,20 +95,139 @@ are for) and stay that way for the same reason the firewall exists at all.
 `multifinben-englishocr`'s Arrow schema is exactly `{image: string, text:
 string}` — no document id, no filing id, no source-file column of any kind
 (verified directly against the parquet schema, not inferred from the
-README). That means the strongest duplicate check available is **exact
-transcript-text equality** (SHA-1 of the full cleaned text), which is what
-was run: every one of the 7,961 rows was hashed and compared against the 60
-finfilings score rows' hashes, catching 123 exact matches.
+README). That means exact match (SHA-1 of the full cleaned text) cannot
+catch a row that is a different page, crop, or re-transcription of the
+*same underlying filing* as a score row but with even one differing
+character — e.g. a different page of the same 10-K, or the same page
+re-OCR'd with different whitespace. Nothing in the dataset lets that be
+checked with a document-id column (absent) or by comparing rendered images
+(out of scope for a metadata-only index file, and still heuristic). The
+near-duplicate check below is the mitigation for exactly this gap; it is a
+better floor than exact match alone, not a proof that no leakage remains.
 
-This check was **not** able to catch a row that is a different page, crop,
-or re-transcription of the *same underlying filing* as a score row but with
-even one differing character — e.g. a different page of the same 10-K, or
-the same page re-OCR'd with different whitespace. Nothing in the dataset
-lets that be checked without either a document-id column (absent) or
-comparing rendered images (out of scope for a metadata-only index file, and
-still heuristic). This limitation is stated here rather than papered over:
-the 123-row exclusion is a floor on how much leakage was caught, not a
-guarantee that none remains.
+## Near-duplicate check
+
+123 exact-text duplicates in a 7,961-row corpus is a heavy enough
+duplication rate that near-duplicates — the same filing re-OCR'd, adjacent
+pages of the same filing, boilerplate-heavy pages — are likely too. The
+check: normalise every candidate row's cleaned transcript (lowercase,
+whitespace-collapsed), build word 5-gram shingles, and for every remaining
+MultiFinBen row (after the exact-dup and too-short exclusions) compute
+containment `|A∩B|/|A|` against each of the 60 `pages/finfilings` score
+rows, where `A` is the candidate — max over score rows. This is computed
+once by `tools/multifinben_near_dup.py score-containment` (an inverted
+shingle index over the 60 score rows, one pass over the candidate pool) and
+committed as metadata-only (`bench/splits/multifinben_near_dup.tsv`: shard,
+row, containment, best-matching score row — no corpus text), the same
+pattern `multifinben_index.tsv` already uses. `splits::assign_multifinben`
+reads it and excludes any row whose containment exceeds
+`NEAR_DUP_THRESHOLD`, same firewall-before-fitting reasoning as the
+exact-dup check.
+
+**Distribution over the 7,654 rows checked** (post exact-dup/too-short
+exclusion):
+
+| Bucket | Count |
+|---|---|
+| 0 | 3,399 |
+| (0, 0.1] | 2,095 |
+| (0.1, 0.3] | 93 |
+| (0.3, 0.5] | 21 |
+| (0.5, 0.8] | 234 |
+| (0.8, 1] | 1,812 |
+
+The distribution is bimodal, not a smooth falloff: a large mass at or near
+zero (unrelated filings), a second large mass near 1.0, and comparatively
+few rows in between. That shape is itself informative — the near-1.0 mass
+is almost entirely template-boilerplate reuse (see below), not a gradient
+of "somewhat related" filings.
+
+**Threshold decision: `NEAR_DUP_THRESHOLD = 0.0`, not the 0.3 starting
+point.** Eyeballing text (`tools/multifinben_near_dup.py dump-text`) across
+the full range surfaced two distinct phenomena that overlap in containment
+score and cannot be told apart by the number alone:
+
+- **Genuine same-filing leakage at LOW containment.** Henry Schein, Inc.
+  Exhibit D continuation pages matched a score row at containment
+  0.078–0.124 — well under 0.3 — confirmed by matching CUSIP numbers,
+  consecutive page numbers, and continuing legal-clause text across the
+  pair. TransAlta / Brookfield Schedule 13D reporting-person continuation
+  pages matched at 0.103–0.300, the same phenomenon spanning right up to
+  the suggested threshold. A 0.3 cutoff would have let these into training.
+- **Shared industry boilerplate at HIGH containment between unrelated
+  filers.** Broadway Financial Corporation vs. Henry Schein, Inc. — two
+  unrelated companies — share an EX-24 power-of-attorney template at
+  containment 0.349. Guggenheim Securities vs. Finantia USA Inc. share
+  generic GAAP footnote language at 0.077. Form N-PORT Part C's
+  standardized checkbox/label template is reused verbatim by many unrelated
+  funds at containment 0.55–0.99. None of these are the same document —
+  company names, CIKs, and substantive content differ — they are
+  regulatory-form boilerplate.
+
+Because genuine leakage was observed as low as 0.078 and false-positive
+boilerplate reused as high as 0.99, **no single containment threshold
+separates the two populations**, and the two phenomena are not reliably
+distinguishable without reading each pair by hand (infeasible at this
+corpus size). Given the project's firewall-first posture (`CLAUDE.md` rule
+1, "never tune on the test set", and this project's general preference for
+a smaller clean corpus over a larger contaminated one), the threshold is
+set to the floor: any candidate with *nonzero* shingle overlap against a
+score row is excluded. This is a deliberate, one-time adjustment from the
+task's 0.3 starting point, made and recorded here per the instruction that
+permits adjusting a clearly-wrong threshold once. It costs boilerplate rows
+that were probably safe (the false-positive side), in exchange for not
+needing to adjudicate the ambiguous middle by eye. The candidate pool was
+large enough to absorb this: 3,399 rows have exactly zero containment,
+comfortably above the 530 (427+103) needed, so the refill mechanism above
+reaches both targets without exhausting the zero-containment pool.
+
+This raised total MultiFinBen exclusions from 247 (123 exact-dup + 124
+too-short) to **4,502** (123 exact-dup + 124 too-short + 4,255 near-dup).
+Train/validation counts are unchanged at 427/103 — the refill mechanism
+(see above) absorbed the larger exclusion count by construction.
+
+**Top 10 candidates by containment** (all near-1.0, all boilerplate-driven
+per the eyeballing above, all excluded under the threshold):
+
+| Candidate | Containment | Best-matching score row |
+|---|---|---|
+| `train-00005-of-00008.parquet#000969` | 1.0000 | `train-00000-of-00008.parquet#000363` |
+| `train-00000-of-00008.parquet#000046` | 1.0000 | `train-00000-of-00008.parquet#000044` |
+| `train-00000-of-00008.parquet#000145` | 0.9981 | `train-00000-of-00008.parquet#000242` |
+| `train-00007-of-00008.parquet#000069` | 0.9941 | `train-00000-of-00008.parquet#000363` |
+| `train-00007-of-00008.parquet#000027` | 0.9941 | `train-00000-of-00008.parquet#000363` |
+| `train-00006-of-00008.parquet#000963` | 0.9941 | `train-00000-of-00008.parquet#000363` |
+| `train-00006-of-00008.parquet#000913` | 0.9941 | `train-00000-of-00008.parquet#000363` |
+| `train-00004-of-00008.parquet#000659` | 0.9941 | `train-00000-of-00008.parquet#000363` |
+| `train-00004-of-00008.parquet#000572` | 0.9941 | `train-00000-of-00008.parquet#000363` |
+| `train-00004-of-00008.parquet#000531` | 0.9941 | `train-00000-of-00008.parquet#000363` |
+
+### Train-vs-validation check (report only, not exclusionary)
+
+The same shingle-containment method was run between the final `train` and
+`validation` MultiFinBen rows (`tools/multifinben_near_dup.py
+train-val-check`), report-only per the task — a train/validation leak is
+less severe than a train/score leak (it can't inflate a benchmark result
+against `ocrs`, only make the validation set a weaker check on
+overfitting), so no exclusion is applied here.
+
+| Bucket | Count (of 103 validation rows) |
+|---|---|
+| 0 | 35 |
+| (0, 0.1] | 44 |
+| (0.1, 0.3] | 10 |
+| (0.3, 0.5] | 8 |
+| (0.5, 0.8] | 2 |
+| (0.8, 1] | 4 |
+
+6 of 103 validation rows (5.8%) have containment ≥ 0.5 against some train
+row, 3 of those at or near 1.0. This is worth knowing when reading
+validation-set numbers during tuning: a handful of validation rows are
+near-duplicates of training rows and will over-predict how well tuning
+generalizes. It is not acted on here — re-splitting train/validation on
+this signal would require a second refill pass and was out of scope for
+this pass — but any tuning round that leans heavily on validation-set
+movement should discount the ~6 rows flagged here.
 
 ## Rendered training/validation pages
 

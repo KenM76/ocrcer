@@ -134,16 +134,36 @@ pub fn sample_fraction(dataset: &str, row_id: &str) -> f64 {
     fmix64(fnv1a64(key.as_bytes())) as f64 / u64::MAX as f64
 }
 
-/// Target train fraction of the post-exclusion MultiFinBen candidate pool
-/// (7,654 rows measured 2026-09-24), chosen so the expected sample is
-/// approximately 400 rows: `400 / 7654 ≈ 0.0523`. The realised count is
-/// reported by `bin/split`, not assumed to hit the target exactly -- a
-/// hash-based sample has sampling variance like any other, and "about 400"
-/// is what `PLAN.md` chunk 12 asks for.
-pub const MULTIFINBEN_TRAIN_FRAC: f64 = 0.0523;
-/// Target validation fraction, `100 / 7654 ≈ 0.0131`, in the same slice of
-/// `[0, 1)` immediately above the train fraction (see [`assign_multifinben`]).
-pub const MULTIFINBEN_VAL_FRAC: f64 = 0.0131;
+/// Target `train` count for the post-exclusion MultiFinBen candidate pool.
+/// [`assign_multifinben`] selects the lowest-[`sample_fraction`] survivors
+/// up to this count -- a prefix of a deterministic sort, not a fixed
+/// fraction window, specifically so that excluding a low-fraction row (as a
+/// near-duplicate; see [`NEAR_DUP_THRESHOLD`]) automatically pulls in the
+/// next-lowest-fraction survivor rather than leaving a gap. 427 matches the
+/// realised size of chunk 12's original fixed-fraction sample
+/// (`bench/splits/README.md`'s near-duplicate section).
+pub const MULTIFINBEN_TRAIN_TARGET: usize = 427;
+/// Target `validation` count, selected immediately after the `train` prefix
+/// in the same sorted-survivor order. 103 matches chunk 12's original
+/// realised validation size.
+pub const MULTIFINBEN_VAL_TARGET: usize = 103;
+
+/// A candidate row is excluded as a near-duplicate of a `pages/finfilings`
+/// score row when its best word-5-gram-shingle containment against any of
+/// the 60 score rows exceeds this (see [`NearDupRow`] and
+/// `tools/multifinben_near_dup.py`). Set to `0.0` -- any shared shingle at
+/// all triggers exclusion -- after eyeballing transcript text across the
+/// full observed containment range (0.07 to 0.99) found confirmed
+/// same-filing leakage as low as 0.078 (a Power-of-Attorney continuation
+/// page sharing almost no verbatim phrase runs with its own cover page) and
+/// confirmed *unrelated* filings sharing containment as high as 0.35-0.99
+/// (verbatim reuse of standardised SEC-form boilerplate, e.g. Form N-PORT
+/// Part C's checkbox labels, across thousands of unconnected filers). No
+/// single cutoff separates the two classes in this corpus -- `0.0` is the
+/// conservative side of that ambiguity, not a claim that everything excluded
+/// under it is provably the same document. `bench/splits/README.md`'s
+/// near-duplicate section records the specific rows that motivated this.
+pub const NEAR_DUP_THRESHOLD: f64 = 0.0;
 
 pub const MULTIFINBEN_DATASET: &str = "multifinben-englishocr";
 pub const MULTIFINBEN_LICENCE: &str = "Apache-2.0";
@@ -156,6 +176,61 @@ pub struct IndexRow {
     pub row: u32,
     pub sha1: String,
     pub chars: u32,
+}
+
+/// One parsed line of `multifinben_near_dup.tsv`: a candidate row's best
+/// word-5-gram-shingle containment against any of the 60 `pages/finfilings`
+/// score rows, and which score row it was. Computed by
+/// `tools/multifinben_near_dup.py score-containment` (transcript text is
+/// needed to build the shingle sets, so the computation happens in Python,
+/// same division of labour as the SHA-1 column in [`IndexRow`]; only the
+/// float and a reference row id are committed, never the text).
+#[derive(Debug, Clone)]
+pub struct NearDupRow {
+    pub shard: String,
+    pub row: u32,
+    pub containment: f64,
+    pub best_score_shard: String,
+    pub best_score_row: u32,
+}
+
+/// Parses `multifinben_near_dup.tsv`: a `#`-commented header, then
+/// `shard, row, containment, best_score_shard, best_score_row`. A row with
+/// containment `0.0000` and no best-match columns (nothing shared any
+/// shingle with any score row) parses with an empty `best_score_shard` and
+/// `best_score_row` of `0` -- callers only read those fields when
+/// `containment > 0.0`, per [`NEAR_DUP_THRESHOLD`]'s exclusion rule.
+pub fn parse_near_dup_tsv(text: &str) -> Result<Vec<NearDupRow>, String> {
+    let mut out = Vec::new();
+    for (n, line) in text.lines().enumerate() {
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let cols: Vec<&str> = line.split('\t').collect();
+        if cols.len() != 5 {
+            return Err(format!("multifinben_near_dup.tsv line {}: expected 5 columns, got {}",
+                                n + 1, cols.len()));
+        }
+        let row = cols[1].parse::<u32>()
+            .map_err(|e| format!("multifinben_near_dup.tsv line {}: bad row number: {e}", n + 1))?;
+        let containment = cols[2].parse::<f64>()
+            .map_err(|e| format!("multifinben_near_dup.tsv line {}: bad containment: {e}", n + 1))?;
+        let best_score_row = if cols[4].is_empty() {
+            0
+        } else {
+            cols[4].parse::<u32>()
+                .map_err(|e| format!("multifinben_near_dup.tsv line {}: bad best_score_row: {e}",
+                                      n + 1))?
+        };
+        out.push(NearDupRow {
+            shard: cols[0].to_string(),
+            row,
+            containment,
+            best_score_shard: cols[3].to_string(),
+            best_score_row,
+        });
+    }
+    Ok(out)
 }
 
 /// Parses `multifinben_index.tsv` (or `finfilings_rows.tsv`'s two-column
@@ -206,15 +281,23 @@ fn row_id(shard: &str, row: u32) -> String {
 }
 
 /// Builds every MultiFinBen manifest row: the 60 permanent `score` rows,
-/// the rows excluded as duplicates of one of those 60 or as too short, and
-/// a deterministic `train`/`validation` sample of what remains. Order is
-/// index order (shard, then row), which is why re-running this against the
-/// same two input files always emits the same manifest bytes.
+/// the rows excluded as duplicates (exact or near) of one of those 60 or as
+/// too short, and a deterministic `train`/`validation` sample of what
+/// remains. Emitted in index order (shard, then row) regardless of the
+/// internal fraction-sort [`MULTIFINBEN_TRAIN_TARGET`]/[`MULTIFINBEN_VAL_TARGET`]
+/// selection uses, so re-running this against the same three input files
+/// always emits the same manifest bytes in the same row order.
 ///
 /// `index` is the full row population (`multifinben_index.tsv`);
 /// `finfilings` is the 60 `(shard, row)` pairs already spent on
-/// `pages/finfilings` (`finfilings_rows.tsv`).
-pub fn assign_multifinben(index: &[IndexRow], finfilings: &[(String, u32)]) -> Vec<ManifestRow> {
+/// `pages/finfilings` (`finfilings_rows.tsv`); `near_dup` is every
+/// candidate row's best containment against a score row
+/// (`multifinben_near_dup.tsv`, [`NearDupRow`]).
+pub fn assign_multifinben(
+    index: &[IndexRow],
+    finfilings: &[(String, u32)],
+    near_dup: &[NearDupRow],
+) -> Vec<ManifestRow> {
     let score_set: HashSet<(&str, u32)> =
         finfilings.iter().map(|(s, r)| (s.as_str(), *r)).collect();
 
@@ -228,8 +311,14 @@ pub fn assign_multifinben(index: &[IndexRow], finfilings: &[(String, u32)]) -> V
         .iter()
         .filter_map(|(s, r)| by_key.get(&(s.as_str(), *r)).map(|ix| ix.sha1.as_str()))
         .collect();
+    let near_dup_by_key: HashMap<(&str, u32), &NearDupRow> =
+        near_dup.iter().map(|r| ((r.shard.as_str(), r.row), r)).collect();
 
     let mut out = Vec::with_capacity(index.len());
+    // Survivors, kept in index order -- the order [`out`] will eventually
+    // receive them in, once the sort-by-fraction pass below decides which
+    // ones are train/validation/unlisted.
+    let mut survivors: Vec<(String, u32, f64)> = Vec::new();
     for ix in index {
         let id = row_id(&ix.shard, ix.row);
         if score_set.contains(&(ix.shard.as_str(), ix.row)) {
@@ -271,31 +360,75 @@ pub fn assign_multifinben(index: &[IndexRow], finfilings: &[(String, u32)]) -> V
             });
             continue;
         }
+        if let Some(nd) = near_dup_by_key.get(&(ix.shard.as_str(), ix.row)) {
+            if nd.containment > NEAR_DUP_THRESHOLD {
+                out.push(ManifestRow {
+                    dataset: MULTIFINBEN_DATASET.into(),
+                    row_id: id,
+                    split: Split::Excluded,
+                    licence: MULTIFINBEN_LICENCE.into(),
+                    reason: format!(
+                        "near-dup of {}#{:06} (c={:.4}) -- word-5-gram shingle containment \
+                         against a pages/finfilings score row exceeds the threshold in \
+                         bench/splits/README.md's near-duplicate section",
+                        nd.best_score_shard, nd.best_score_row, nd.containment
+                    ),
+                });
+                continue;
+            }
+        }
         let frac = sample_fraction(MULTIFINBEN_DATASET, &id);
-        if frac < MULTIFINBEN_TRAIN_FRAC {
+        survivors.push((ix.shard.clone(), ix.row, frac));
+    }
+
+    // Rank survivors by fraction to decide train/validation membership, but
+    // keep the decision keyed by (shard, row) so the second pass below can
+    // emit rows in the original index order -- selection order and output
+    // order are deliberately different (see this fn's doc comment).
+    let mut by_frac = survivors.clone();
+    by_frac.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap());
+    let train_set: HashSet<(&str, u32)> = by_frac
+        .iter()
+        .take(MULTIFINBEN_TRAIN_TARGET)
+        .map(|(s, r, _)| (s.as_str(), *r))
+        .collect();
+    let val_set: HashSet<(&str, u32)> = by_frac
+        .iter()
+        .skip(MULTIFINBEN_TRAIN_TARGET)
+        .take(MULTIFINBEN_VAL_TARGET)
+        .map(|(s, r, _)| (s.as_str(), *r))
+        .collect();
+
+    for (shard, row, _frac) in &survivors {
+        let id = row_id(shard, *row);
+        if train_set.contains(&(shard.as_str(), *row)) {
             out.push(ManifestRow {
                 dataset: MULTIFINBEN_DATASET.into(),
                 row_id: id,
                 split: Split::Train,
                 licence: MULTIFINBEN_LICENCE.into(),
-                reason: "deterministic hash-of-row-id sample of the post-exclusion \
-                          candidate pool, target ~400 rows"
-                    .into(),
+                reason: format!(
+                    "deterministic hash-of-row-id sample of the post-exclusion candidate \
+                     pool (lowest {} fractions among near-dup-filtered survivors)",
+                    MULTIFINBEN_TRAIN_TARGET
+                ),
             });
-        } else if frac < MULTIFINBEN_TRAIN_FRAC + MULTIFINBEN_VAL_FRAC {
+        } else if val_set.contains(&(shard.as_str(), *row)) {
             out.push(ManifestRow {
                 dataset: MULTIFINBEN_DATASET.into(),
                 row_id: id,
                 split: Split::Validation,
                 licence: MULTIFINBEN_LICENCE.into(),
-                reason: "deterministic hash-of-row-id sample of the post-exclusion \
-                          candidate pool, target ~100 rows"
-                    .into(),
+                reason: format!(
+                    "deterministic hash-of-row-id sample of the post-exclusion candidate \
+                     pool (next {} fractions after the train prefix)",
+                    MULTIFINBEN_VAL_TARGET
+                ),
             });
         }
-        // Otherwise: a candidate row this round simply did not sample. It is
-        // not listed -- the manifest records assignments, not the entire
-        // unused pool. README states the unlisted-candidate count.
+        // Otherwise: a surviving candidate that did not rank into either
+        // prefix. Not listed -- the manifest records assignments, not the
+        // entire unused pool. README states the unlisted-candidate count.
     }
     out
 }
@@ -478,7 +611,7 @@ mod tests {
             IndexRow { shard: "s.parquet".into(), row: 1, sha1: "bbb".into(), chars: 500 },
         ];
         let finfilings = vec![("s.parquet".to_string(), 0u32)];
-        let rows = assign_multifinben(&index, &finfilings);
+        let rows = assign_multifinben(&index, &finfilings, &[]);
         let r0 = rows.iter().find(|r| r.row_id == row_id("s.parquet", 0)).unwrap();
         assert_eq!(r0.split, Split::Score);
     }
@@ -490,7 +623,7 @@ mod tests {
             IndexRow { shard: "s.parquet".into(), row: 1, sha1: "same".into(), chars: 500 },
         ];
         let finfilings = vec![("s.parquet".to_string(), 0u32)];
-        let rows = assign_multifinben(&index, &finfilings);
+        let rows = assign_multifinben(&index, &finfilings, &[]);
         let r1 = rows.iter().find(|r| r.row_id == row_id("s.parquet", 1)).unwrap();
         assert_eq!(r1.split, Split::Excluded);
         assert!(r1.reason.contains("same source document") || r1.reason.contains("sha1"));
@@ -502,7 +635,7 @@ mod tests {
             IndexRow { shard: "s.parquet".into(), row: 0, sha1: "aaa".into(), chars: 500 },
             IndexRow { shard: "s.parquet".into(), row: 1, sha1: "bbb".into(), chars: 50 },
         ];
-        let rows = assign_multifinben(&index, &[]);
+        let rows = assign_multifinben(&index, &[], &[]);
         let r1 = rows.iter().find(|r| r.row_id == row_id("s.parquet", 1)).unwrap();
         assert_eq!(r1.split, Split::Excluded);
     }
@@ -521,11 +654,95 @@ mod tests {
             .collect();
         let finfilings: Vec<(String, u32)> =
             (0..10).map(|i| ("s.parquet".to_string(), i * 10)).collect();
-        let rows = assign_multifinben(&index, &finfilings);
+        let rows = assign_multifinben(&index, &finfilings, &[]);
         let mut seen = HashSet::new();
         for r in &rows {
             assert!(seen.insert(r.row_id.clone()), "duplicate row_id {}", r.row_id);
         }
+    }
+
+    #[test]
+    fn a_near_dup_row_is_excluded_with_containment_in_the_reason() {
+        let index = vec![
+            IndexRow { shard: "s.parquet".into(), row: 0, sha1: "aaa".into(), chars: 500 },
+            IndexRow { shard: "s.parquet".into(), row: 1, sha1: "bbb".into(), chars: 500 },
+        ];
+        let finfilings = vec![("s.parquet".to_string(), 0u32)];
+        let near_dup = vec![NearDupRow {
+            shard: "s.parquet".into(),
+            row: 1,
+            containment: 0.4567,
+            best_score_shard: "s.parquet".into(),
+            best_score_row: 0,
+        }];
+        let rows = assign_multifinben(&index, &finfilings, &near_dup);
+        let r1 = rows.iter().find(|r| r.row_id == row_id("s.parquet", 1)).unwrap();
+        assert_eq!(r1.split, Split::Excluded);
+        assert!(r1.reason.contains("near-dup"), "reason was {:?}", r1.reason);
+        assert!(r1.reason.contains("0.4567"), "reason was {:?}", r1.reason);
+        assert!(
+            r1.reason.contains(&row_id("s.parquet", 0)),
+            "reason was {:?}",
+            r1.reason
+        );
+    }
+
+    #[test]
+    fn a_near_dup_row_at_or_below_threshold_is_not_excluded_for_that_reason() {
+        // NEAR_DUP_THRESHOLD is 0.0, so a containment of exactly 0.0 must not
+        // trigger the near-dup exclusion path (the check is `>`, not `>=`).
+        let index = vec![
+            IndexRow { shard: "s.parquet".into(), row: 0, sha1: "aaa".into(), chars: 500 },
+            IndexRow { shard: "s.parquet".into(), row: 1, sha1: "bbb".into(), chars: 500 },
+        ];
+        let finfilings = vec![("s.parquet".to_string(), 0u32)];
+        let near_dup = vec![NearDupRow {
+            shard: "s.parquet".into(),
+            row: 1,
+            containment: 0.0,
+            best_score_shard: "s.parquet".into(),
+            best_score_row: 0,
+        }];
+        let rows = assign_multifinben(&index, &finfilings, &near_dup);
+        let r1 = rows.iter().find(|r| r.row_id == row_id("s.parquet", 1)).unwrap();
+        // "near-dup-filtered" appears in the ordinary sampling-reason text too
+        // (describing the pool the sample was drawn from); the exclusion
+        // reason specifically is "near-dup of <row>", so check for that.
+        assert!(!r1.reason.contains("near-dup of"), "reason was {:?}", r1.reason);
+        assert_ne!(r1.split, Split::Excluded);
+    }
+
+    #[test]
+    fn refill_reaches_targets_when_some_survivors_are_excluded_as_near_dups() {
+        // Build a large-enough synthetic candidate pool that some are
+        // excluded as near-dups; confirm train/validation counts still
+        // reach the fixed targets by refilling from the remaining
+        // survivors, rather than silently coming up short.
+        let n = (MULTIFINBEN_TRAIN_TARGET + MULTIFINBEN_VAL_TARGET) * 3;
+        let index: Vec<IndexRow> = (0..n as u32)
+            .map(|i| IndexRow {
+                shard: "s.parquet".into(),
+                row: i,
+                sha1: format!("h{i}"),
+                chars: 500,
+            })
+            .collect();
+        // Exclude a third of the pool as near-dups.
+        let near_dup: Vec<NearDupRow> = (0..n as u32)
+            .step_by(3)
+            .map(|i| NearDupRow {
+                shard: "s.parquet".into(),
+                row: i,
+                containment: 0.9,
+                best_score_shard: "score.parquet".into(),
+                best_score_row: 0,
+            })
+            .collect();
+        let rows = assign_multifinben(&index, &[], &near_dup);
+        let train = rows.iter().filter(|r| r.split == Split::Train).count();
+        let val = rows.iter().filter(|r| r.split == Split::Validation).count();
+        assert_eq!(train, MULTIFINBEN_TRAIN_TARGET);
+        assert_eq!(val, MULTIFINBEN_VAL_TARGET);
     }
 
     #[test]

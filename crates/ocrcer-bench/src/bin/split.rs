@@ -7,12 +7,16 @@
 //!   cargo run -p ocrcer-bench --bin split -- --check      # writes nothing; fails if the
 //!                                                          # committed file would change
 //!
-//! Inputs (both committed, both metadata-only -- no corpus text; see
+//! Inputs (all committed, all metadata-only -- no corpus text; see
 //! `ocrcer_bench::splits` module doc):
-//!   bench/splits/multifinben_index.tsv   -- every MultiFinBen row's shard, row
-//!                                            number, text sha1 and char count
-//!   bench/splits/finfilings_rows.tsv     -- the 60 (shard, row) pairs already
-//!                                            spent on pages/finfilings
+//!   bench/splits/multifinben_index.tsv    -- every MultiFinBen row's shard, row
+//!                                             number, text sha1 and char count
+//!   bench/splits/finfilings_rows.tsv      -- the 60 (shard, row) pairs already
+//!                                             spent on pages/finfilings
+//!   bench/splits/multifinben_near_dup.tsv -- every candidate row's best word-
+//!                                             5-gram-shingle containment against
+//!                                             a finfilings score row (produced by
+//!                                             tools/multifinben_near_dup.py)
 //!
 //! CORD-v2 and SROIE need no index file: their rows are enumerated from the
 //! fixed per-shard row-count constants in `ocrcer_bench::splits` (their
@@ -32,6 +36,7 @@ fn main() -> ExitCode {
 
     let index_path = root.join("multifinben_index.tsv");
     let finfilings_path = root.join("finfilings_rows.tsv");
+    let near_dup_path = root.join("multifinben_near_dup.tsv");
     let manifest_path = root.join("manifest.tsv");
 
     let index_text = match std::fs::read_to_string(&index_path) {
@@ -42,6 +47,10 @@ fn main() -> ExitCode {
         Ok(t) => t,
         Err(e) => return fail(&format!("reading {}: {e}", finfilings_path.display())),
     };
+    let near_dup_text = match std::fs::read_to_string(&near_dup_path) {
+        Ok(t) => t,
+        Err(e) => return fail(&format!("reading {}: {e}", near_dup_path.display())),
+    };
 
     let index = match splits::parse_index_tsv(&index_text) {
         Ok(v) => v,
@@ -51,8 +60,12 @@ fn main() -> ExitCode {
         Ok(v) => v,
         Err(e) => return fail(&e),
     };
+    let near_dup = match splits::parse_near_dup_tsv(&near_dup_text) {
+        Ok(v) => v,
+        Err(e) => return fail(&e),
+    };
 
-    let mut rows = splits::assign_multifinben(&index, &finfilings);
+    let mut rows = splits::assign_multifinben(&index, &finfilings, &near_dup);
     rows.extend(splits::cord_rows());
     rows.extend(splits::sroie_rows());
     let tsv = splits::render_tsv(&rows);

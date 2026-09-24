@@ -49,3 +49,8 @@ bench/priv*/
 bench/datasets/
 bench/scribe/
 bench/finfilings/
+
+# Python bytecode caches -- not source, regenerated locally, no reason to
+# commit or diff.
+__pycache__/
+*.pyc

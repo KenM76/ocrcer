@@ -4,12 +4,19 @@
 `pages/finfilings` used.
 
     python tools/manifest_render.py <manifest.tsv> <dataset-dir> <split> <out-dir>
+    python tools/manifest_render.py <manifest.tsv> <dataset-dir> <split> <out-dir> --check
 
 Imports `image_bytes`/`clean_lines`/`write_pgm` from `parquet_corpus.py`
 rather than copying them, so a manifest-driven render and the original
 stride-driven `pages/finfilings` render can never silently diverge in what
 counts as "the same page" -- one function, two call sites, same as
 `ocrcer-core` rule 4's reasoning applied to this one-off tooling.
+
+`--check` renders nothing and reads no parquet data; it only compares the
+stems the manifest currently implies against the `.pgm` files already on
+disk in `<out-dir>`, and fails (nonzero exit) listing any mismatch. This is
+what to run after a manifest regeneration removes or adds rows, before
+trusting that `<out-dir>` still matches `manifest.tsv` exactly.
 
 # Licensing and privacy
 
@@ -66,6 +73,48 @@ def load_wanted(manifest_tsv, dataset, split):
     return wanted
 
 
+def expected_stems(wanted, family):
+    stems = set()
+    for shard, rows in wanted.items():
+        sidx = shard_index(shard)
+        for row in rows:
+            stems.add(f"{family}__s{sidx}__r{row:06d}")
+    return stems
+
+
+def cmd_check(args):
+    wanted = load_wanted(args.manifest_tsv, args.dataset, args.split)
+    want_total = sum(len(v) for v in wanted.values())
+    if not wanted:
+        sys.exit(f"no {args.split} rows for {args.dataset} in {args.manifest_tsv}")
+
+    expected = expected_stems(wanted, args.family)
+    out = Path(args.out_dir)
+    present = {p.stem for p in out.glob(f"{args.family}__s*__r*.pgm")}
+
+    missing = sorted(expected - present)
+    extra = sorted(present - expected)
+
+    if not missing and not extra:
+        print(f"--check: {out} matches {args.manifest_tsv} exactly "
+              f"({want_total} {args.split} rows)")
+        return
+
+    if missing:
+        print(f"--check: {len(missing)} row(s) in the manifest have no rendered page:")
+        for s in missing[:20]:
+            print(f"  missing: {s}")
+        if len(missing) > 20:
+            print(f"  ... and {len(missing) - 20} more")
+    if extra:
+        print(f"--check: {len(extra)} rendered page(s) are not in the manifest:")
+        for s in extra[:20]:
+            print(f"  extra:   {s}")
+        if len(extra) > 20:
+            print(f"  ... and {len(extra) - 20} more")
+    sys.exit(1)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -79,7 +128,14 @@ def main():
     ap.add_argument("--family", default="filing",
                     help="truth `family` field and stem prefix, matching "
                          "pages/finfilings (default 'filing')")
+    ap.add_argument("--check", action="store_true",
+                    help="compare manifest-implied stems against <out-dir> "
+                         "contents; render nothing, read no parquet data")
     args = ap.parse_args()
+
+    if args.check:
+        cmd_check(args)
+        return
 
     import pyarrow.parquet as pq
     from PIL import Image
