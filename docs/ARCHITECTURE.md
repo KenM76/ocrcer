@@ -6623,3 +6623,37 @@ Carried forward:
   bank is the ceiling for any slant-threshold tuning on that page.
 - Next, per the 2026-09-24 italic entry: re-sweep `decode.char_bonus` on this
   bank.
+
+### 2026-09-24 — `decode.char_bonus` re-sweep: stays 3.44; the drawing category vetoes every increase
+
+These are readings, from `docs/measurements/2026-09-24_char_bonus_resweep.txt`,
+on the slant-gated bank.
+
+- Across 3.44 → 7.5, pages-cov traces a U with its minimum at **4.5 (5.651
+  vs 5.900)**.
+- The drawing-category Δ sum rises monotonically from the smallest step:
+  3.6 gives +0.030, 4.0 +0.151, 4.5 +0.407, and 5.9 +1.678.
+- The autopsy's 5.9 also fails pages-cov outright (6.424).
+- No value passed both pages-cov gates, so finfilings was not run.
+- `char_bonus` stays **3.44**.
+
+Decision:
+
+- **A single global `char_bonus` is the wrong shape.** A larger bonus favours
+  paths with more characters. Prose pages have a word-level context that
+  repays that. Drawing identifiers do not, so the gain on one is paid for
+  by the other at every step. This is §6 of CLAUDE.md in numeric form, and
+  the gate is doing its job.
+- **Next arm: a separate `decode.char_bonus_slanted`**, applied only to
+  words the slant estimator flags.
+  - Its evidence base is the r000583 autopsy, which is where the ~5.9 came
+    from.
+  - The detector flags about 1% of finfilings words and at most one word on
+    each of 9 of 90 drawing pages, so drawing exposure is bounded by
+    construction.
+  - It is a guess until swept, and it inherits the same gates.
+- **A per-context bonus for upright words** is not scheduled. That would be
+  a prose-versus-identifier split. The identifier-context detector that
+  already suppresses the lexicon term is its natural gate. It is recorded
+  here as the candidate if the slanted arm leaves the upright 4.5 gain on
+  the table.
