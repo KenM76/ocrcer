@@ -6727,3 +6727,71 @@ stays as history, and the architecture it chose stays.
      identifier-shaped tokens. Its every change is reported with the
      original, and the change carries its own lowered confidence.
    - Scheduled only when the operator asks.
+
+### 2026-09-24 — Operator: do training steps (a)–(c) in order, and build a neural glyph classifier
+
+This is the operator's instruction: "Do those 3 in order and build the neural
+network recognizer." It schedules PLAN chunks 12, 13 and 14, which are items
+(a), (b) and (c) of the previous entry, followed by chunk 15. It overrides the
+previous entry's "not on this list".
+
+The neural classifier's shape is decided here, so the chunk-15 agents build
+against a contract:
+
+1. **It is a matcher, not a new engine.** Segmentation, the lattice, the
+   Viterbi decoder, the lexicon and confidence are all unchanged. The
+   classifier scores each lattice glyph candidate, just as prototype matching
+   does. `match.classifier` selects the matcher:
+   - 0: prototypes, the default until measured;
+   - 1: network;
+   - 2: fused.
+   The network's per-class score enters the decoder as a pseudo-distance,
+   `-log p` scaled to the prototype distance's units. That keeps
+   `char_bonus` and the decoder weights meaningful. The scale is `fitted`.
+2. **Input is what the extractor already computes.** That means the 32x32
+   normalised grid `G` (§3.1) and the 107-dim feature vector. The feature
+   vector restores the size, aspect and position information that the grid
+   normalises away. It enters at the dense head. There is no second
+   normalisation path (rule 4).
+3. **Shape, as a starting point to be measured.**
+   - Architecture: conv 3x3×16 → ReLU → 2x2 pool → conv 3x3×32 → ReLU → 2x2
+     pool → dense(2048+107 → 128) → ReLU → dense(128 → 187).
+   - Size is ~0.3 M parameters, ~0.3 MB at int8. This is a projection.
+   - Cost is ~2 M MACs per glyph, against ~5 M for an unpruned prototype
+     scan at 50 K rows. This is also a projection.
+   - The architecture can change during chunk 15. Each change goes in this
+     log.
+4. **Inference lives in `ocrcer-core`,** in pure safe Rust with zero
+   dependencies, and it builds for wasm32. Every invariant in CLAUDE.md
+   rule 3 holds.
+   - Weights go in an **optional `nn` table**, int8 with per-channel scales.
+   - The layer spec and an `nn_version` go in `meta`.
+   - A runtime that does not know that `nn_version` ignores the table and
+     uses prototypes. This is additive, and `.ocrw` `version` stays.
+   - The charset stays in `meta`, so the output layer and the class indices
+     cannot disagree.
+5. **Training lives in `ocrcer-build`,** in Rust, and never ships.
+   - Its forward pass is core's forward pass. Only the backward pass and the
+     optimiser are build-side.
+   - It is deterministic: seeded PRNG, fixed data order, single-threaded or
+     fixed-order reductions. A re-run gives the same bytes on the same
+     platform.
+   - Training data:
+     - glyphs rendered by the bank's own renderer from the bank's
+       licence-cleared faces, with deterministic augmentation (noise, blur,
+       threshold jitter, sub-pixel shift);
+     - chunk 13's aligned real-scan crops from the training split.
+   - Nothing from a scoring page is used.
+   - A Python or other-language trainer is not allowed. It would be a
+     second implementation of the forward pass (rule 4).
+6. **Confidence.** The margin is `log p₁ − log p₂` between the top two
+   *different* classes. It goes through a calibration curve fitted on a
+   validation split, not a scoring split (rule 5).
+7. **Gates.**
+   - Beat the current prototype-only finfilings controls, on both measures.
+   - pages-cov ≤ control + 0.05, with drawing Δ ≤ 0.
+   - The identifier-preservation test passes.
+   - Wall time is reported. A regression over +25% needs its own
+     justification here.
+   - Model size is reported.
+   - A loss is filed as prominently as a win.
