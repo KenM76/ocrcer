@@ -6274,3 +6274,34 @@ Decision: rule 3 = rule 2 plus both proposed conditions:
 Gates are as before, plus one addition: `drawing`-category pages must not
 regress at all in aggregate (per-page CSV, control vs rule 3), because CAD
 text is what the engine is for. r000044's win must be re-checked.
+
+### 2026-09-23 — Checkboxes are furniture, not text: drop them, add no charset entry
+
+Measured in `docs/measurements/2026-09-23_checkbox_truth_survey.md` (counted by
+grep over all 685 truth files, 60 finfilings + 625 pages-cov, and by viewing
+four checkbox pages directly). No truth file transcribes a checkbox with any
+character or placeholder. At each box position the truth moves straight from
+the question to `Yes`/`No`/`N/A`. The box glyph in finfilings, a `?` in a
+square, is the source PDF's real design for an empty box (confirmed by the
+earlier finfilings audit). Roughly 30–35 of the 60 finfilings pages carry
+this layout. The `®`/`~`/`B` confusions on r000396/r000407 are therefore pure
+insertions.
+
+Decision:
+- A charset entry for checkboxes is **declined**. It could never score,
+  because any output at a box position is an insertion.
+- Checkbox shapes are declared **non-text furniture** and dropped before
+  recognition, just as rules are dropped by `lines.furniture_fraction` and
+  `rule_aspect`.
+- The detector is classical: a small, near-square, closed rectangular outline
+  whose interior is empty or holds a single small mark, near x-height to cap
+  height. Sizes are authored, as a multiple of x-height, and are guesses until
+  swept.
+- Gates are the usual ones: beat both finfilings CERs, and keep pages-cov
+  within control + 0.05. In addition, `drawing` pages must not regress in
+  aggregate. A CAD title-block cell or a boxed `0`/`O`/`D` is the obvious
+  false positive, so the detector must refuse a box whose interior mark is
+  glyph-sized.
+
+Out of scope: detecting checked state (ticked vs empty) and emitting it as
+text. Truth does not record it, and v1 does not need it.
