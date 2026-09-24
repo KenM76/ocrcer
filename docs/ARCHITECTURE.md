@@ -6343,3 +6343,41 @@ entry, which the implementing agent reverted, was written by
 progress. It was not a tooling fault or an injection. What it called
 "condition 3(iii)" is the widest-fragment rule above, under a different
 name.
+
+### 2026-09-23 — Checkbox drop, first detector: falsified at screening; a border-coverage signal is added to `Component`
+
+Measured in `docs/measurements/2026-09-23_checkbox_drop.txt`. The code is
+in `8d57fdb`, with `lines.checkbox_drop` at 0. On the four checkbox pages,
+the bounding-box detector (near-square, low ink fill) doubled CER and cut
+recall to 9–28%. It deleted ordinary hollow letters across the page (o, e,
+0, D, O, Q, P, R, B). The fill-threshold sweep from 0.30 to 0.55 is a cliff,
+not a curve: no value is both safe and useful. Two causes:
+- A bounding box plus an ink count cannot tell a box from an `o`.
+- The corpus's `?` mark renders fused with its box as one component, so a
+  "contained mark" test never fires.
+
+Decision: the distinguishing property of a box is **straight, fully inked
+sides**, and that needs the pixels.
+- Connected-component labelling (`image/components.rs`) already visits
+  every pixel. It will now also record each component's **border
+  coverage**: for each of the four bounding-box sides, the fraction of that
+  side's pixel positions inked by this component within a band of `t` px,
+  with `t` = max(1, round(height/12)).
+  - A drawn square scores ≥ ~0.9 on all four sides.
+  - An `o`/`0`/`O`/`D` misses its corners and scores clearly lower: rounded
+    shapes lose the corners, and `D` loses its left corners' curve.
+  - This is an internal `Component` field, computed once. It is not a
+    feature-vector dimension, it does not touch the charset or `.ocrw`, and
+    the bank does not need a rebuild.
+- The checkbox test becomes all four sides ≥ `lines.checkbox_side_min`
+  (guess 0.85), plus the existing size and aspect bounds. The fill gate is
+  demoted to a loose sanity bound. A fused interior mark is allowed.
+- The false positive to fear now is a boxed single character: a CAD balloon
+  or a boxed datum letter. Those are scene furniture drawn around text, and
+  the letter inside must survive. So when a component passes the side test,
+  the box is dropped but **pixel-disjoint components inside it are kept**.
+  The fused case, where the mark touches the box, drops as one piece.
+
+Gates are unchanged: the four-page screen must improve, then pages-cov must
+stay within 6.114 with drawing Δ ≤ 0, then finfilings must be under
+12.786/11.686.
