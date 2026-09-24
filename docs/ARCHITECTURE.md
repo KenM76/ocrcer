@@ -6960,3 +6960,28 @@ so this needs no rebuild.
 
 Carried forward: r000583's remaining losses are not fixed by a bigger
 slanted-word bonus. The next lever for that page has not been identified.
+
+
+### 2026-09-24 — Operator: integrate into pdfcer now; beating `ocrs` is no longer a precondition
+
+Operator directive, verbatim: "don't worry about beating the current ocr
+before building the other things needed for integration into pdfcer. We'll
+get it integrated asap and then continue improving the ocr results."
+
+This supersedes the precondition in `PLAN.md` §2c's hand-off gate
+(2026-09-21: "once you have determined that our OCR is better ... pdfcer to
+be informed"). The alpha path is now:
+1. the binding (chunk 7);
+2. dense-page speed;
+3. model packaging and licence attribution;
+4. a pdfcer-side change that adds OCRcer as an **opt-in** engine alongside
+   `ocrs`.
+
+The pdfcer change follows pdfcer's own rules and agents. `ocrs` stays the
+default until the head-to-head says otherwise.
+
+What does not change:
+- The head-to-head is still run and reported per domain, losses included
+  (rule 8). It now informs the default engine choice rather than gating
+  integration.
+- Accuracy work (chunks 12–16) continues after integration.

@@ -506,6 +506,11 @@ you have determined that our OCR is better than the one we are currently
 using in pdfcer I want pdfcer to be informed to add this one to its options
 to use." This is a gate attached to chunk 11, not an action taken now.
 
+**Superseded 2026-09-24 (operator):** integration no longer waits on
+beating `ocrs`. OCRcer ships to pdfcer as an opt-in engine as soon as the
+binding, speed and packaging are ready; the head-to-head decides the
+default. See `ARCHITECTURE.md` §11, 2026-09-24.
+
 - **"Better" is defined before it is measured**, or the metric gets chosen
   after the fact to produce a win. Primary metric: **CER** on a shared
   corpus admitted under this section's firewall, WER reported alongside,
