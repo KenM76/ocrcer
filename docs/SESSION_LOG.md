@@ -910,3 +910,121 @@ ligature share, the lone-guard diff, `baseline_split_sep`/`support`
 `rule_aspect` re-measurement, the `ocrs` head-to-head, SROIE,
 recognition-gated chopping research, ALTO/hOCR output, the `rustfmt` pass,
 and the `/usage` calibration — now six sessions).
+
+## 2026-09-24 — Checkbox drop ships, `max_splits` and cut-candidate generation both ruled out on `r000583`, a per-letter stage autopsy finds it's italic, italic prototypes tried and reverted
+
+**Request:** drop form-field checkboxes as furniture before recognition
+without deleting hollow letters; continue the `r000583` worst-page
+diagnosis carried forward from the prior session, checking whether the
+segmentation split cap or cut-candidate generation was the binding
+constraint before tuning either.
+
+**Reconnaissance performed.** A first checkbox detector (near-square
+bounding box, low ink-fill ratio) was screened on four real pages with
+known checkboxes before being trusted at corpus scale.
+
+**Checkbox detection needed two attempts.** The fill-ratio detector was
+catastrophic at every threshold tried (0.30–0.55): CER roughly doubled and
+recall on the screening pages fell to a fifth to a third of control,
+because a plain hollow letter or digit (`o e a 0 6 8 9`, the counters of
+`D O Q P R B`) presents the same near-square aspect and low interior fill
+as an empty checkbox — there is no separately-labelled "contained mark"
+component for either shape, and a variant requiring one fired on nothing
+across all four screening pages. The fix: extend the connected-component
+record with per-side border-ink coverage (`Component::border_coverage:
+[f32;4]`, a `height/12`px band at each edge), gated on all four sides
+clearing 0.85 (measured-at-this-value), with the fill-ratio test demoted
+to a loose sanity bound. **Shipped** — all four screening pages improved
+or held, full-corpus gates passed byte-identical on `pages-cov` and
+improved on `finfilings` (12.786%→12.708% end-to-end, 11.686%→11.602%
+line-matched).
+
+**The suspected segmentation-cap bottleneck did not bind.** Sweeping
+`segment.max_splits` (guessed cap of 3) from 3 to 8 on `r000583` and a
+second suspect page produced byte-identical decode output across the
+entire range on both; a third page moved 0.2–0.3pp CER, plateauing at
+N=5, with zero word-level change. The cap truncates a sorted candidate
+list and the valley detector was already offering fewer candidates per
+fused atom than the sweep's own floor allowed for, so raising it had
+nothing further to take. No default changed.
+
+**Cut-candidate generation was checked next and also ruled out.** A full
+per-atom trace on `r000583` (352 wide atoms, 187 searched; 54 bbox-merged
+fused atoms, 2 kept at zero cuts) found the detector correctly rejecting
+what it rejected — one fused atom is a `W` crossbar, the other a `d`+comma
+pair whose only local minimum is the bowl/stem junction, not the true
+letter boundary. Two consecutive ruled-out mechanisms on the same page
+with no third hypothesis in hand redirected the method itself rather than
+producing a third guess.
+
+**A per-letter stage autopsy pinned the loss on match/decode, and
+surfaced that the page is italic.** Three temporary, env-gated debug
+hooks — a decoded-character dump, a word-scoped lattice dump gated on
+both x- and y-span (an x-only filter had silently matched every line
+sharing a left margin), and a decoder score-breakdown — were added,
+exercised, and reverted before commit. Tagging each of 21 lost letters
+across 5 words by the earliest pipeline stage at which recovery became
+impossible produced a hard tally: 10 lattice/atoms, 6 match, 4 decoder, 0
+upstream. The passage being italic — with no italic prototypes anywhere
+in the bank — came out of the tally as an observation, not a premise fed
+into it; filed as a reading pending a cross-page count, not yet a fact
+about the corpus.
+
+**Italic prototypes were tried, helped the target, and broke an unrelated
+population — reverted the same session.** 22 licence-cleared
+Italic/BoldItalic faces were added to the shared bank (32→54 faces,
++67.6% prototypes), no format or charset change. `r000583` improved
+40.633%→23.077% CER and `finfilings` passed corpus-wide
+(12.708%→12.162%/11.602%→11.123%), but `pages-cov` **failed its own gate**
+(6.064%→6.202%) with 6 of 7 categories regressing — the drawing/CAD
+category, upright by construction, moved +0.136, failing the Δ≤0 gate —
+because pooling italic prototypes into the shared bank lets them compete
+on raw distance against upright glyphs they merely resemble, with nothing
+gating eligibility by whether the input is actually slanted. Wall time
+rose +67% (1019.5s→1699.0s on `finfilings`), tracking the prototype-count
+growth. `fonts.tsv` and the face table were reverted; only the
+measurement file was kept, and the enlarged bank itself was never
+committed (gitignored). The decided fix direction — `ocrcer-architect`'s,
+recorded here for the record — is to gate prototype eligibility by
+measured per-word slant at match time instead of pooling unconditionally,
+with per-line structural deslanting held as a fallback arm to compare
+against once both are measured. **This work is in progress** as of this
+filing.
+
+**New controls for every later gate, unchanged from before this session's
+work (checkbox v2 reproduced the prior corpus scores exactly, and the
+segmentation diagnoses changed no defaults): `finfilings` end-to-end CER
+12.708%, line-matched CER 11.602%; `pages-cov` CER 6.064%.** First
+recorded wall times for either corpus: `finfilings` 1019.5 s (60 pages),
+`pages-cov` 487.5 s (625 pages), from the `max_splits` sweep's full-corpus
+control reproduction — now the baseline for the italic-faces +67% and any
+future wall-time comparison.
+
+**Delivered:** the checkbox border-coverage detector, shipped in
+`crates/ocrcer-core` with its own fixtures; six dated entries in
+`ARCHITECTURE.md` §11 (two on the checkbox detector, two on the
+segmentation diagnosis, one on the letter autopsy's italic finding, one on
+the italic-faces measurement and revert); `docs/measurements/
+2026-09-23_checkbox_drop.txt`, `2026-09-24_max_splits_sweep.txt`,
+`2026-09-24_cut_candidates_r000583.md`, `2026-09-24_letter_autopsy_r000583.md`,
+`2026-09-24_italic_faces.txt`; four new `personal_rag/ocr` lessons filed
+this session by `ocrcer-librarian` (checkbox border-coverage, measure-
+before-tuning-a-cap, the per-letter stage-autopsy method, pooled-style-
+prototypes-need-a-competition-gate); this `ROADMAP.md` filing with the new
+controls and wall times; this entry.
+
+**Open, carried into chunk 9's continuation:** the per-word slant-gating
+implementation and its gate run, in progress; the deslant arm, not yet
+run; a `char_bonus` re-sweep (the autopsy found some decoder losses need a
+bonus above the current ~3.44 to flip, from only 2 sample cases on one
+page); `r000022`'s touching-digits mechanism, not yet autopsied;
+`r000396`'s smaller checkbox/column-cut residue, under 10% of that page,
+not urgent; the `ocrs` head-to-head, still stale; SROIE, still not re-run;
+plus the longer-standing carried queue — `filing__r000022`'s dense-table
+trace, the ligature error-share count, the lone-guard per-page diff,
+`baseline_split_sep`/`support` re-sweep, `lines.rule_aspect`
+re-measurement, recognition-gated chopping research, ALTO/hOCR output and
+the one-time `rustfmt` pass (both awaiting Ken's go), and whether "commit
+after each passing change" extends to Ken's other project trees. Token
+spend against `/usage` remains unmeasured — no shell in this dispatch —
+now across seven sessions.

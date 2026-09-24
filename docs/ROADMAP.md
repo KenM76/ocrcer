@@ -565,6 +565,113 @@ after each passing change" extends to Ken's other project trees.
 **Token spend:** not measured against `/usage` this continuation either;
 the calibration debt is carried forward again, now across six sessions.
 
+**Measured 2026-09-24 — checkbox drop ships, `max_splits` and cut-candidate
+generation both ruled out as `r000583`'s bottleneck, a per-letter stage
+autopsy pins it on italic text, italic prototypes tried and reverted.**
+Full narrative: `ARCHITECTURE.md` §11, the six entries dated 2026-09-23 and
+2026-09-24 from "Checkbox drop, first detector: falsified at screening"
+through "Italic faces: huge win on italic, broad loss on upright; gate them
+by measured slant". Evidence: `docs/measurements/2026-09-23_checkbox_drop.txt`,
+`2026-09-24_max_splits_sweep.txt`, `2026-09-24_cut_candidates_r000583.md`,
+`2026-09-24_letter_autopsy_r000583.md`, `2026-09-24_italic_faces.txt`.
+
+- **Checkbox drop, v1 falsified then v2 shipped.** A bounding-box-plus-fill
+  detector for form checkboxes was screened first and found to delete
+  hollow letters/digits (`o e a 0 6 8 9`, the counters of `D O Q P R B`)
+  wholesale — CER roughly doubled at every fill threshold tried, recall on
+  the screening pages fell to a fifth to a third of control. Replaced with
+  per-side border-ink coverage (`Component::border_coverage: [f32;4]`,
+  gated on all four sides clearing 0.85 measured-at-this-value, fill ratio
+  demoted to a loose sanity bound). **Shipped.** Full-corpus gates passed:
+  `finfilings` 12.786%→12.708% end-to-end, 11.686%→11.602% line-matched;
+  `pages-cov` byte-identical at 6.064%.
+- **`segment.max_splits` (guessed cap, 3) ruled out as the bottleneck.**
+  Swept 3–8 on `r000583` and a second suspect page: decode output came back
+  byte-identical across the whole range on both. A third page moved
+  0.2–0.3pp CER, plateauing at N=5, with no word-level change. The cap
+  truncates a sorted candidate list and the valley detector was already
+  offering fewer candidates than the sweep's own floor, so raising the cap
+  had nothing further to take. No default changed.
+- **Cut-candidate generation also ruled out, same page.** A full per-atom
+  trace on `r000583` (352 wide atoms, 187 searched) found the detector
+  correctly rejecting the atoms it rejected — the two fused-bbox atoms kept
+  at zero cuts were both legitimately un-splittable (a `W` crossbar, a
+  `d`+comma pair whose only local minimum is the bowl/stem junction, not
+  the true boundary). Diagnosis redirected upstream/downstream rather than
+  re-tuning either mechanism.
+- **Per-letter stage autopsy pinned the loss on match/decode, not
+  segmentation, and surfaced that the page is italic.** Three temporary
+  env-gated debug hooks (`OCRCER_DEBUG_BOXES`, `OCRCER_DEBUG_WORD`, a
+  decoder score-breakdown), reverted before commit, tagged each of 21 lost
+  letters across 5 words with the pipeline stage at which recovery became
+  impossible: 10 lattice/atoms, 6 match, 4 decoder, 0 upstream
+  (components/binarize/lines). The unifying observation — the passage is
+  italic and the bank had no italic prototypes — came out of the tally, is
+  filed as a **reading pending cross-page confirmation**, not yet a fact
+  about the whole corpus.
+- **Italic faces tried, measurably helped the target and measurably broke
+  an unrelated population, reverted.** 22 licence-cleared Italic/BoldItalic
+  faces added to the shared prototype bank (32→54 faces, 29,675→50,095
+  prototypes, +67.6% bank size), no format/charset change. `r000583`
+  40.633%→23.077% CER; `finfilings` corpus-wide also passed
+  (12.708%→12.162% end-to-end, 11.602%→11.123% line-matched). But
+  `pages-cov` **failed its own gate** (6.064%→6.202%, over tolerance) with
+  6 of 7 categories regressing — the **drawing/CAD category, upright by
+  construction, moved +0.136 (fails the Δ≤0 gate)** — because pooling lets
+  italic prototypes compete on raw distance against upright glyphs they
+  merely resemble, with nothing gating eligibility by whether the input is
+  actually slanted. Wall time on `finfilings` rose 1019.5s→1699.0s (+67%),
+  tracking the prototype-count growth. **`fonts.tsv` and the face table
+  reverted; only the measurement file was kept. The prototype bank itself
+  is gitignored and was never committed.**
+- **Decision (architect's, filed here for the record): gate italic
+  prototypes by measured per-word slant instead of pooling them
+  unconditionally.** Per-word slant estimation (integer-angle shear +
+  vertical-projection-variance score against 0°, `layout.slant_min_deg`
+  guess 6°, `layout.slant_margin` guess ratio — both explicitly guesses,
+  not yet measured) plus match-time eligibility gating keyed on each
+  prototype's source-face style (`meta.faces[].style`). Per-line
+  structural deslanting is held as a fallback arm to compare against
+  gating once both are measured, not a replacement for it. **This work is
+  in progress** — a background dispatch on `params.tsv`/slant-estimation
+  wiring was underway as of this filing; not yet gated against either
+  corpus.
+- **New controls for later gates:** `finfilings` **12.708%** end-to-end /
+  **11.602%** line-matched CER; `pages-cov` **6.064%** CER — all three
+  figures unchanged from the pre-checkbox-v1 state because v2 reproduced
+  the prior corpus scores exactly (checkbox and segmentation work were
+  either net-neutral at the corpus level or reverted). **First recorded
+  wall times for either corpus:** `finfilings` **1019.5 s** (60 pages, 60
+  passes), `pages-cov` **487.5 s** (625 pages) — both from the `max_splits`
+  sweep's full-corpus control reproduction, now the baseline against which
+  the italic-faces +67% and any future wall-time change is measured.
+- **Open queue, reconciled and reordered by this filing:** the per-word
+  slant-gating implementation and its gate run (in progress, above);
+  **deslant arm** — measure per-line structural deslant against the
+  upright-only bank as the comparison point for the gating approach, not
+  yet run; **`char_bonus` re-sweep** — the letter autopsy found some
+  decoder losses need a bonus above the current ~3.44 (back-solved) to
+  flip, sampled from only 2 cases on one page, so this is a re-sweep to
+  run, not a value to adopt; **`r000022`'s touching digits** — a distinct
+  fusion mechanism named in the cut-candidates trace, not yet autopsied;
+  **`r000396`'s checkbox residue** — a smaller checkbox/column-cut
+  fragmentation issue named on a different page during this diagnosis,
+  under 10% of that page's characters, not urgent; the `ocrs` head-to-head,
+  still stale; SROIE, still not re-run. Then the longer-standing carried
+  queue, unchanged in kind: `filing__r000022`'s dense-table trace (distinct
+  from its touching-digits mechanism above); the ligature error-share count
+  on the bold bank; the lone-guard per-page diff; `baseline_split_sep`/
+  `support` re-sweep; `lines.rule_aspect` re-measurement; recognition-gated
+  chopping (research only); ALTO/hOCR underline output (awaiting Ken's
+  go); the one-time `rustfmt` pass (awaiting Ken's go); and whether "commit
+  after each passing change" extends to Ken's other project trees.
+
+**Token spend:** not measured against `/usage` this session either — no
+shell available in this dispatch to read it. The calibration debt is
+carried forward again, now across seven sessions; the next session with
+shell access should treat reading `/usage` as priority, not optional,
+given how long this has been outstanding.
+
 ---
 
 ## Next up
