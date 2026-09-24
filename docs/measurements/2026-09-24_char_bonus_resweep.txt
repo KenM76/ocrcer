@@ -1,0 +1,166 @@
+2026-09-24 -- decode.char_bonus re-sweep on the slant-gated italic bank
+(follow-up to ARCHITECTURE.md section 11, "r000583 is italic: add italic
+faces first; char_bonus after" and "Slant-gated italic prototypes ship";
+docs/measurements/2026-09-24_letter_autopsy_r000583.md and
+2026-09-24_italic_gating.txt)
+
+Model: model/out/ocrcer.ocrw, unchanged this session -- 187 classes, 54
+faces, 50095 prototypes, lexicon 2477 nodes, bigrams 188 rows, confusions 76.
+This is the slant-gated italic bank already shipped (layout.italic_gating=1,
+decode.char_bonus=3.44 as the file's own default). Every run below overrides
+char_bonus only, via `--set decode.char_bonus=X`; nothing else changes.
+
+New controls per the 2026-09-24 italic-gating entry: pages-cov end-to-end
+5.900%, finfilings end-to-end/line-matched 12.167%/11.122%.
+
+--------------------------------------------------------------------------
+0. Provenance check (mandatory before trusting any figure here)
+--------------------------------------------------------------------------
+
+The first attempt at the char_bonus=3.44 control run printed:
+
+    built   engine binary t=1790241539, model file t=1790241646
+    ** STALE: this binary is older than the model file it just read. ... **
+
+target/release/ocr.exe predated the model file's last write by ~107s --
+exactly the failure mode crates/ocrcer-bench/src/provenance.rs exists to
+catch (a config the file carries that the binary does not know, dropped
+silently). That run was killed before it produced a CER line (confirmed by
+reading its output file: only the header lines are present) so no numbers
+were lost or misreported. Rebuilt with `touch
+crates/ocrcer-bench/src/bin/ocr.rs && cargo build --release -p ocrcer-bench
+--features pages`; the rebuilt binary (t=1790242672) is newer than the model
+file (t=1790241646) for every run below, and no run after this point prints
+the STALE flag.
+
+--------------------------------------------------------------------------
+1. pages-cov sweep (625 pages, --csv), one ocr.exe at a time (tasklist
+   checked before and after every run)
+--------------------------------------------------------------------------
+
+Gate for this stage: end-to-end CER <= 5.950% (new control 5.900 + 0.05) AND
+drawing-category per-page CER delta sum <= 0 vs the char_bonus=3.44 run
+(fraction units, delta = variant - control, summed over the drawing-category
+pages identified by the 3rd `__`-separated field of the CSV stem).
+
+| char_bonus | end-to-end CER | line-matched CER | WER     | wall (s) |
+|-----------:|---------------:|------------------:|--------:|---------:|
+|       3.44 |         5.900% |             5.899% | 26.114% |    506.2 |
+|       3.60 |         5.827% |             5.826% | 26.077% |    511.7 |
+|       3.70 |         5.780% |             5.779% | 26.049% |    517.5 |
+|       4.00 |         5.714% |             5.713% | 25.998% |    499.5 |
+|       4.50 |         5.651% |             5.650% | 25.993% |    502.6 |
+|       5.90 |         6.424% |             6.423% | 27.092% |    498.4 |
+|       7.50 |         8.083% |             8.082% | 29.467% |    498.8 |
+
+3.44 reproduces the recorded new control exactly (5.900%), confirming this
+session's bank and binary match the shipped configuration.
+
+End-to-end CER is U-shaped with a minimum around char_bonus=4.5 (5.651%,
+better than control by 0.249 points) and rises sharply past 5.9 -- the
+autopsy's back-solved guess of ~5.9 already end-to-end-fails
+(6.424% > 5.950% gate) on the full 625-page corpus, not just the two cases
+it was reverse-engineered from.
+
+Per-category summed CER delta (variant - control, fraction units), all seven
+categories, every point:
+
+| char_bonus | currency  | drawing   | invoice   | prose     | statement | technical | twins     | TOTAL      |
+|-----------:|----------:|----------:|----------:|----------:|----------:|----------:|----------:|-----------:|
+|       3.60 | -0.103448 | +0.030151 | -0.068729 | -0.089744 | -0.054299 | -0.105769 | -0.101449 |  -0.493287 |
+|       3.70 | -0.200000 | +0.040201 | -0.085911 | -0.158120 | -0.095023 | -0.057692 | -0.239130 |  -0.795675 |
+|       4.00 | -0.331034 | +0.150754 | -0.134021 | -0.286325 | -0.167421 | -0.057692 | -0.398551 |  -1.224290 |
+|       4.50 | -0.406897 | +0.407035 | -0.147766 | -0.470085 | -0.221719 | -0.269231 | -0.644928 |  -1.753591 |
+|       5.90 | -0.393103 | +1.678392 | +1.292096 | -0.252137 | +0.375566 | +0.000000 | -0.384058 |  +2.316756 |
+|       7.50 | +0.006897 | +3.778894 | +3.776632 | +0.782051 | +1.850679 | +0.692308 | +0.615942 | +11.503403 |
+
+**drawing is the only category that regresses at every single point tested,
+and it does so monotonically from the very first step above control**
+(+0.030 at 3.60, rising smoothly through +0.040, +0.151, +0.407, +1.678,
++3.779). No swept value clears the drawing-category <= 0 gate except the
+control itself, where the delta is 0 by construction. Six other tested
+increments (3.60 through 4.50) all pass the pages-cov end-to-end gate and
+improve five of the six other categories, but every one of them fails the
+joint gate on drawing alone.
+
+This is not noise: the six drawing deltas are smooth and monotone across
+seven points spanning 3.44 to 7.5, and it is the mechanism rule 6 and the
+task brief both name in advance -- a larger char_bonus rewards a merged,
+wide-edge reading over two-or-more separate correct characters (the exact
+arithmetic the letter autopsy traced for "Brookfield"'s r+o and "factors,"'s
+f+a). Drawing-category pages are CAD/ISO text: short runs of digits,
+tolerances and part-like tokens where that is precisely the failure mode
+identifier-shaped text is most exposed to, and where there is little running
+English text or lexicon coverage to outweigh it. currency, invoice, prose,
+statement and twins all *improve* through 4.50 because they carry enough
+ordinary prose/number-with-units text for the decoder-loss fix (two good
+single-character matches beating one merged one) to dominate; drawing does
+not, and pays the identifier-rewrite cost that fix also carries.
+
+--------------------------------------------------------------------------
+2. Was a value between the best two worth trying? Already covered.
+--------------------------------------------------------------------------
+
+The task's "add a point between the best two if the curve warrants it"
+was read as: the best two *by end-to-end CER* are 4.50 and 4.00, but both
+already fail the drawing gate, so a midpoint between them tells nothing new.
+The informative direction was downward, toward the control, to see whether
+the drawing regression is a step function or continuous. 3.60 and 3.70 were
+added for exactly that reason (between 3.44 and 4.00) and confirm it is
+continuous and already positive at the smallest increment tried (+0.16 in
+char_bonus terms). No value strictly greater than 3.44 was found where the
+drawing delta sum is <= 0.
+
+--------------------------------------------------------------------------
+3. finfilings sweep: not run
+--------------------------------------------------------------------------
+
+The task's method is a two-stage filter: pick 1-2 pages-cov survivors, then
+spend the ~17-minute finfilings run only on those. Zero values survived
+stage 1 (every value above the 3.44 control fails the drawing-category
+gate), so there is nothing to spend the finfilings budget on, and none was
+run. This also means the "beats 12.167/11.122 on finfilings" ship gate was
+never reached -- it is moot given the pages-cov gate already failed first.
+
+--------------------------------------------------------------------------
+4. Identifier-preservation check
+--------------------------------------------------------------------------
+
+No parameter change is being shipped, so no rebuild or targeted identifier
+test run was needed beyond what already guards the shipped 3.44 default.
+For the record, the workspace's identifier-shape tests
+(crates/ocrcer-core/src/decode/viterbi.rs,
+`a_digit_heavy_word_with_letters_in_it_is_identifier_shaped`,
+`case_penalties` on `"M8x1.25"`) are unaffected by this measurement since
+`Params::DEFAULT` and model/params.tsv are untouched.
+
+--------------------------------------------------------------------------
+5. Disposition
+--------------------------------------------------------------------------
+
+**Nothing passes.** `decode.char_bonus` stays at 3.44 in both
+`crates/ocrcer-core/src/params.rs` and `model/params.tsv`. No rebuild, no
+`.ocrw` change. This measurement file is the only artifact from this
+session.
+
+The letter autopsy's back-solved ~5.9 was explicitly a two-case estimate on
+one page, flagged in its own text as needing a full-corpus check before
+being trusted ("this is a guess against a sample of 2 decoder-stage losses
+on one page"). That check is now done: 5.9 fails both the pages-cov
+end-to-end gate and the drawing-category gate badly (+1.678), and the whole
+region above char_bonus=3.44 that improves prose-like categories costs the
+drawing category monotonically, with no crossover found down to the
+smallest increment tried (+0.16). The 4 decoder-stage losses the autopsy
+traced are real, but the fix that would rescue them on the italic filing
+page is not free elsewhere in the corpus, and the corpus-wide, dual-gate
+measurement this task calls for is exactly what catches that trade before it
+ships.
+
+Carried forward: if `char_bonus` is revisited again, the next lever is not
+a further increase but something that discriminates by context -- for
+example, a segmentation- or identifier-shape-aware adjustment to the merge
+penalty that does not treat every wide edge alike -- rather than a single
+global scalar that necessarily trades prose accuracy against drawing-text
+identifier safety in the same direction every time it moves. That is an
+`ocrcer-architect` scope question, not a parameter value, and is not
+implemented here.
