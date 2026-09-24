@@ -600,3 +600,45 @@ leave a residual:
 - The extractor would then see deslanted italic glyphs, and these match the
   upright bank better. So deslant and italic prototypes partly overlap, and
   the residual decides whether both are needed.
+
+## Addendum 2026-09-24: shrinking the bank by prototype selection (condensing and editing)
+
+Why this is here: the slant-gated italic bank took the model from 1.99 MB to
+5.37 MB, at 50,095 prototypes. The ARCHITECTURE §11 entry for that change
+pointed at "the deferred bank-pruning work". **No such work item exists in the
+docs.** This addendum is the first record of it.
+
+The classical literature splits prototype reduction into two families. Both
+are deterministic selection over existing rows, which is compatible with rule
+1: the kept set is computed by a re-runnable script, and nothing is fitted.
+
+- **Condensing (Hart's CNN and variants).** Discard prototypes far from any
+  class border, because they are redundant: every query they would win is won
+  anyway by a same-class neighbour. This shrinks the bank without moving the
+  decision boundaries on the selection set.
+- **Editing (Wilson's ENN).** Discard prototypes whose own neighbours
+  mostly belong to another class. These are noisy border rows. Of the two,
+  this one can change accuracy, in either direction.
+
+The survey tracks cited below also have a third family, *prototype
+generation*: LVQ, centroids, gradient or annealing optimisation. It
+**synthesises** new vectors from an objective, which makes it fitting. It is
+outside rule 1 and is not an option here.
+
+Constraints specific to OCRcer if this is ever scheduled:
+- Hart's CNN is order-dependent, so the visit order must be fixed (prototype
+  row order) for byte-reproducibility.
+- Selection must use the runtime's own distance: int8, with feature weights,
+  through the same `nearest()` path. A second distance would be a second
+  implementation of a stage (rule 4).
+- The selection set is the rendered bank itself. Condensing can therefore only
+  promise "no change on renders", not "no change on scans". The usual gates
+  still decide.
+- Italic and upright prototypes must be condensed within their own gating
+  pools. Otherwise an upright query could lose its only surviving neighbour
+  to an italic row it is no longer allowed to see.
+- Size is not currently a gate. This is a candidate, not a scheduled task.
+
+Sources: [Prototype Reduction in Nearest Neighbor Classification — SCI2S](https://sci2s.ugr.es/pr);
+[Prototype Selection for Nearest Neighbor Classification: Survey of Methods](https://sci2s.ugr.es/sites/default/files/files/TematicWebSites/pr/T-4-2010-PSMethods.pdf);
+[Evaluation of prototype learning algorithms for NN classifiers in character recognition](https://www.academia.edu/14544487/Evaluation_of_prototype_learning_algorithms_for_nearest_neighbor_classifier_in_application_to_handwritten_character_recognition).
