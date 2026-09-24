@@ -24,6 +24,7 @@ pub mod provenance;
 #[cfg(feature = "pages")]
 pub mod pages;
 pub mod runner;
+pub mod splits;
 pub mod stage;
 
 use std::path::PathBuf;
@@ -32,4 +33,10 @@ use std::path::PathBuf;
 /// directory so it works regardless of the caller's current directory.
 pub fn default_fixtures_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures")
+}
+
+/// `bench/splits/` at the repo root, same reasoning as
+/// [`default_fixtures_root`].
+pub fn default_splits_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../bench/splits")
 }

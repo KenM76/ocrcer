@@ -19,6 +19,10 @@ name = "bless"
 path = "src/bin/bless.rs"
 
 [[bin]]
+name = "split"
+path = "src/bin/split.rs"
+
+[[bin]]
 name = "vs-ocrs"
 path = "src/bin/vs_ocrs.rs"
 required-features = ["vs-ocrs"]
