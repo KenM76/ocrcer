@@ -73,6 +73,7 @@ more.
 | `prototypes` | N x 107 int8 feature vectors | Computed by rendering | **1,884,270 B**, measured |
 | `prototype_class` | the class index of each prototype row, u16 | Computed | **35,220 B**, measured |
 | `class_holes` | hole count per class, u8 — the realised form of the pruning index | Computed over the bank | **187 B**, measured |
+| `prototype_face` | optional: the face index of each prototype row, u16, into `meta.faces`; absent means "unknown, gate nothing" | Computed | not yet measured (≈2 B per prototype, projection) |
 | `lexicon` | word list as a DAWG, with frequency rank | Authored | **38,937 B**, measured |
 | `bigrams` | sparse character-pair log-probabilities plus a category backoff table | Authored | **9,432 B**, measured |
 | `confusions` | known confusion pairs with prior adjustments and disambiguating tests | Authored | **707 B**, measured |
@@ -6543,3 +6544,24 @@ Gates are the usual ones, measured against the current controls: pages-cov
 ≤ 6.114 with drawing Δ ≤ 0, and finfilings < 12.708 / 11.602. Wall time is
 recorded against the control. A regression in wall time on upright-only
 pages is a defect to fix, not a trade.
+
+### 2026-09-24 — Correction: slant gating adds an optional `prototype_face` table (additive, no version bump)
+
+The previous entry said slant gating needs "no format change". That was
+wrong, and it contradicts this log's own 2026-09-23 check: `.ocrw` carries
+no per-prototype face index, so `meta.faces[].style` cannot be joined to a
+prototype row without one. The implementation adds an **optional
+`prototype_face` table**: u16le per prototype, indexing `meta.faces`. The
+runtime derives a per-prototype italic flag from it at load, from the face's
+style, and does not store a second copy. It is u16 rather than the u8
+projected on 2026-09-23. That costs about 1 B more per prototype, and it
+never caps the face count.
+
+It still needs **no version bump**. The charset, the features, the
+normalisation and the class indices are all unchanged. An old runtime ignores
+an unknown table. A new runtime reading an old file sees no table and gates
+nothing, which is the pre-decision behaviour. The mismatch that §7's
+`version` field guards against, the same number meaning two things, cannot
+arise. §2 lists the table, and its size will be recorded from the first file
+that carries it.
+
