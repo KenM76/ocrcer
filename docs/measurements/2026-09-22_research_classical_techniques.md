@@ -768,3 +768,53 @@ been measured yet. Accuracy has not been measured either.
 
 Sources: [Kae & Learned-Miller, CVPR 2010](https://mlanthology.org/cvpr/2010/kae2010cvpr-improving/),
 [Lee & Smith, Improving Book OCR by Adaptive Language and Image Models](https://tesseract-ocr.github.io/docs/Improving_Book_OCR_by_Adaptive_Language_and_Image_Models.pdf).
+
+## Addendum 2026-09-24: Sauvola window vs text size, and multiscale Sauvola
+
+Trigger: on pdfcer's smoke page, OCRcer scores 97.9% at 200 dpi and drops to
+83.0% at 300 dpi (x-height 30 px), with the letters themselves broken up
+(`Recogmtion`, `quaüty`, `anä`).
+See `2026-09-24_pdfcer_smoke_misses.md`, one page.
+
+`image/binarize.rs` uses a fixed Sauvola window of 25 px. Lazzara & Géraud
+(IJDAR 2014) document the failure this invites: when the window is small
+next to a glyph, the pixels inside a stroke look like flat background, and
+Sauvola's contrast term can no longer call them ink. Their best
+single-scale window was w = 51 on 300-dpi documents, twice ours. That the
+300-dpi garbling comes from our window is a **hypothesis**. It is plausible
+and not yet measured.
+
+Their fix, multiscale Sauvola, handles mixed text sizes on one page, which
+matters for CAD title blocks next to small notes:
+1. Subsample the grey image by 2, three times, giving scales 1..4.
+2. Binarise every scale with the same window w. At scale s, that equals a
+   window of q^(s-1)·w at full size. Keep the components whose area falls
+   in that scale's range:
+   - scale 1: max = 0.7·w²;
+   - higher scales: min = 0.9·max(s−1)/q², max = max(s−1)·q²;
+   - the last scale has no upper limit.
+3. Label each full-size pixel with the scale that found its component. An
+   object found at several scales takes the highest one. Spread labels
+   over non-object pixels with an influence-zone (discrete Voronoi) pass.
+4. Threshold every pixel with its own scale's Sauvola threshold.
+
+Their reported result: about the same as single-scale on small and medium
+x-heights, and clearly better on large text. That is their measurement.
+
+For OCRcer:
+- Everything is integral images, subsampling and component labelling.
+- It is deterministic, has no dependencies and is safe for wasm32.
+- It reuses `components.rs`.
+
+A cheaper first step is to measure a page x-height from a first pass, then
+re-binarise with w scaled to that x-height, with the scale factor fitted on
+the training split. Measure that first. Go multiscale only if mixed-size
+pages still lose.
+
+Candidate runtime task. Diagnosis comes first: dump the 300-dpi binarised
+page and check whether the garbled glyphs are hollowed or broken strokes.
+Gates are pages-cov (fixed dpi) plus a dpi sweep on pdfcer-style renders,
+so this also informs the open "what dpi should pdfcer use for OCRcer"
+question.
+
+Source: [Lazzara & Géraud, Efficient Multiscale Sauvola's Binarization, IJDAR 2014](https://www.lre.epita.fr/dload/papers/lazzara.13.ijdar.pdf).
