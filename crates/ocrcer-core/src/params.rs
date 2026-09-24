@@ -84,6 +84,7 @@ pub struct Lines {
     pub thin_debris_heights: f32,
     pub underline_strip: u32,
     pub cell_pairing: u32,
+    pub cell_wrap_slack: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -270,6 +271,15 @@ impl Params {
             // against both corpora; see
             // `docs/measurements/2026-09-23_cell_pairing.txt`.
             cell_pairing: 0,
+            // Guess, `docs/measurements/2026-09-23_cell_pairing.txt` ("Step
+            // 2: second rule"): with `cell_pairing >= 2`,
+            // [`crate::layout::lines::pair_cells`]'s "the previous left line
+            // is full" test allows a line's right edge to fall this many
+            // x-heights short of its block's right extent
+            // (`column_block_extent`) and still count as full enough to
+            // wrap. Swept alongside `cell_pairing`; not independently
+            // derived.
+            cell_wrap_slack: 1.0,
         },
         words: Words {
             min_gaps: 3,
@@ -422,6 +432,7 @@ impl Params {
             "lines.rule_run_heights" => &mut self.lines.rule_run_heights,
             "lines.debris_heights" => &mut self.lines.debris_heights,
             "lines.thin_debris_heights" => &mut self.lines.thin_debris_heights,
+            "lines.cell_wrap_slack" => &mut self.lines.cell_wrap_slack,
             "words.min_separability" => &mut self.words.min_separability,
             "words.lone_gap_x_heights" => &mut self.words.lone_gap_x_heights,
             "words.no_valley_x_heights" => &mut self.words.no_valley_x_heights,
@@ -483,7 +494,7 @@ impl Params {
 
     /// Every name this build understands, for a loader that wants to report
     /// which ones a file left at their defaults.
-    pub const NAMES: [&'static str; 65] = [
+    pub const NAMES: [&'static str; 66] = [
         "binarize.window",
         "binarize.k",
         "binarize.r",
@@ -511,6 +522,7 @@ impl Params {
         "lines.thin_debris_heights",
         "lines.underline_strip",
         "lines.cell_pairing",
+        "lines.cell_wrap_slack",
         "words.min_gaps",
         "words.min_separability",
         "words.lone_gap_x_heights",
@@ -597,7 +609,7 @@ fn find_changed_u32(before: &Params, after: &Params) -> f32 {
     f32::NAN
 }
 
-fn f32_fields(p: &Params) -> [f32; 50] {
+fn f32_fields(p: &Params) -> [f32; 51] {
     [
         p.binarize.k,
         p.binarize.r,
@@ -620,6 +632,7 @@ fn f32_fields(p: &Params) -> [f32; 50] {
         p.lines.rule_run_heights,
         p.lines.debris_heights,
         p.lines.thin_debris_heights,
+        p.lines.cell_wrap_slack,
         p.words.min_separability,
         p.words.lone_gap_x_heights,
         p.words.no_valley_x_heights,
@@ -713,6 +726,7 @@ impl Params {
             thin_debris_heights: self.lines.thin_debris_heights,
             underline_strip: self.lines.underline_strip != 0,
             cell_pairing: self.lines.cell_pairing,
+            cell_wrap_slack: self.lines.cell_wrap_slack,
         }
     }
 

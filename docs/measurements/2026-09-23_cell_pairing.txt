@@ -143,7 +143,169 @@ never a default flip).
 
 --- Step 5 -----------------------------------------------------------
 
-This file is the complete reading log for the 2026-09-23 cell-pairing
-investigation. docs/ARCHITECTURE.md was not edited. Scratch files under
-target/runtime-diag/ (per-page --raw diffs, full-corpus run outputs) were
-deleted after this file was written.
+This was the reading log for round 1 of the 2026-09-23 cell-pairing
+investigation. Round 2 (below) continues it; docs/ARCHITECTURE.md was not
+edited for round 1 either.
+
+=================================================================
+Round 2: cell_pairing=2, the fullness and own-row tests
+=================================================================
+
+Source: ARCHITECTURE.md section 11's "Cell pairing, first rule" entry
+(round 1, above) named the failure: overlap and steady pitch alone cannot
+tell a genuine wrap from the next, unrelated one-line label at the same
+margin and pitch (filing__r000407's second short label), and the same
+ambiguity was blamed for the pages-cov no-worse-gate failure.
+
+--- Step 1: rule -----------------------------------------------------
+
+lines.cell_pairing = 2 keeps rule 1's overlap/pitch test and adds two
+more, both read from a new lines.cell_wrap_slack: f32 (guess, default 1.0,
+read only when cell_pairing >= 2):
+
+(a) The candidate's previous left-column line must be full: its right edge
+    must land within cell_wrap_slack x-heights of the left column's right
+    extent in the contiguous block. A line wraps because it ran out of
+    room, so its own right edge should reach close to what the rest of
+    that block shows is available.
+(b) The continuation line must carry no right-column fragment of its own
+    row. This needed no new code: wrap_run_len already only ever continues
+    a run through single-fragment rows, at every level.
+
+Extent, the choice this task asked to be stated explicitly: the max right
+edge among every row's fragment that shares the candidate's column,
+scanning up and down the page from the candidate's own row
+(column_block_extent in crates/ocrcer-core/src/layout/lines.rs), stopping
+the moment a row has no such fragment (a different section) or more than
+one (ambiguous). Not the immediate candidate pair alone: on
+filing__r000407, the two short labels are both short, so judged only
+against each other either would look full to the other, exactly
+reproducing round 1's failure. Scanning the whole contiguous block picks up
+a page's other, genuinely full labels (an earlier line, or a later
+multi-line wrap further down the same field list) and uses the widest of
+those as the yardstick instead. The extent is computed once per candidate
+and held fixed for the whole run it may build, a property of the block,
+not of any one pair inside it.
+
+Unit tests added to crates/ocrcer-core/src/layout/lines.rs (all passing;
+the four round-1 tests now pass an explicit Params via a new
+pairing_params test helper so they keep exercising level 1 unchanged):
+  - r000407_shape_short_label_with_own_value_next_label_untouched: the
+    real regression's shape, a short label already paired with its own
+    value, followed by an unrelated next label at the same margin and
+    pitch, must not defer, because the short label falls far short of the
+    block's extent (set by an earlier, genuinely full label).
+  - a_full_wrapped_label_still_defers_under_level_two: a genuinely full
+    first line (within slack of the block's extent, set by an earlier
+    line) must still defer its value, unchanged from level 1.
+  - two_column_prose_with_a_short_line_end_is_unchanged: a two-column row
+    whose left fragment is the short last line of its own paragraph, which
+    coincidentally shares column and pitch with unrelated content below,
+    must not defer, the same mechanism pages-cov's twins layouts were
+    diagnosed with.
+
+cargo test --workspace --release: 176 ocrcer-core tests pass (173 + 3
+new); no other crate regressed. cargo build -p ocrcer-core --target
+wasm32-unknown-unknown: succeeds. #![forbid(unsafe_code)] and
+zero-dependency invariants unchanged.
+
+--- Step 2: model rebuild ---------------------------------------------
+
+model/params.tsv gained one row, lines.cell_wrap_slack (guess, 1.0).
+Rebuild (write 16,20,24,32,48 21,26,36,56):
+  params  66 rows: 10 authored, 18 measured, 38 guess
+  weights 7 blocks: 6 authored, 1 measured, 0 guess
+  wrote model/out/ocrcer.ocrw: 29675 prototypes, 32 faces, 9 tables, 3.15 MB
+  int8 top-1 agreement with f32: 23618/23740 = 99.486%
+  int8 top-1 accuracy: 21873/23740 = 92.14%
+Prototype bank and weights are unchanged from round 1 (this is a
+params-only addition); ocr.exe rebuilt after touch, newer than the model
+file, no STALE.
+
+--- Step 3: per-page screening ------------------------------------------
+
+--only on the three named finfilings pages, cell_pairing=2, sweeping
+cell_wrap_slack over {1.0, 2.0, 3.0}. Control (cell_pairing=0) and rule 1
+(cell_pairing=1) figures repeated from round 1 for reference.
+
+filing__r000044 (end-to-end / line-matched):
+  control (cp=0):        30.032% / 33.279%
+  rule 1  (cp=1):         8.550% / 11.093%
+  rule 2, slack=1.0:     17.965% / 11.093%
+  rule 2, slack=2.0:      8.550% / 11.093%
+  rule 2, slack=3.0:      8.550% / 11.093%
+  At slack 1.0 the genuine wrap's first line falls further short of the
+  block's real extent than one x-height allows, so the fullness test only
+  partly recovers rule 1's win; slack 2.0 recovers it exactly.
+
+filing__r000396 (end-to-end / line-matched):
+  control (cp=0):        29.035% / 19.548%
+  rule 1  (cp=1):        28.994% / 17.413%
+  rule 2, slack=1.0:     28.665% / 19.630%
+  rule 2, slack=2.0:     28.542% / 19.466%
+  rule 2, slack=3.0:     28.542% / 19.466%
+  Improves on control at every slack tested but does not recover all of
+  rule 1's line-matched win.
+
+filing__r000407 (end-to-end / line-matched):
+  control (cp=0):        24.464% / 22.123%
+  rule 1  (cp=1):        36.622% / 20.279%  (the named regression)
+  rule 2, slack=1.0:     24.464% / 22.123%
+  rule 2, slack=2.0:     24.464% / 22.123%
+  rule 2, slack=3.0:     24.464% / 22.123%
+  Exact match to control at every slack tested: the fullness test fully
+  suppresses the wrong deferral this rule targets.
+
+pages-cov twins pages named in round 1's worst-page list (--only,
+cell_pairing 0 / 1 / 2 at all three slacks):
+  open-sans-condensed__light__twins__14px: 34.058% end-to-end, unchanged
+    across control, rule 1 and rule 2 at every slack, byte-identical.
+  stix-two-math__regular__twins__14px: 38.406% end-to-end, likewise
+    unchanged across every configuration tested.
+  These two pages, named in round 1 as examples of the corpus's worst
+  absolute pages under cell_pairing=1, turn out not to be touched by
+  cell_pairing at all (cell_pairing=0 already matches cell_pairing=1
+  exactly) -- they were cited for being hard in absolute terms, not for
+  having regressed. The pages actually responsible for round 1's
+  6.064% -> 6.987% aggregate move were not identified by name in round 1
+  and are not identified by name here either.
+
+--- Step 4: pages-cov gate, full corpus, one run at a time --------------
+
+Full bench/pages-cov (625 pages), cell_pairing=2:
+  slack=1.0:  end-to-end CER 6.639%  line-matched CER 6.609%
+  slack=2.0:  end-to-end CER 6.730%  line-matched CER 6.628%
+  slack=3.0:  end-to-end CER 6.848%  line-matched CER 6.655%
+(control 6.064%, rule 1 6.987%, gate <= 6.114%)
+
+Best of the three is slack=1.0 at 6.639%, a real recovery of more than
+half of rule 1's regression (6.987 -> 6.639 against a control of 6.064),
+consistent with the tighter slack blocking more of the false wraps the
+loose overlap/pitch test alone accepted, but it does not clear the gate.
+Tightening further was not swept below 1.0 x-height because the task's
+sweep set was {1.0, 2.0, 3.0}; that is a real remaining lever for a future
+round, noted for the tuning list rather than explored here.
+
+--- Step 5: decision -----------------------------------------------------
+
+pages-cov gate: FAIL at every swept slack (best 6.639% > 6.114% required).
+Per the task's contingency, the full finfilings corpus run was not run:
+the pages-cov gate is checked first and did not clear, so there is nothing
+for a finfilings figure to gate. lines.cell_pairing stays default 0;
+lines.cell_wrap_slack ships as an inert guess (1.0), read by no default
+code path, exactly as lines.cell_pairing's own value has been since round
+1. No change to Params::DEFAULT's cell_pairing or to model/params.tsv's
+default row for it; only the new cell_wrap_slack row was added, at its
+guess value, unused until cell_pairing is set to 2 by an explicit --set.
+
+model/out/ocrcer.ocrw was rebuilt for this round's measurements (to pick
+up the new params.tsv row) but is gitignored and not part of the commit;
+the tracked change is the new row in model/params.tsv itself, which
+ocrcer-build's check_against_defaults test requires to match
+Params::DEFAULT byte for byte.
+
+--- Step 6 ---------------------------------------------------------------
+
+This is the complete round-2 reading log. docs/ARCHITECTURE.md was not
+edited. Scratch files under target/runtime-diag/ were not created this
+round (no --raw diagnostics were needed); nothing to delete there.

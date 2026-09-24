@@ -310,8 +310,11 @@ pub struct Params {
     /// Whether [`pair_cells`] runs on the row/fragment groups
     /// [`group_with_bands`] builds. `0` leaves them as the column cut left
     /// them: a narrow fragment joins whichever line shares its row. `1` runs
-    /// [`pair_cells`], deferring such a fragment past the full wrapped text
-    /// of the column it sits beside.
+    /// [`pair_cells`] on overlap and pitch alone, deferring such a fragment
+    /// past the full wrapped text of the column it sits beside. `2` adds two
+    /// more tests, [`Params::cell_wrap_slack`]'s note: the previous left
+    /// line must be full, and the continuation must carry no right-column
+    /// fragment of its own.
     ///
     /// `ARCHITECTURE.md` section 11, 2026-09-23 ("Worst pages, round 3: form
     /// cells spliced into the wrong line of a wrapped label"): the column
@@ -320,10 +323,41 @@ pub struct Params {
     /// wrong exactly when that row is only the first line of a wrapped
     /// multi-line cell -- the value or marker then lands mid-label instead
     /// of after it, on every occurrence, on three of the four worst
-    /// finfilings pages measured that round. A guess, on the chunk-8 tuning
-    /// list; ships `0` pending the sweep in
+    /// finfilings pages measured that round.
+    ///
+    /// Level 1 measured a large finfilings win but failed the pages-cov
+    /// no-worse gate and mis-fired on `filing__r000407` itself: overlap and
+    /// steady pitch alone cannot tell a genuine wrap from the next,
+    /// unrelated one-line label at the same margin and pitch, so a value
+    /// got deferred past it. Level 2 is the fix, added rather than
+    /// replacing level 1 so the first rule's readings stay reproducible. A
+    /// guess, on the chunk-8 tuning list; ships `0` pending the sweep in
     /// `docs/measurements/2026-09-23_cell_pairing.txt`.
     pub cell_pairing: u32,
+    /// Read only when [`Params::cell_pairing`] is `2` or more.
+    ///
+    /// `pair_cells`'s extra test is that the *previous* left-column line was
+    /// full: a line wraps because it ran out of room, so its right edge
+    /// should reach close to the left column's right extent. This is the
+    /// slack on "close to", as a multiple of the line's own x-height. The
+    /// extent itself is [`column_block_extent`]: the widest right edge among
+    /// the left-column lines in the contiguous block around the candidate --
+    /// scanning up and down the page from it, through every row that has
+    /// exactly one fragment sharing its column, stopping the moment a row
+    /// has none or more than one. That block, not the single candidate pair,
+    /// is what makes a genuinely short label (`filing__r000407`'s
+    /// `ii. LEI, if any`) measurably short: judged only against the very
+    /// next same-margin label, two short labels look equally "full" to each
+    /// other, which is exactly the failure level 1 had.
+    ///
+    /// The other half of level 2 -- the continuation line itself must carry
+    /// no right-column fragment of its own row -- needs no separate
+    /// threshold: [`wrap_run_len`] already only ever continues through
+    /// single-fragment rows, at every level.
+    ///
+    /// A guess, swept alongside `cell_pairing` in
+    /// `docs/measurements/2026-09-23_cell_pairing.txt`.
+    pub cell_wrap_slack: f32,
 }
 
 /// The shipped values, taken from the parameter block rather than restated.
@@ -494,7 +528,7 @@ pub fn group_with_bands(
         out.push((&mut rest).take(n).collect());
     }
     if p.cell_pairing != 0 {
-        out = pair_cells(out);
+        out = pair_cells(out, p);
     }
     out
 }
@@ -522,7 +556,16 @@ pub fn group_with_bands(
 /// than one fragment appears to continue -- is passed through untouched, so
 /// this is a strict refinement: nothing here can make a genuine same-row
 /// pair worse than leaving it alone.
-fn pair_cells(groups: Vec<Vec<TextLine>>) -> Vec<Vec<TextLine>> {
+///
+/// `p.cell_pairing == 1` runs this on overlap and steady pitch alone.
+/// `p.cell_pairing >= 2` adds the fullness test
+/// [`Params::cell_wrap_slack`] documents: a candidate's *previous* left line
+/// must reach close to its block's own right extent before the next row is
+/// accepted as continuing it. The extent is fixed once per candidate, from
+/// [`column_block_extent`], and held constant for the whole run that
+/// candidate builds -- it is a property of the block, not of any one pair
+/// in it.
+fn pair_cells(groups: Vec<Vec<TextLine>>, p: &Params) -> Vec<Vec<TextLine>> {
     // How much of the narrower of two fragments' x-ranges must overlap for
     // one to be read as the same column as the other. Loose enough that a
     // wrapped line ending a word early or late does not break the match,
@@ -536,6 +579,8 @@ fn pair_cells(groups: Vec<Vec<TextLine>>) -> Vec<Vec<TextLine>> {
     const GAP_RATIO_MIN: f32 = 0.4;
     const GAP_RATIO_MAX: f32 = 2.2;
 
+    let slack = (p.cell_pairing >= 2).then_some(p.cell_wrap_slack);
+
     let mut out: Vec<Vec<TextLine>> = Vec::with_capacity(groups.len());
     let mut i = 0;
     while i < groups.len() {
@@ -547,7 +592,16 @@ fn pair_cells(groups: Vec<Vec<TextLine>>) -> Vec<Vec<TextLine>> {
         let row = groups[i].clone();
         let mut continuing: Option<usize> = None;
         for (idx, frag) in row.iter().enumerate() {
-            let run = wrap_run_len(&groups, i + 1, frag, COLUMN_OVERLAP_MIN, GAP_RATIO_MIN, GAP_RATIO_MAX);
+            let fullness = slack.map(|s| (column_block_extent(&groups, i, frag, COLUMN_OVERLAP_MIN), s));
+            let run = wrap_run_len(
+                &groups,
+                i + 1,
+                frag,
+                COLUMN_OVERLAP_MIN,
+                GAP_RATIO_MIN,
+                GAP_RATIO_MAX,
+                fullness,
+            );
             if run > 0 {
                 if continuing.is_some() {
                     // More than one fragment on this row appears to
@@ -563,6 +617,8 @@ fn pair_cells(groups: Vec<Vec<TextLine>>) -> Vec<Vec<TextLine>> {
             i += 1;
             continue;
         };
+        let fullness =
+            slack.map(|s| (column_block_extent(&groups, i, &row[wide_idx], COLUMN_OVERLAP_MIN), s));
         let run = wrap_run_len(
             &groups,
             i + 1,
@@ -570,6 +626,7 @@ fn pair_cells(groups: Vec<Vec<TextLine>>) -> Vec<Vec<TextLine>> {
             COLUMN_OVERLAP_MIN,
             GAP_RATIO_MIN,
             GAP_RATIO_MAX,
+            fullness,
         );
 
         out.push(vec![row[wide_idx].clone()]);
@@ -588,6 +645,13 @@ fn pair_cells(groups: Vec<Vec<TextLine>>) -> Vec<Vec<TextLine>> {
 
 /// How many of the single-fragment groups starting at `start` continue
 /// `anchor`'s column in one consistent, unbroken run.
+///
+/// `fullness`, when set, is `(extent, slack)` from
+/// [`Params::cell_wrap_slack`]'s note: at every step the *previous* line in
+/// the chain (the anchor, then each accepted continuation in turn) must
+/// reach within `slack` x-heights of `extent`, or the run stops there
+/// without accepting the candidate. `None` is level 1's behaviour,
+/// unchanged: overlap and steady pitch alone.
 fn wrap_run_len(
     groups: &[Vec<TextLine>],
     start: usize,
@@ -595,6 +659,7 @@ fn wrap_run_len(
     overlap_min: f32,
     gap_ratio_min: f32,
     gap_ratio_max: f32,
+    fullness: Option<(f32, f32)>,
 ) -> usize {
     let mut n = 0;
     let mut prev = anchor;
@@ -617,11 +682,76 @@ fn wrap_run_len(
         } else {
             first_gap = Some(gap);
         }
+        if let Some((extent, slack)) = fullness {
+            if extent - prev.x1 as f32 > slack * prev.x_height {
+                break;
+            }
+        }
         n += 1;
         prev = cand;
         j += 1;
     }
     n
+}
+
+/// The right edge of the one fragment in `row` whose column overlaps
+/// `anchor`'s, or `None` when zero fragments do or more than one does. More
+/// than one match is ambiguous and is treated the same as none: it ends the
+/// block rather than guessing which fragment is the left column's.
+fn single_column_match(row: &[TextLine], anchor: &TextLine, overlap_min: f32) -> Option<u32> {
+    let mut found = None;
+    for frag in row {
+        if columns_overlap(anchor, frag, overlap_min) {
+            if found.is_some() {
+                return None;
+            }
+            found = Some(frag.x1);
+        }
+    }
+    found
+}
+
+/// The left column's right extent across the contiguous block containing
+/// `anchor`'s own row, `anchor_row`, in `groups`: the widest right edge --
+/// `anchor` itself included -- among every row that has exactly one
+/// fragment sharing `anchor`'s column, scanning up and down the page from
+/// `anchor_row`. The scan in each direction stops the moment a row has no
+/// such fragment (a different section) or more than one (ambiguous); it
+/// never looks past that row.
+///
+/// This is what [`Params::cell_wrap_slack`]'s fullness test is measured
+/// against: a wrapping line is full because it used the whole width its
+/// block's *other* members show is available, not because it happens to
+/// match its immediate neighbour. Judged only against the next line, two
+/// short, same-margin labels (`filing__r000407`'s field list) look equally
+/// full to each other -- the block-wide extent is what tells them apart from
+/// a line that is actually using the column's full width.
+fn column_block_extent(
+    groups: &[Vec<TextLine>],
+    anchor_row: usize,
+    anchor: &TextLine,
+    overlap_min: f32,
+) -> f32 {
+    let mut extent = anchor.x1 as f32;
+    let mut j = anchor_row;
+    while j > 0 {
+        j -= 1;
+        match single_column_match(&groups[j], anchor, overlap_min) {
+            Some(x1) => extent = extent.max(x1 as f32),
+            None => break,
+        }
+    }
+    let mut j = anchor_row + 1;
+    while j < groups.len() {
+        match single_column_match(&groups[j], anchor, overlap_min) {
+            Some(x1) => {
+                extent = extent.max(x1 as f32);
+                j += 1;
+            }
+            None => break,
+        }
+    }
+    extent
 }
 
 /// Whether `a` and `b` share at least `min_frac` of the narrower of their
@@ -2001,6 +2131,13 @@ mod tests {
         }
     }
 
+    /// `pair_cells` at the given level; level 1's tests all use this to stay
+    /// exercising overlap and pitch alone, unaffected by level 2's fullness
+    /// test.
+    fn pairing_params(cell_pairing: u32, cell_wrap_slack: f32) -> Params {
+        Params { cell_pairing, cell_wrap_slack, ..Params::default() }
+    }
+
     /// A single-line label beside its value, with nothing below to
     /// continue -- `pair_cells` must leave it exactly as
     /// `split_at_column_gaps` produced it.
@@ -2009,7 +2146,7 @@ mod tests {
         let label = tl(10, 200, 60, 67.0);
         let value = tl(220, 260, 58, 65.0);
         let groups = vec![vec![label.clone(), value.clone()]];
-        let out = pair_cells(groups);
+        let out = pair_cells(groups, &pairing_params(1, 1.0));
         assert_eq!(out.len(), 1, "a genuine single-row pair must stay one row");
         assert_eq!(out[0].len(), 2);
         assert_eq!(out[0][0].x0, label.x0);
@@ -2026,7 +2163,7 @@ mod tests {
         let value = tl(220, 260, 58, 65.0);
         let label2 = tl(10, 140, 80, 87.0);
         let groups = vec![vec![label1.clone(), value.clone()], vec![label2.clone()]];
-        let out = pair_cells(groups);
+        let out = pair_cells(groups, &pairing_params(1, 1.0));
         assert_eq!(out.len(), 3, "label line 1, label line 2, then the value");
         assert_eq!(out[0], vec![label1.clone()]);
         assert_eq!(out[1], vec![label2.clone()]);
@@ -2050,7 +2187,7 @@ mod tests {
             vec![label2a.clone(), value2.clone()],
             vec![label2b.clone()],
         ];
-        let out = pair_cells(groups);
+        let out = pair_cells(groups, &pairing_params(1, 1.0));
         assert_eq!(
             out,
             vec![
@@ -2073,7 +2210,84 @@ mod tests {
         let p2 = tl(10, 280, 30, 40.0);
         let p3 = tl(10, 260, 50, 60.0);
         let groups = vec![vec![p1.clone()], vec![p2.clone()], vec![p3.clone()]];
-        let out = pair_cells(groups.clone());
+        let out = pair_cells(groups.clone(), &pairing_params(1, 1.0));
         assert_eq!(out, groups);
+    }
+
+    /// `filing__r000407`'s shape, level 1's regression: a short label
+    /// already paired with its own value on the same row (`ii. LEI, if
+    /// any`), followed by the next label at the same margin and pitch
+    /// (`iii. State, if applicable`). Overlap and pitch alone (level 1)
+    /// mistake the short label for a wrap start and defer its value past
+    /// the next label; level 2's fullness test must not, because the short
+    /// label falls far short of the block's actual extent -- set here by an
+    /// earlier, genuinely full label in the same field list.
+    #[test]
+    fn r000407_shape_short_label_with_own_value_next_label_untouched() {
+        let full_label = tl(10, 195, 40, 47.0); // "i. Full name" -- reaches the block's extent
+        let short_label = tl(10, 80, 60, 67.0); // "ii. LEI, if any" -- far short of it
+        let value = tl(220, 260, 58, 65.0);
+        let next_label = tl(10, 90, 80, 87.0); // "iii. State, if applicable"
+        let groups = vec![
+            vec![full_label.clone()],
+            vec![short_label.clone(), value.clone()],
+            vec![next_label.clone()],
+        ];
+        let out = pair_cells(groups.clone(), &pairing_params(2, 1.0));
+        assert_eq!(
+            out, groups,
+            "a short label beside its own value must not defer the value past an unrelated next label"
+        );
+    }
+
+    /// A genuinely full wrapped label -- its first line reaches within
+    /// slack of the block's own extent, set here by an earlier line in the
+    /// same block -- must still defer its value under level 2, exactly as
+    /// under level 1: the fullness test is an extra gate, not a narrower
+    /// replacement for the overlap/pitch test.
+    #[test]
+    fn a_full_wrapped_label_still_defers_under_level_two() {
+        let earlier = tl(10, 205, 40, 47.0); // sets the block's extent
+        let label1 = tl(10, 200, 60, 67.0); // full line 1, within slack of 205
+        let value = tl(220, 260, 58, 65.0);
+        let label2 = tl(10, 140, 80, 87.0); // shorter line 2, the wrap's last line
+        let groups = vec![
+            vec![earlier.clone()],
+            vec![label1.clone(), value.clone()],
+            vec![label2.clone()],
+        ];
+        let out = pair_cells(groups, &pairing_params(2, 1.0));
+        assert_eq!(
+            out,
+            vec![vec![earlier], vec![label1], vec![label2], vec![value]],
+            "a genuinely full wrapped label must still defer its value under level two"
+        );
+    }
+
+    /// Two-column prose: a row where the left column's paragraph ends on a
+    /// short line while the right column still has content, immediately
+    /// followed by unrelated left-column-only content at the same margin
+    /// and pitch (a new paragraph, once the right column has run out
+    /// further down the page). Nothing must defer: the short line is the
+    /// end of its own paragraph, not the start of a wrap, which the
+    /// fullness test catches using the earlier, genuinely full lines of
+    /// that same left-column paragraph as the block's extent.
+    #[test]
+    fn two_column_prose_with_a_short_line_end_is_unchanged() {
+        let left_full = tl(10, 300, 40, 47.0);
+        let right_full0 = tl(220, 600, 38, 45.0);
+        let left_short = tl(10, 90, 60, 67.0); // last line of the left paragraph
+        let right_val = tl(220, 600, 58, 65.0); // right column still active on this row
+        let next_left = tl(10, 95, 80, 87.0); // unrelated content, same column and pitch
+        let groups = vec![
+            vec![left_full.clone(), right_full0.clone()],
+            vec![left_short.clone(), right_val.clone()],
+            vec![next_left.clone()],
+        ];
+        let out = pair_cells(groups.clone(), &pairing_params(2, 1.0));
+        assert_eq!(
+            out, groups,
+            "a short line ending a column must not be read as a wrap start into unrelated content"
+        );
     }
 }
