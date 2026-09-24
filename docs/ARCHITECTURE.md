@@ -6934,3 +6934,29 @@ The GPU is **optional**:
 Order: 16a (Qwen3/Qwen2.5 CPU, in progress) → 16b (OCR rescoring, gated) →
 16c (Qwen3.5 text) → 16d (Qwen3.5 vision) → 16e (GPU). Each stage is gated as
 in PLAN.
+
+
+### 2026-09-24 — `decode.char_bonus_slanted`: mechanism kept, the score-set winner not shipped
+
+Slanted words now take their own per-character bonus in the match term,
+using the verdict from the slant estimator. The agent swept it on scoring data
+(`docs/measurements/2026-09-24_char_bonus_slanted.txt`):
+- r000583, the page it was built for, gets worse at every increase
+  (23.982% → 24.434% at 4.5).
+- pages-cov is byte-identical at every value, because it has too few
+  slanted words to exercise the parameter. The drawing gate passed with
+  nothing to test, not because a trade was won.
+- finfilings improves slightly at 4.5 (12.141/11.098 against
+  12.167/11.122). Five pages gain and two lose.
+
+**Decision: ship at the neutral 3.44 (equal to `char_bonus`), labelled
+guess, and hand it to chunk 12's fit.** Picking the best of several values
+on finfilings is selecting on a scoring corpus. That breaks the firewall
+set earlier today (score data never feeds the engine), and a 0.026-point
+margin spread over 7 pages is within what the choice itself would inflate.
+The fit sets the value on the training split and confirms it on validation;
+finfilings then scores it once. The shipped `.ocrw` already carries 3.44,
+so this needs no rebuild.
+
+Carried forward: r000583's remaining losses are not fixed by a bigger
+slanted-word bonus. The next lever for that page has not been identified.

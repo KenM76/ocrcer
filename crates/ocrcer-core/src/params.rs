@@ -164,16 +164,10 @@ pub struct Decode {
     /// wide one.
     pub char_bonus: f32,
     /// `char_bonus`'s replacement for a word the slant estimator
-    /// (`crate::layout::slant`) measured as slanted (`ARCHITECTURE.md`
-    /// section 11, 2026-09-24, "char_bonus re-sweep: ... next a
-    /// slanted-word bonus"). Measured, `docs/measurements/2026-09-24_char_bonus_slanted.txt`:
-    /// 4.5 beat both finfilings gates (12.141/11.098 vs control 12.167/11.122)
-    /// and left pages-cov byte-identical to the control at every one of 625
-    /// pages, because the corpus flags too few words as slanted to move it.
-    /// The screen page the estimator was built from, r000583, gets measurably
-    /// *worse* alone (23.982% to 24.434%); the net finfilings win comes from
-    /// other pages with a few slanted words, which is why this is decided on
-    /// the pooled corpus and not on the single evidence page.
+    /// (`crate::layout::slant`) measured as slanted. Guess at the neutral value
+    /// (equal to `char_bonus`); to be fitted on the training split in chunk 12,
+    /// not selected on a scoring corpus. Score-set sweep on record:
+    /// `docs/measurements/2026-09-24_char_bonus_slanted.txt`.
     pub char_bonus_slanted: f32,
     pub w_bigram: f32,
     pub w_lex: f32,
@@ -445,14 +439,7 @@ impl Params {
         decode: Decode {
             w_match: 1.0,
             char_bonus: 3.44,
-            // Measured, `docs/measurements/2026-09-24_char_bonus_slanted.txt`:
-            // pages-cov byte-identical to control at every value tried (the
-            // corpus flags too few words as slanted to move it), finfilings
-            // 12.141%/11.098% beats the 12.167%/11.122% control. r000583, the
-            // page the slant estimator was built from, gets worse alone
-            // (23.982% to 24.434%); the win is pooled across the other 59
-            // pages, not this one.
-            char_bonus_slanted: 4.5,
+            char_bonus_slanted: 3.44,
             w_bigram: 0.1,
             w_lex: 0.6,
             w_seg: 0.25,
