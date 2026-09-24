@@ -7091,3 +7091,42 @@ Consequences for OCRcer:
   point.
 - The pdfcer-gui engine choice is being handled through pdfcer-gui's own
   feature-request channel. OCRcer does not build it.
+
+
+### 2026-09-24 — Chunk 16b rescoring: spec details fixed before implementation
+
+Adds to the 16a entry's point 5 and point 7; nothing there is withdrawn.
+
+- **Score.** The final choice per low-confidence line is
+  `ocr_score + λ·llm_logprob + β·n_tokens`. The β term offsets the LLM's
+  bias toward shorter candidates, which is well documented in ASR n-best
+  rescoring. λ, β and the confidence threshold that selects lines are all
+  `fitted` on finfilings-train and confirmed on finfilings-val. Scoring
+  data never tunes them.
+- **Context.** The previous line's chosen text (OCR text, or rescored text
+  if it was rescored) is the LLM prefix. The prefix is scored once, and the
+  candidates are scored as continuations of it through
+  `Model::score_candidates`. Each candidate's result must be bit-identical
+  to scoring that candidate alone.
+- **Candidates.** The decoder's n-best list is capped at 8 per line.
+  Identifier-shaped words take the same choice in every candidate, so the
+  LLM cannot flip them. This is rule 6 enforced by construction, not by a
+  penalty.
+- **Additional gate: no harm on confident lines.** Lines above the
+  threshold must be byte-identical with the add-on on or off. The reported
+  CER must also show that the lines it did touch improved on net.
+  Prior art is the reason: unconstrained LLM post-correction has been
+  measured to raise error on cleaner inputs (arXiv 2502.01205).
+- **Fallback if the gain is thin.** A small correction model fitted on
+  finfilings-train, char-level and n-best-constrained, is the alternative
+  lever. Prior art reports that specialised small models beat generic-LLM
+  rescoring (arXiv 2405.15216). It is not started unless 16b's measured
+  gain is below the gates.
+- **Speed precondition.** 16a-speed (persistent pool, blocked kernel) and
+  16a-speed2 (batched candidates) exist on branch `llm-speed`. They merge
+  to master only after a serial real-weights oracle run
+  (`--test-threads=1`, never concurrent with another heavy job) and pinned
+  timings. The single-candidate `forward_token` and the batched
+  `forward_tokens_batch` are two copies of one transformer step, held
+  together only by an equality test. 16b folds `forward_token` into the
+  batch-of-one path once a pinned benchmark shows no regression.
