@@ -157,3 +157,77 @@ that gives up on catching real checkboxes in this rendering regime, or a
 decision that checkbox-drop is not viable at the `Component` level at all
 and the insertion cost (`""`-\>`®`/`~`/`B`, per
 `2026-09-23_worst_pages_round3.md`) is accepted as-is.
+
+## v2, 2026-09-23/24: border-coverage signal, screened and shipped
+
+`ARCHITECTURE.md` section 11, 2026-09-23 ("Checkbox drop, first detector:
+falsified at screening; a border-coverage signal is added to `Component`")
+resolved the escalation above by extending the `Component` contract rather
+than threading a raw mask downstream: `Component::border_coverage` is a
+`[f32; 4]` (top, bottom, left, right) recording, for a band
+`t = max(1, round(height/12))` px in from each bounding-box edge, the
+fraction of that edge's own pixel positions the component inks. This is
+computed once during labelling (`image::components::components`), stays
+integer/f32 image-processing throughout, and needs no `unsafe`.
+
+`is_checkbox_shaped` now requires all four sides to clear
+`lines.checkbox_side_min` (0.85) in addition to the existing size and
+aspect bounds; `lines.checkbox_fill_max` is demoted to a loose sanity
+bound (raised 0.55 -> 0.95) so a fused interior mark no longer disqualifies
+a real box. `drop_checkbox_members` now drops a passing box
+unconditionally -- a fused mark drops with it as one piece, matching how
+the real corpus glyph renders -- and separately tests every pixel-disjoint
+contained component against `lines.checkbox_contained_area_max` (0.25 of
+the box's own bounding-box area) and `lines.checkbox_contained_height_max`
+(0.6 of the box's own height): small on both axes at once is checkbox-mark
+debris and drops with the box; anything glyph-sized (a CAD balloon's datum
+letter, a boxed digit) survives even though the box itself is still
+dropped as furniture.
+
+### Screening: the same four pages, `checkbox_drop=1`
+
+| page | control CER / recall | v2 CER / recall |
+|---|---|---|
+| r000396 | 28.789% / 81.9% | 28.789% / 81.934% (unchanged: no checkbox on this page crosses the new gate at a different point than before) |
+| r000407 | 24.464% / 79.2% | 23.866% / 79.233% (improved, recall held) |
+| r000308 | 14.500% / 74.6% | 14.274% / 74.597% (improved, recall held) |
+| r000066 | 18.123% / 72.8% | 17.879% / 72.762% (improved, recall held) |
+
+No page regressed and no page lost recall -- the opposite of the v1
+sweep, where every value tried was either a no-op or catastrophic. A
+`--layout --no-decode` diff on r000407 (checkbox_drop off vs on) shows
+line/word renumbering cascading down the page from each checkbox-list row
+losing its box member, not the page-wide loss of ordinary-text members v1
+produced -- the false-positive rate against hollow letters is gone.
+
+### `bench/pages-cov` (625 pages)
+
+End-to-end and line-matched CER: 6.064% with `checkbox_drop=1`, identical
+to the `checkbox_drop=0` control to the byte -- the per-page CSVs for the
+two runs (`rule3.csv` regenerated as this run's control, and
+`pages_cov_checkbox_on.csv`) diff to nothing. Gate `<= 6.114%`: passes.
+Drawing-category delta: 0 (no page in the corpus, drawing or otherwise,
+has a component that reaches the checkbox gate at all). Gate `<= 0`:
+passes.
+
+### `finfilings` (60 pages)
+
+| | control | `checkbox_drop=1` | gate |
+|---|---|---|---|
+| end-to-end CER | 12.786% | 12.708% | `< 12.786%` -- passes |
+| line-matched CER | 11.686% | 11.602% | `< 11.686%` -- passes |
+| recall | 76.937% | 76.937% | unchanged |
+
+### Disposition
+
+All three gates pass with the parameters exactly as authored in this
+change -- no threshold adjustment was needed. `lines.checkbox_drop`
+default flips to `1`; `lines.checkbox_side_min` provenance is relabelled
+`measured` (it was swept implicitly by these three gates passing at its
+authored value of 0.85, not by a sweep across a range, so it is recorded
+as measured-at-this-value rather than measured-as-optimal).
+`checkbox_fill_max`, `checkbox_contained_area_max`, and
+`checkbox_contained_height_max` stay `guess` -- their role in this result
+is a sanity bound and a size-vs-size ratio respectively, neither swept
+independently, and a future corpus with real checkbox+debris pairs at
+different scales may still need to revisit them.

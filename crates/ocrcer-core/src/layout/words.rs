@@ -1097,7 +1097,7 @@ mod tests {
     use crate::layout::lines::{self, XHeightSource};
 
     fn c(label: u32, x0: u32, y0: u32, w: u32, h: u32) -> Component {
-        Component { label, x0, y0, x1: x0 + w, y1: y0 + h, area: w * h }
+        Component { label, x0, y0, x1: x0 + w, y1: y0 + h, area: w * h, border_coverage: [1.0; 4] }
     }
 
     /// Builds a line of glyph boxes at the given left edges, all 8 wide and
@@ -1512,7 +1512,15 @@ mod tests {
     fn a_monospace_fragment_with_one_touching_pair_stays_fixed_pitch_with_no_spurious_space() {
         let before: Vec<Component> =
             (0u32..6).map(|k| monospace_cell(k + 1, k, 12, 0, 8)).collect();
-        let touch = Component { label: 7, x0: 72, y0: 20, x1: 96, y1: 30, area: 24 * 10 };
+        let touch = Component {
+            label: 7,
+            x0: 72,
+            y0: 20,
+            x1: 96,
+            y1: 30,
+            area: 24 * 10,
+            border_coverage: [1.0; 4],
+        };
         let after: Vec<Component> =
             (8u32..14).map(|k| monospace_cell(k, k, 12, 0, 8)).collect();
 

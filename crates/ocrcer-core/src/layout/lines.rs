@@ -383,8 +383,12 @@ pub struct Params {
     /// checkbox characters across 685 truth files). Any charset entry for
     /// the shape can only ever be an insertion error, so the fix is to drop
     /// the shape before recognition, the same way [`Params::furniture_fraction`]
-    /// and [`Params::rule_aspect`] drop other non-text ink. Off by default
-    /// until measured against both corpora and the finfilings gates.
+    /// and [`Params::rule_aspect`] drop other non-text ink. On by default:
+    /// the v2 detector using [`Component::border_coverage`] (section 11,
+    /// 2026-09-23, "Checkbox drop, first detector: falsified at
+    /// screening...") clears the four-page screen, `bench/pages-cov`, and
+    /// `finfilings` gates -- see
+    /// `docs/measurements/2026-09-23_checkbox_drop.txt`.
     pub checkbox_drop: bool,
     /// The lower size bound a checkbox candidate's longer side must clear,
     /// as a multiple of the line's own x-height.
@@ -397,17 +401,34 @@ pub struct Params {
     /// looking like a checkbox and starts looking like an ordinary letter,
     /// which in this engine's own faces is reliably taller than it is wide.
     pub checkbox_aspect_max: f32,
-    /// The most ink a checkbox candidate's own bounding box may hold, as a
-    /// fraction of its area, before it is a solid mark rather than a hollow
-    /// outline.
+    /// A loose sanity bound: the most ink a checkbox candidate's own
+    /// bounding box may hold, as a fraction of its area, before it is
+    /// essentially solid and cannot be a hollow outline at all -- even with
+    /// a fused interior mark. Demoted from primary discriminator to sanity
+    /// bound by `ARCHITECTURE.md` section 11, 2026-09-23 ("Checkbox drop,
+    /// first detector: falsified at screening..."), once
+    /// [`Params::checkbox_side_min`] took over as the shape test; raised so
+    /// a fused interior mark (this corpus's real "?"-in-box glyph) is
+    /// allowed.
     pub checkbox_fill_max: f32,
-    /// How much of a checkbox candidate's own size a component fully
-    /// contained inside it may occupy, as a fraction, before that content
-    /// is ordinary glyph-sized text rather than a small checkbox mark. Above
-    /// this, both the outline and its contents survive -- the test that
-    /// lets a boxed `0`/`O`/`D` stand, per the decision's own false-positive
-    /// case.
-    pub checkbox_mark_fill_max: f32,
+    /// Per `ARCHITECTURE.md` section 11, 2026-09-23 ("Checkbox drop, first
+    /// detector..."): all four of [`Component::border_coverage`]'s sides
+    /// must clear this fraction before a candidate counts as a drawn box.
+    /// A drawn square scores high on every side; a rounded glyph (`o`, `0`,
+    /// `O`, `D`) misses its corners and scores lower on all four.
+    pub checkbox_side_min: f32,
+    /// A component fully inside a passed box, pixel-disjoint from it, is
+    /// checkbox-mark debris -- dropped along with the box -- only when it
+    /// is small on *both* axes at once: under this fraction of the box's
+    /// own bounding-box area...
+    pub checkbox_contained_area_max: f32,
+    /// ...and under this fraction of the box's own height. Above either
+    /// floor the content is ordinary glyph-sized text (a CAD balloon's
+    /// datum letter, a boxed digit) and survives -- the box itself is still
+    /// dropped as furniture, but the letter is kept. This is the test that
+    /// lets a boxed `0`/`O`/`D` stand, per the decision's own
+    /// false-positive case.
+    pub checkbox_contained_height_max: f32,
 }
 
 /// The shipped values, taken from the parameter block rather than restated.
@@ -1043,16 +1064,20 @@ pub(crate) fn is_glyphish(c: &Component, page_width: u32, page_height: u32, p: &
 /// already made; only the transcription step is skipped, which is the only
 /// step ground truth never carries a character for.
 ///
-/// A component's own bounding box and ink count is all this has to work
-/// with (`ARCHITECTURE.md` section 8: [`Component`] carries no raw mask this
-/// far downstream), so the outline is recognised by shape rather than by
+/// A component's own bounding box, ink count, and per-side border coverage
+/// (`ARCHITECTURE.md` section 8: [`Component::border_coverage`]) is all this
+/// has to work with, so the outline is recognised by shape rather than by
 /// tracing its ring: near-square, roughly text-sized against the line's own
-/// x-height and cap-height, and short of ink for its area -- a hollow
-/// rectangle is mostly background inside its own bounding box, where a
-/// solid mark is not. A component fully inside a candidate is the
-/// checkbox's mark, if it has one; [`Params::checkbox_mark_fill_max`] is
-/// the line between "too small to be text" and "an ordinary boxed glyph",
-/// the case a boxed `0`/`O`/`D` must survive.
+/// x-height and cap-height, inked along all four of its own edges (a drawn
+/// rectangle scores high on every side; a rounded glyph like `o`/`0`/`O`/`D`
+/// misses its corners), and short of ink for its area only as a loose sanity
+/// bound now that border coverage carries the shape test -- see
+/// `ARCHITECTURE.md` section 11, 2026-09-23 ("Checkbox drop, first detector:
+/// falsified at screening..."). Every component fully inside a passed box,
+/// pixel-disjoint from it, is dropped along with the box unless it is
+/// glyph-sized on either axis ([`Params::checkbox_contained_area_max`],
+/// [`Params::checkbox_contained_height_max`]) -- the case a boxed `0`/`O`/`D`
+/// or a CAD balloon's datum letter must survive.
 fn drop_checkboxes(groups: &mut [Vec<TextLine>], components: &[Component], p: &Params) {
     for group in groups.iter_mut() {
         for line in group.iter_mut() {
@@ -1079,6 +1104,9 @@ fn is_checkbox_shaped(c: &Component, line: &TextLine, p: &Params) -> bool {
     if hi > f64::from(line.cap_height) * f64::from(p.checkbox_max_cap_heights) {
         return false;
     }
+    if c.border_coverage.iter().any(|&s| f64::from(s) < f64::from(p.checkbox_side_min)) {
+        return false;
+    }
     let density = f64::from(c.area) / (f64::from(w) * f64::from(h));
     density <= f64::from(p.checkbox_fill_max)
 }
@@ -1088,9 +1116,15 @@ fn contained_in(inner: &Component, outer: &Component) -> bool {
     inner.x0 >= outer.x0 && inner.x1 <= outer.x1 && inner.y0 >= outer.y0 && inner.y1 <= outer.y1
 }
 
-/// Removes a line's checkbox outlines and, for each, either the small mark
-/// it holds or nothing, leaving [`Params::checkbox_mark_fill_max`]-sized
-/// content in place along with the box that holds it.
+/// Removes a line's checkbox outlines. A component that passes
+/// [`is_checkbox_shaped`] is always dropped -- fused interior ink (this
+/// corpus's real "?"-in-box glyph) drops with it as one piece. Any other,
+/// pixel-disjoint component fully contained inside it is dropped too only
+/// when it is small on both axes at once
+/// ([`Params::checkbox_contained_area_max`],
+/// [`Params::checkbox_contained_height_max`]); anything glyph-sized survives
+/// -- the case a boxed `0`/`O`/`D` or a CAD balloon's datum letter must
+/// survive.
 fn drop_checkbox_members(line: &mut TextLine, components: &[Component], p: &Params) {
     let mut drop: Vec<usize> = Vec::new();
     for &bi in &line.members {
@@ -1101,27 +1135,25 @@ fn drop_checkbox_members(line: &mut TextLine, components: &[Component], p: &Para
         if !is_checkbox_shaped(b, line, p) {
             continue;
         }
-        let marks: Vec<usize> = line
-            .members
-            .iter()
-            .copied()
-            .filter(|&mi| mi != bi && !drop.contains(&mi) && contained_in(&components[mi], b))
-            .collect();
-        if marks.is_empty() {
-            drop.push(bi);
-            continue;
-        }
-        let biggest = *marks.iter().max_by_key(|&&mi| components[mi].area).unwrap();
-        let m = &components[biggest];
-        let box_size = f64::from(b.width().max(b.height()));
-        let mark_size = f64::from(m.width().max(m.height()));
-        if box_size > 0.0 && mark_size / box_size > f64::from(p.checkbox_mark_fill_max) {
-            // Glyph-sized content: the box and its contents are ordinary
-            // text, not a checkbox. Both survive.
-            continue;
-        }
         drop.push(bi);
-        drop.extend(marks);
+        let box_area = f64::from(b.width()) * f64::from(b.height());
+        let box_height = f64::from(b.height());
+        for &mi in &line.members {
+            if mi == bi || drop.contains(&mi) {
+                continue;
+            }
+            let m = &components[mi];
+            if !contained_in(m, b) {
+                continue;
+            }
+            let mark_area = f64::from(m.width()) * f64::from(m.height());
+            let mark_height = f64::from(m.height());
+            let small = mark_area < f64::from(p.checkbox_contained_area_max) * box_area
+                && mark_height < f64::from(p.checkbox_contained_height_max) * box_height;
+            if small {
+                drop.push(mi);
+            }
+        }
     }
     if drop.is_empty() {
         return;
@@ -1802,7 +1834,7 @@ mod tests {
     use super::*;
 
     fn c(label: u32, x0: u32, y0: u32, w: u32, h: u32) -> Component {
-        Component { label, x0, y0, x1: x0 + w, y1: y0 + h, area: w * h }
+        Component { label, x0, y0, x1: x0 + w, y1: y0 + h, area: w * h, border_coverage: [1.0; 4] }
     }
 
     /// Two lines of the same size, set one above the other, must come back as
@@ -2162,10 +2194,24 @@ mod tests {
     }
 
     /// A component whose bounding box is filled well below
-    /// [`Params::checkbox_fill_max`] -- a hollow outline, not a solid glyph.
+    /// [`Params::checkbox_fill_max`]'s loose sanity bound and whose four
+    /// sides are (near-)fully inked -- a drawn box outline, per
+    /// `ARCHITECTURE.md` section 11, 2026-09-23 ("Checkbox drop, first
+    /// detector..."): "a drawn square scores ≥ ~0.9 on all four sides."
     fn hollow(label: u32, x0: u32, y0: u32, w: u32, h: u32, fill: f32) -> Component {
         let area = ((w * h) as f32 * fill) as u32;
-        Component { label, x0, y0, x1: x0 + w, y1: y0 + h, area }
+        Component { label, x0, y0, x1: x0 + w, y1: y0 + h, area, border_coverage: [0.95; 4] }
+    }
+
+    /// A near-square component whose corners are missing -- the
+    /// border-coverage signature a real rounded glyph (`o`, `0`) leaves,
+    /// per the same entry as [`hollow`]: "an `o`/`0`/`O`/`D` misses its
+    /// corners and scores clearly lower." `border` is applied uniformly;
+    /// which particular side a real rounded shape misses does not matter to
+    /// [`is_checkbox_shaped`], which requires all four to clear the floor.
+    fn ring(label: u32, x0: u32, y0: u32, w: u32, h: u32, fill: f32, border: f32) -> Component {
+        let area = ((w * h) as f32 * fill) as u32;
+        Component { label, x0, y0, x1: x0 + w, y1: y0 + h, area, border_coverage: [border; 4] }
     }
 
     fn checkbox_params() -> Params {
@@ -2210,8 +2256,9 @@ mod tests {
     }
 
     /// A boxed capital letter -- a CAD title-block cell, or a lone `O`/`0`/`D`
-    /// -- is not a checkbox: its contained mark is glyph-sized, not a small
-    /// tick, so the box and its contents both survive as ordinary text.
+    /// drawn inside a real outline -- has the outline dropped as furniture
+    /// like any other checkbox-shaped box, but its contained letter is
+    /// glyph-sized (not a small tick) and survives.
     #[test]
     fn a_boxed_capital_in_a_cad_style_cell_is_kept() {
         let comps = vec![
@@ -2225,8 +2272,53 @@ mod tests {
         assert_eq!(lines.len(), 1);
         assert_eq!(
             lines[0].members,
+            vec![0, 1, 2, 4],
+            "the box is dropped as furniture; glyph-sized content inside it survives"
+        );
+    }
+
+    /// A checkbox mark fused with its outline into a single component (this
+    /// corpus's real "?"-in-box glyph, per
+    /// `docs/measurements/2026-09-23_checkbox_drop.txt`) drops as one piece:
+    /// there is no separate contained component to reason about, and the
+    /// loose fill sanity bound must not itself reject it.
+    #[test]
+    fn a_checkbox_with_a_fused_mark_is_dropped_as_one_piece() {
+        let comps = vec![
+            c(1, 10, 10, 10, 20),
+            c(2, 25, 10, 10, 20),
+            c(3, 40, 10, 10, 20),
+            hollow(4, 60, 10, 20, 20, 0.65),
+        ];
+        let lines = group_with(&comps, 200, 100, &checkbox_params());
+        assert_eq!(lines.len(), 1);
+        assert_eq!(
+            lines[0].members,
+            vec![0, 1, 2],
+            "a fused mark is still part of one box-shaped component and drops with it"
+        );
+    }
+
+    /// An `o`/`0`-shaped ring and a `0`-shaped ellipse -- ordinary hollow
+    /// glyphs whose rounded corners miss full border coverage, per
+    /// `ARCHITECTURE.md` section 11, 2026-09-23 ("Checkbox drop, first
+    /// detector: falsified at screening...") -- are not checkboxes and
+    /// survive untouched, even though they are near-square and low-fill.
+    #[test]
+    fn a_ring_and_an_ellipse_with_missing_corners_are_kept() {
+        let comps = vec![
+            c(1, 10, 10, 10, 20),
+            c(2, 25, 10, 10, 20),
+            c(3, 40, 10, 10, 20),
+            ring(4, 60, 10, 20, 20, 0.30, 0.70),
+            ring(5, 90, 10, 20, 20, 0.35, 0.70),
+        ];
+        let lines = group_with(&comps, 200, 100, &checkbox_params());
+        assert_eq!(lines.len(), 1);
+        assert_eq!(
+            lines[0].members,
             vec![0, 1, 2, 3, 4],
-            "glyph-sized content inside the box means it is not a checkbox"
+            "missing corners keep border coverage under the floor: both survive"
         );
     }
 

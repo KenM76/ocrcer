@@ -523,10 +523,15 @@ mod tests {
             h,
             // These fixtures are a few pixels tall, so the page-furniture
             // rule — which is about proportions of a real page — would throw
-            // every one of them away.
+            // every one of them away. Checkbox dropping is a lines-layer
+            // concern unrelated to what this helper tests (edge cropping,
+            // lattice connectivity); some fixtures draw a small hollow
+            // rectangle to exercise ink cropping and it must not be evicted
+            // as a false-positive checkbox.
             &lines::Params {
                 min_area: 1,
                 furniture_fraction: 1.0,
+                checkbox_drop: false,
                 ..lines::Params::default()
             },
         );

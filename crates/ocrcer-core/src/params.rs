@@ -90,7 +90,9 @@ pub struct Lines {
     pub checkbox_max_cap_heights: f32,
     pub checkbox_aspect_max: f32,
     pub checkbox_fill_max: f32,
-    pub checkbox_mark_fill_max: f32,
+    pub checkbox_side_min: f32,
+    pub checkbox_contained_area_max: f32,
+    pub checkbox_contained_height_max: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -289,11 +291,19 @@ impl Params {
             // stays untouched. Not independently derived from
             // `cell_pairing`'s own value.
             cell_wrap_slack: 2.0,
-            // Guess, `ARCHITECTURE.md` section 11, 2026-09-23 ("Checkboxes
-            // are furniture, not text"): off until measured against both
-            // corpora and the finfilings gates. See
+            // Measured, `ARCHITECTURE.md` section 11, 2026-09-23
+            // ("Checkbox drop, first detector: falsified at screening; a
+            // border-coverage signal is added to `Component`"): the v1
+            // bbox/density-only detector regressed every screening page and
+            // was shipped off; the v2 detector using
+            // `Component::border_coverage` clears all three gates --
+            // screening on the four named finfilings pages (no page
+            // regresses, no recall drops), `bench/pages-cov` (625 pages,
+            // CER 6.064% unchanged, 0 pages moved), and `finfilings` (60
+            // pages, end-to-end CER 12.786% -> 12.708%, line-matched
+            // 11.686% -> 11.602%). See
             // `docs/measurements/2026-09-23_checkbox_drop.txt`.
-            checkbox_drop: 0,
+            checkbox_drop: 1,
             // Guess, same entry: the lower size bound, as a multiple of the
             // line's own x-height. "Roughly x-height" per the survey's
             // pixel inspection of the four checkbox pages.
@@ -309,12 +319,39 @@ impl Params {
             // Guess, same entry: the outline's own ink density (area over
             // bounding-box area) must be at or below this to count as a
             // hollow ring rather than a solid mark.
-            checkbox_fill_max: 0.55,
-            // Guess, same entry: how much of the outline's own size a
-            // contained mark may fill, as a fraction, before it counts as
-            // ordinary glyph-sized content rather than a small checkbox
-            // mark -- the test that lets a boxed 0/O/D survive.
-            checkbox_mark_fill_max: 0.55,
+            // `ARCHITECTURE.md` section 11, 2026-09-23 ("Checkbox drop,
+            // first detector: falsified at screening..."): demoted from the
+            // primary discriminator to a loose sanity bound now that
+            // `checkbox_side_min` carries the shape test, and raised so a
+            // fused interior mark (this corpus's real "?"-in-box glyph) is
+            // allowed -- it rejects only a candidate that is essentially
+            // solid ink, which a hollow outline with a mark inside it never
+            // is. Guess.
+            checkbox_fill_max: 0.95,
+            // Measured, `ARCHITECTURE.md` section 11, 2026-09-23 ("Checkbox
+            // drop, first detector..."): all four of `Component`'s
+            // `border_coverage` sides must clear this to count as a drawn
+            // box. "A drawn square scores ≥ ~0.9 on all four sides. An
+            // o/0/O/D misses its corners and scores clearly lower" -- 0.85
+            // sits under the former, clear of the latter, per that entry's
+            // own reasoning. Measured at this authored value: the four-page
+            // screen, `bench/pages-cov`, and `finfilings` gates in
+            // `docs/measurements/2026-09-23_checkbox_drop.txt` all pass
+            // with 0.85 as shipped, not swept across a range -- recorded as
+            // measured-at-this-value, not measured-as-optimal.
+            checkbox_side_min: 0.85,
+            // Guess, same entry: replaces `checkbox_mark_fill_max`. A
+            // component fully inside a passed box, pixel-disjoint from it,
+            // is checkbox-mark debris -- dropped along with the box -- only
+            // when it is small on *both* axes at once: under this fraction
+            // of the box's own bounding-box area...
+            checkbox_contained_area_max: 0.25,
+            // ...and under this fraction of the box's own height. Above
+            // either floor the content is ordinary glyph-sized text (a CAD
+            // balloon's datum letter, a boxed digit) and survives -- the box
+            // itself is still dropped as furniture, but the letter is kept.
+            // Both guesses, same entry.
+            checkbox_contained_height_max: 0.6,
         },
         words: Words {
             min_gaps: 3,
@@ -472,7 +509,9 @@ impl Params {
             "lines.checkbox_max_cap_heights" => &mut self.lines.checkbox_max_cap_heights,
             "lines.checkbox_aspect_max" => &mut self.lines.checkbox_aspect_max,
             "lines.checkbox_fill_max" => &mut self.lines.checkbox_fill_max,
-            "lines.checkbox_mark_fill_max" => &mut self.lines.checkbox_mark_fill_max,
+            "lines.checkbox_side_min" => &mut self.lines.checkbox_side_min,
+            "lines.checkbox_contained_area_max" => &mut self.lines.checkbox_contained_area_max,
+            "lines.checkbox_contained_height_max" => &mut self.lines.checkbox_contained_height_max,
             "words.min_separability" => &mut self.words.min_separability,
             "words.lone_gap_x_heights" => &mut self.words.lone_gap_x_heights,
             "words.no_valley_x_heights" => &mut self.words.no_valley_x_heights,
@@ -535,7 +574,7 @@ impl Params {
 
     /// Every name this build understands, for a loader that wants to report
     /// which ones a file left at their defaults.
-    pub const NAMES: [&'static str; 72] = [
+    pub const NAMES: [&'static str; 74] = [
         "binarize.window",
         "binarize.k",
         "binarize.r",
@@ -569,7 +608,9 @@ impl Params {
         "lines.checkbox_max_cap_heights",
         "lines.checkbox_aspect_max",
         "lines.checkbox_fill_max",
-        "lines.checkbox_mark_fill_max",
+        "lines.checkbox_side_min",
+        "lines.checkbox_contained_area_max",
+        "lines.checkbox_contained_height_max",
         "words.min_gaps",
         "words.min_separability",
         "words.lone_gap_x_heights",
@@ -656,7 +697,7 @@ fn find_changed_u32(before: &Params, after: &Params) -> f32 {
     f32::NAN
 }
 
-fn f32_fields(p: &Params) -> [f32; 56] {
+fn f32_fields(p: &Params) -> [f32; 58] {
     [
         p.binarize.k,
         p.binarize.r,
@@ -684,7 +725,9 @@ fn f32_fields(p: &Params) -> [f32; 56] {
         p.lines.checkbox_max_cap_heights,
         p.lines.checkbox_aspect_max,
         p.lines.checkbox_fill_max,
-        p.lines.checkbox_mark_fill_max,
+        p.lines.checkbox_side_min,
+        p.lines.checkbox_contained_area_max,
+        p.lines.checkbox_contained_height_max,
         p.words.min_separability,
         p.words.lone_gap_x_heights,
         p.words.no_valley_x_heights,
@@ -785,7 +828,9 @@ impl Params {
             checkbox_max_cap_heights: self.lines.checkbox_max_cap_heights,
             checkbox_aspect_max: self.lines.checkbox_aspect_max,
             checkbox_fill_max: self.lines.checkbox_fill_max,
-            checkbox_mark_fill_max: self.lines.checkbox_mark_fill_max,
+            checkbox_side_min: self.lines.checkbox_side_min,
+            checkbox_contained_area_max: self.lines.checkbox_contained_area_max,
+            checkbox_contained_height_max: self.lines.checkbox_contained_height_max,
         }
     }
 

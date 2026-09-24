@@ -104,13 +104,13 @@ pub fn label(mask: &[u8], width: u32, height: u32, connectivity: Connectivity) -
     (labels, next_id - 1)
 }
 
-/// One connected component: its label, its bounding box, and how much ink
-/// it holds.
+/// One connected component: its label, its bounding box, how much ink it
+/// holds, and how solid each of its four bounding-box sides is.
 ///
 /// `x1`/`y1` are **exclusive**, so `x1 - x0` is the width. Every consumer of
 /// this downstream does width arithmetic and none does an inclusive-range
 /// walk, so exclusive is the form that never needs a `+ 1`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Component {
     pub label: u32,
     pub x0: u32,
@@ -120,6 +120,20 @@ pub struct Component {
     /// Ink pixels in the component, which is not `width * height` for
     /// anything but a solid rectangle.
     pub area: u32,
+    /// For each of the four bounding-box sides, the fraction of that side's
+    /// pixel positions this component inks within a band of
+    /// `t = max(1, round(height/12))` px from the edge. Order: top, bottom,
+    /// left, right (see [`Component::border_top`] etc).
+    ///
+    /// `ARCHITECTURE.md` section 11, 2026-09-23 ("Checkbox drop, first
+    /// detector: falsified at screening; a border-coverage signal is added
+    /// to `Component`"): a drawn rectangle's sides are (near-)fully inked,
+    /// while a rounded glyph (`o`, `0`, `O`, `D`) misses its corners and
+    /// scores clearly lower on at least one side, which a bounding box and
+    /// an ink count alone cannot tell apart. Computed once, here, during
+    /// labelling; it is an internal `Component` field, not a feature-vector
+    /// dimension, and it does not touch the charset or the `.ocrw` format.
+    pub border_coverage: [f32; 4],
 }
 
 impl Component {
@@ -141,20 +155,57 @@ impl Component {
     pub fn overlap_y(&self, other: &Component) -> u32 {
         self.y1.min(other.y1).saturating_sub(self.y0.max(other.y0))
     }
+
+    pub fn border_top(&self) -> f32 {
+        self.border_coverage[0]
+    }
+    pub fn border_bottom(&self) -> f32 {
+        self.border_coverage[1]
+    }
+    pub fn border_left(&self) -> f32 {
+        self.border_coverage[2]
+    }
+    pub fn border_right(&self) -> f32 {
+        self.border_coverage[3]
+    }
+    /// The least-covered of the four sides -- what a "drawn box on every
+    /// side" test reads.
+    pub fn border_min(&self) -> f32 {
+        self.border_coverage.iter().copied().fold(f32::INFINITY, f32::min)
+    }
 }
 
-/// Bounding boxes and ink counts for every component, indexed by
-/// `label - 1`, so `components(...)[i].label == i as u32 + 1`.
+/// Bounding boxes, ink counts and border coverage for every component,
+/// indexed by `label - 1`, so `components(...)[i].label == i as u32 + 1`.
 ///
 /// Labels are assigned in first-encounter row-major order, so this vector is
 /// in a fixed order for a given mask and no sort is needed to make a fixture
 /// reproducible.
+///
+/// Two passes over the mask: the first finds each component's bounding box
+/// (needed before border coverage can be measured, since the band width `t`
+/// in [`Component::border_coverage`]'s doc is itself a function of a
+/// component's own height); the second walks every ink pixel again and, for
+/// each of the four sides, records which position along that side (a column
+/// for top/bottom, a row for left/right) the pixel falls under. Both passes
+/// are `O(width * height)` and touch no pixel outside the mask, so this
+/// stays the integer, single-threaded-friendly cost `ARCHITECTURE.md`
+/// section 4.1 budgets for.
 pub fn components(labels: &[u32], width: u32, height: u32, count: u32) -> Vec<Component> {
     let w = width as usize;
+    let h = height as usize;
     let mut out: Vec<Component> = (1..=count)
-        .map(|label| Component { label, x0: u32::MAX, y0: u32::MAX, x1: 0, y1: 0, area: 0 })
+        .map(|label| Component {
+            label,
+            x0: u32::MAX,
+            y0: u32::MAX,
+            x1: 0,
+            y1: 0,
+            area: 0,
+            border_coverage: [0.0; 4],
+        })
         .collect();
-    for y in 0..height as usize {
+    for y in 0..h {
         for x in 0..w {
             let l = labels[y * w + x];
             if l == 0 {
@@ -167,6 +218,59 @@ pub fn components(labels: &[u32], width: u32, height: u32, count: u32) -> Vec<Co
             c.y1 = c.y1.max(y as u32 + 1);
             c.area += 1;
         }
+    }
+    if out.is_empty() {
+        return out;
+    }
+
+    // `top_seen`/`bottom_seen` are indexed by column offset from `x0` (size
+    // = width); `left_seen`/`right_seen` by row offset from `y0` (size =
+    // height). A position is "seen" once any of this component's own pixels
+    // falls in that side's band, so coverage is the count of `true`s over
+    // the side's own length.
+    let mut top_seen: Vec<Vec<bool>> = out.iter().map(|c| vec![false; c.width() as usize]).collect();
+    let mut bottom_seen: Vec<Vec<bool>> =
+        out.iter().map(|c| vec![false; c.width() as usize]).collect();
+    let mut left_seen: Vec<Vec<bool>> =
+        out.iter().map(|c| vec![false; c.height() as usize]).collect();
+    let mut right_seen: Vec<Vec<bool>> =
+        out.iter().map(|c| vec![false; c.height() as usize]).collect();
+
+    for y in 0..h {
+        for x in 0..w {
+            let l = labels[y * w + x];
+            if l == 0 {
+                continue;
+            }
+            let idx = (l - 1) as usize;
+            let c = &out[idx];
+            let t = ((c.height() as f32) / 12.0).round().max(1.0) as u32;
+            let (xu, yu) = (x as u32, y as u32);
+            if yu - c.y0 < t {
+                top_seen[idx][(xu - c.x0) as usize] = true;
+            }
+            if c.y1 - 1 - yu < t {
+                bottom_seen[idx][(xu - c.x0) as usize] = true;
+            }
+            if xu - c.x0 < t {
+                left_seen[idx][(yu - c.y0) as usize] = true;
+            }
+            if c.x1 - 1 - xu < t {
+                right_seen[idx][(yu - c.y0) as usize] = true;
+            }
+        }
+    }
+
+    let count_true = |v: &[bool]| v.iter().filter(|&&b| b).count() as f32;
+    for (idx, c) in out.iter_mut().enumerate() {
+        let w_f = c.width().max(1) as f32;
+        let h_f = c.height().max(1) as f32;
+        c.border_coverage = [
+            count_true(&top_seen[idx]) / w_f,
+            count_true(&bottom_seen[idx]) / w_f,
+            count_true(&left_seen[idx]) / h_f,
+            count_true(&right_seen[idx]) / h_f,
+        ];
     }
     out
 }
@@ -280,5 +384,51 @@ mod tests {
             "8-connected background wrongly merges the corner into the interior"
         );
         assert_eq!(labels_eight[0], labels_eight[5]);
+    }
+
+    /// A solid rectangle inks every position on every side: border coverage
+    /// is `1.0` on all four sides regardless of `t`.
+    #[test]
+    fn solid_rectangle_has_full_border_coverage_on_every_side() {
+        let mask = vec![1u8; 8 * 12];
+        let (labels, count) = label(&mask, 8, 12, Connectivity::Eight);
+        assert_eq!(count, 1);
+        let comps = components(&labels, 8, 12, count);
+        assert_eq!(comps[0].border_coverage, [1.0, 1.0, 1.0, 1.0]);
+    }
+
+    /// A hollow ring with its four corners notched out -- the signature a
+    /// rounded glyph (`o`, `0`) leaves at the pixel level -- inks every
+    /// column/row of its 1px-wide sides except the two corner positions, so
+    /// every side scores below full coverage. Confirms
+    /// `ARCHITECTURE.md` section 11, 2026-09-23 ("Checkbox drop, first
+    /// detector..."): a drawn box's straight sides and a ring's rounded
+    /// ones are distinguishable at the `Component` level once border
+    /// coverage exists, which bounding box and ink count alone could not
+    /// do.
+    #[test]
+    fn a_ring_with_notched_corners_misses_full_coverage_on_every_side() {
+        // 12x12: a 1px ring (row/col 0 and 11 inked, interior empty), with
+        // all four corner pixels forced to background. `t = max(1,
+        // round(12/12)) = 1`, so the band is exactly that outer ring.
+        let n = 12usize;
+        let mut mask = vec![0u8; n * n];
+        for i in 0..n {
+            mask[i] = 1; // top row
+            mask[(n - 1) * n + i] = 1; // bottom row
+            mask[i * n] = 1; // left col
+            mask[i * n + (n - 1)] = 1; // right col
+        }
+        for &(x, y) in &[(0usize, 0usize), (n - 1, 0), (0, n - 1), (n - 1, n - 1)] {
+            mask[y * n + x] = 0;
+        }
+        let (labels, count) = label(&mask, n as u32, n as u32, Connectivity::Eight);
+        assert_eq!(count, 1, "the notched ring must still be one component");
+        let comps = components(&labels, n as u32, n as u32, count);
+        let want = (n - 2) as f32 / n as f32; // 10 of 12 positions inked
+        for (side, cov) in ["top", "bottom", "left", "right"].iter().zip(comps[0].border_coverage) {
+            assert_eq!(cov, want, "{side} side");
+        }
+        assert!(comps[0].border_min() < 0.85, "must miss a checkbox-shaped threshold");
     }
 }
