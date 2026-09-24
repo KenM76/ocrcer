@@ -13,12 +13,20 @@
 //! A path's score is the sum over its edges of
 //!
 //! ```text
-//!   w_match     * (char_bonus - distance)  (how well the image matched)
+//!   w_match     * (bonus - distance)  (how well the image matched)
 //! + w_bigram    * bigram_logp      (log2 P(class | previous class))
 //! + w_confusion * confusion_adjust (context priors for look-alike pairs)
 //! + w_seg       * segmentation_prior
 //! - case_shape_penalty             (once per anomalous case transition)
 //! ```
+//!
+//! where `bonus` is `char_bonus_slanted` for a word the layout stage's slant
+//! estimator measured as slanted, and `char_bonus` otherwise (`decode_word`'s
+//! `slanted` argument, `ARCHITECTURE.md` section 11, 2026-09-24: "char_bonus
+//! re-sweep ... next a slanted-word bonus"). Setting the two equal makes a
+//! build behave identically to one with no such parameter at all, which is
+//! how it shipped until measured; `docs/measurements/2026-09-24_char_bonus_slanted.txt`
+//! now sets `char_bonus_slanted` to a different, measured value.
 //!
 //! plus, once at the end of the word, `w_lex * lex_bonus[tier]` when the whole
 //! path spells a lexicon word. **The lexicon term is added and never
@@ -284,17 +292,27 @@ struct Step {
 /// than panicking, because a model and a charset that disagree is a load-time
 /// problem and not something to take a page down for.
 ///
+/// `slanted` is the layout stage's own verdict for this word
+/// (`crate::layout::slant::Slant::slanted`), carried in rather than
+/// recomputed here: this stage scores a lattice, it does not measure pixels.
+/// When `true`, every edge's match term is credited `p.char_bonus_slanted`
+/// instead of `p.char_bonus`; a caller that always passes `false` sees no
+/// behaviour change from before this parameter existed, regardless of what
+/// the two params carry.
+///
 /// Returns `None` when no path reaches the end node.
 pub fn decode_word(
     lat: &WordLattice,
     class_info: &[ClassInfo],
     t: &Tables<'_>,
     p: &Decode,
+    slanted: bool,
 ) -> Option<Word> {
     if lat.nodes == 0 || lat.edges.is_empty() {
         return None;
     }
     let end = lat.nodes - 1;
+    let bonus = if slanted { p.char_bonus_slanted } else { p.char_bonus };
 
     // Edges leaving each node, in lattice order. Built once so the beam does
     // not rescan the edge list per node, and so the visit order is fixed.
@@ -373,8 +391,7 @@ pub fn decode_word(
                         ctx |= confusion::CTX_LEXICON_WORD;
                     }
                     let mut s = h.score;
-                    s += f64::from(p.w_match)
-                        * (f64::from(p.char_bonus) - f64::from(c.distance));
+                    s += f64::from(p.w_match) * (f64::from(bonus) - f64::from(c.distance));
                     s += seg;
                     if let Some(bg) = t.bigrams {
                         let prev = h.prev.unwrap_or_else(|| bg.boundary());
@@ -579,7 +596,7 @@ mod tests {
                 edge(1, 2, vec![cand(38, 0.2), cand(39, 0.8)]),
             ],
         };
-        let w = decode_word(&lat, &info(), &Tables::default(), &crate::params::Params::DEFAULT.decode)
+        let w = decode_word(&lat, &info(), &Tables::default(), &crate::params::Params::DEFAULT.decode, false)
             .expect("a path exists");
         assert_eq!(classes(&w), vec![36, 38]);
         assert!(w.tier.is_none() && !w.identifier);
@@ -589,7 +606,7 @@ mod tests {
     fn a_lattice_with_no_complete_path_decodes_to_nothing() {
         let lat = WordLattice { nodes: 3, edges: vec![edge(0, 1, vec![cand(36, 0.1)])] };
         assert!(
-            decode_word(&lat, &info(), &Tables::default(), &crate::params::Params::DEFAULT.decode)
+            decode_word(&lat, &info(), &Tables::default(), &crate::params::Params::DEFAULT.decode, false)
                 .is_none()
         );
     }
@@ -612,7 +629,7 @@ mod tests {
                 merged,
             ],
         };
-        let w = decode_word(&lat, &info(), &Tables::default(), &crate::params::Params::DEFAULT.decode)
+        let w = decode_word(&lat, &info(), &Tables::default(), &crate::params::Params::DEFAULT.decode, false)
             .expect("a path exists");
         assert_eq!(classes(&w), vec![40], "the single good match should beat two poor ones");
     }
@@ -636,8 +653,39 @@ mod tests {
                 merged,
             ],
         };
-        let w = decode_word(&lat, &info(), &Tables::default(), &p).expect("a path exists");
+        let w = decode_word(&lat, &info(), &Tables::default(), &p, false).expect("a path exists");
         assert_eq!(classes(&w), vec![36, 37]);
+    }
+
+    /// `char_bonus_slanted` only reaches the score when `decode_word` is told
+    /// the word is slanted. A non-slanted word must decode identically —
+    /// same reading and the same `f64` score — no matter what value
+    /// `char_bonus_slanted` carries, because `slanted = false` should route
+    /// every edge's match term through `char_bonus` alone.
+    #[test]
+    fn a_non_slanted_word_ignores_char_bonus_slanted() {
+        let lat = WordLattice {
+            nodes: 3,
+            edges: vec![
+                edge(0, 1, vec![cand(36, 1.2), cand(37, 3.0)]),
+                edge(1, 2, vec![cand(38, 2.5), cand(39, 5.5)]),
+            ],
+        };
+        let mut p = crate::params::Params::DEFAULT.decode;
+        let base = decode_word(&lat, &info(), &Tables::default(), &p, false).expect("decodes");
+
+        // A value that would obviously move the score if it were consulted.
+        p.char_bonus_slanted = p.char_bonus + 100.0;
+        let moved = decode_word(&lat, &info(), &Tables::default(), &p, false).expect("decodes");
+        assert_eq!(base, moved, "char_bonus_slanted must not affect a slanted=false decode");
+
+        // Setting char_bonus_slanted equal to char_bonus is behaviour-neutral
+        // even when the word IS slanted -- this is what made shipping the new
+        // parameter safe before it was measured, and is checked here so it
+        // stays true regardless of what the shipped default becomes.
+        p.char_bonus_slanted = p.char_bonus;
+        let slanted_default = decode_word(&lat, &info(), &Tables::default(), &p, true).expect("decodes");
+        assert_eq!(base, slanted_default);
     }
 
     /// An edge far outside the aspect band is charged for it, and the charge
@@ -743,9 +791,9 @@ mod tests {
             ],
         };
         let p = crate::params::Params::DEFAULT.decode;
-        let first = decode_word(&lat, &info(), &Tables::default(), &p).expect("decodes");
+        let first = decode_word(&lat, &info(), &Tables::default(), &p, false).expect("decodes");
         for _ in 0..8 {
-            let again = decode_word(&lat, &info(), &Tables::default(), &p).expect("decodes");
+            let again = decode_word(&lat, &info(), &Tables::default(), &p, false).expect("decodes");
             assert_eq!(first, again);
         }
         // And the rule is the documented one: lowest class index wins a tie.
@@ -765,9 +813,9 @@ mod tests {
             ],
         };
         let mut p = crate::params::Params::DEFAULT.decode;
-        let wide = decode_word(&lat, &info(), &Tables::default(), &p).expect("decodes");
+        let wide = decode_word(&lat, &info(), &Tables::default(), &p, false).expect("decodes");
         p.beam_width = 1;
-        let narrow = decode_word(&lat, &info(), &Tables::default(), &p).expect("decodes");
+        let narrow = decode_word(&lat, &info(), &Tables::default(), &p, false).expect("decodes");
         assert_eq!(classes(&wide), classes(&narrow));
     }
 }

@@ -255,11 +255,15 @@ pub fn run(input: &DecodeInput, name: &str) -> Result<DecodeExpectation, String>
         }
     }
 
+    // No decode fixture exercises the slanted-word bonus yet, so every
+    // fixture is decoded as an upright word -- the same behaviour this
+    // harness had before `decode_word` grew the argument.
     let word = ocrcer_core::decode::viterbi::decode_word(
         &lat,
         &class_info,
         &Tables::default(),
         &params.decode,
+        false,
     )
     .ok_or_else(|| format!("{name}: no path reached the end node"))?;
 

@@ -163,6 +163,18 @@ pub struct Decode {
     /// weighed — which reads on a page as two narrow letters merged into one
     /// wide one.
     pub char_bonus: f32,
+    /// `char_bonus`'s replacement for a word the slant estimator
+    /// (`crate::layout::slant`) measured as slanted (`ARCHITECTURE.md`
+    /// section 11, 2026-09-24, "char_bonus re-sweep: ... next a
+    /// slanted-word bonus"). Measured, `docs/measurements/2026-09-24_char_bonus_slanted.txt`:
+    /// 4.5 beat both finfilings gates (12.141/11.098 vs control 12.167/11.122)
+    /// and left pages-cov byte-identical to the control at every one of 625
+    /// pages, because the corpus flags too few words as slanted to move it.
+    /// The screen page the estimator was built from, r000583, gets measurably
+    /// *worse* alone (23.982% to 24.434%); the net finfilings win comes from
+    /// other pages with a few slanted words, which is why this is decided on
+    /// the pooled corpus and not on the single evidence page.
+    pub char_bonus_slanted: f32,
     pub w_bigram: f32,
     pub w_lex: f32,
     pub w_seg: f32,
@@ -433,6 +445,14 @@ impl Params {
         decode: Decode {
             w_match: 1.0,
             char_bonus: 3.44,
+            // Measured, `docs/measurements/2026-09-24_char_bonus_slanted.txt`:
+            // pages-cov byte-identical to control at every value tried (the
+            // corpus flags too few words as slanted to move it), finfilings
+            // 12.141%/11.098% beats the 12.167%/11.122% control. r000583, the
+            // page the slant estimator was built from, gets worse alone
+            // (23.982% to 24.434%); the win is pooled across the other 59
+            // pages, not this one.
+            char_bonus_slanted: 4.5,
             w_bigram: 0.1,
             w_lex: 0.6,
             w_seg: 0.25,
@@ -557,6 +577,7 @@ impl Params {
             "confidence.lm_floor" => &mut self.confidence.lm_floor,
             "decode.w_match" => &mut self.decode.w_match,
             "decode.char_bonus" => &mut self.decode.char_bonus,
+            "decode.char_bonus_slanted" => &mut self.decode.char_bonus_slanted,
             "decode.w_bigram" => &mut self.decode.w_bigram,
             "decode.w_lex" => &mut self.decode.w_lex,
             "decode.w_seg" => &mut self.decode.w_seg,
@@ -606,7 +627,7 @@ impl Params {
 
     /// Every name this build understands, for a loader that wants to report
     /// which ones a file left at their defaults.
-    pub const NAMES: [&'static str; 77] = [
+    pub const NAMES: [&'static str; 78] = [
         "binarize.window",
         "binarize.k",
         "binarize.r",
@@ -667,6 +688,7 @@ impl Params {
         "confidence.lm_floor",
         "decode.w_match",
         "decode.char_bonus",
+        "decode.char_bonus_slanted",
         "decode.w_bigram",
         "decode.w_lex",
         "decode.w_seg",
@@ -732,7 +754,7 @@ fn find_changed_u32(before: &Params, after: &Params) -> f32 {
     f32::NAN
 }
 
-fn f32_fields(p: &Params) -> [f32; 60] {
+fn f32_fields(p: &Params) -> [f32; 61] {
     [
         p.binarize.k,
         p.binarize.r,
@@ -779,6 +801,7 @@ fn f32_fields(p: &Params) -> [f32; 60] {
         p.confidence.lm_floor,
         p.decode.w_match,
         p.decode.char_bonus,
+        p.decode.char_bonus_slanted,
         p.decode.w_bigram,
         p.decode.w_lex,
         p.decode.w_seg,

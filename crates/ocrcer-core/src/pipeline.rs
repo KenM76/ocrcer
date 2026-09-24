@@ -227,8 +227,15 @@ impl Engine {
                     // Slant is measured once per word, ahead of segmentation,
                     // per `ARCHITECTURE.md` section 11 (2026-09-24 decision):
                     // gating off skips the measurement entirely, so an upright
-                    // page pays nothing beyond this one branch.
-                    let italic_ok = if p.layout.italic_gating != 0 {
+                    // page pays nothing beyond this one branch. `slanted` is
+                    // the same verdict, carried on to `read_word` so the
+                    // decoder can credit `decode.char_bonus_slanted` instead
+                    // of `decode.char_bonus` (the 2026-09-24 follow-up,
+                    // "next a slanted-word bonus") -- a word never measured
+                    // (gating off) is treated as not slanted, the same
+                    // behaviour-neutral choice `italic_ok = true` makes for
+                    // gating itself.
+                    let slanted = if p.layout.italic_gating != 0 {
                         let mut member_labels: Vec<u32> =
                             span.members.iter().map(|&i| comps[i].label).collect();
                         member_labels.sort_unstable();
@@ -246,12 +253,20 @@ impl Engine {
                         )
                         .slanted
                     } else {
-                        true
+                        false
                     };
+                    let italic_ok = p.layout.italic_gating == 0 || slanted;
                     let lat =
                         segment::build_with(&span, &comps, &labels, page.width, line, &seg_p);
-                    let Some(w) =
-                        self.read_word(&lat, line, &labels, page.width, &tables, italic_ok)
+                    let Some(w) = self.read_word(
+                        &lat,
+                        line,
+                        &labels,
+                        page.width,
+                        &tables,
+                        italic_ok,
+                        slanted,
+                    )
                     else {
                         continue;
                     };
@@ -286,6 +301,12 @@ impl Engine {
     }
 
     /// Matches every edge of one word's lattice and decodes it.
+    ///
+    /// `slanted` is the same slant-estimator verdict `italic_ok` is built
+    /// from, carried separately because the two feed different decisions:
+    /// `italic_ok` gates which prototypes the matcher may consider, while
+    /// `slanted` tells the decoder which per-character bonus to credit
+    /// (`decode::viterbi::decode_word`'s own `slanted` argument).
     fn read_word(
         &self,
         lat: &segment::Lattice,
@@ -294,6 +315,7 @@ impl Engine {
         page_width: u32,
         tables: &Tables<'_>,
         italic_ok: bool,
+        slanted: bool,
     ) -> Option<Word> {
         let p = &self.model.params;
         let k = p.matching.top_k.max(1) as usize;
@@ -346,7 +368,7 @@ impl Engine {
 
         let lattice = WordLattice { nodes: lat.positions.len(), edges: hyps };
         let decoded =
-            viterbi::decode_word(&lattice, &self.model.class_info, tables, &p.decode)?;
+            viterbi::decode_word(&lattice, &self.model.class_info, tables, &p.decode, slanted)?;
 
         let mut text = String::new();
         let mut chars = Vec::with_capacity(decoded.chars.len());

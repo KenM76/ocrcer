@@ -1,0 +1,203 @@
+2026-09-24 -- decode.char_bonus_slanted sweep (slant-gated word bonus)
+(follow-up to ARCHITECTURE.md section 11, "decode.char_bonus re-sweep: stays
+3.44; the drawing category vetoes every increase" -> "Next arm: a separate
+decode.char_bonus_slanted, applied only to words the slant estimator flags";
+docs/measurements/2026-09-24_char_bonus_resweep.txt and
+2026-09-24_italic_gating.txt)
+
+Code change this session: crates/ocrcer-core/src/decode/viterbi.rs's
+decode_word gained a `slanted: bool` argument. The match term now credits
+`p.char_bonus_slanted` when the word's slant verdict is true and `p.char_bonus`
+otherwise (previously always `p.char_bonus`). The verdict is
+`crate::layout::slant::estimate(..).slanted`, computed once per word in
+pipeline.rs's recognize_lines (already computed there to drive
+layout.italic_gating) and threaded through unchanged rather than recomputed.
+A word never measured because layout.italic_gating=0 is treated as not
+slanted, matching the existing gate-off default. New unit test
+(a_non_slanted_word_ignores_char_bonus_slanted) proves a `slanted=false`
+decode is byte-identical regardless of what char_bonus_slanted carries, and
+that setting the two params equal is behaviour-neutral even when the word IS
+slanted -- the property that let this ship at a neutral default before being
+measured, and that is preserved now that the default is no longer neutral.
+
+Model: model/out/ocrcer.ocrw, unchanged this session -- 187 classes, 54
+faces, 50095 prototypes, lexicon 2477 nodes, bigrams 188 rows, confusions 76.
+No .ocrw rebuild was needed for the sweep: char_bonus_slanted's value only
+ever reached the engine via `--set`, and the file's own default (3.44,
+equal to char_bonus) was behaviour-neutral throughout. All params.tsv values
+matched Params::DEFAULT before and after the code change
+(the_file_and_the_compiled_defaults_agree passed both times), so binary
+rebuild alone was sufficient: `touch crates/ocrcer-bench/src/bin/ocr.rs &&
+cargo build --release -p ocrcer-bench --features pages`. No STALE flag
+printed on any run below.
+
+Controls, per the 2026-09-24 italic-gating entry and reproduced fresh this
+session on the current binary: pages-cov end-to-end 5.900%, finfilings
+end-to-end/line-matched 12.167%/11.122%. The finfilings control was re-run
+explicitly with `--set decode.char_bonus_slanted=3.44` on the current binary
+(t=1790246818) and reproduced 12.167%/11.122% exactly, confirming the new
+parameter is fully behaviour-neutral at its pre-measurement default and that
+this session's binary matches the shipped configuration.
+
+--------------------------------------------------------------------------
+1. Screen: filing__r000583 (one ocr.exe at a time, tasklist checked before
+   and after every run)
+--------------------------------------------------------------------------
+
+filing__r000583 is the page the slant estimator and this whole parameter were
+built from (the letter autopsy that back-solved ~5.9). It is heavily
+italic/slanted boilerplate: 124 of 158 words were flagged slanted by the
+estimator per the italic-gating entry's carried-forward note ("r000583 left
+34 of 158 words unflagged").
+
+| char_bonus_slanted | end-to-end CER (r000583) |
+|--------------------:|--------------------------:|
+|                3.44 |                   23.982% |
+|                 4.5 |                   24.434% |
+|                 5.9 |                   26.968% |
+|                 7.5 |                   28.507% |
+
+This is a monotonic **worsening** as char_bonus_slanted increases, on the
+exact page and exact evidence base the autopsy's ~5.9 guess came from. It is
+the opposite of what the resweep found for plain char_bonus on the same
+class of page context (increases there help prose-shaped text). Read alone,
+this result would say "stop here, nothing to advance" -- but it is a
+single-page reading, and the task's own three-stage funnel exists precisely
+so a single page's direction does not settle a corpus-wide parameter. Both
+1-2 best (least-bad) non-control values, 4.5 and 5.9, were carried forward to
+pages-cov to check the corpus-wide picture rather than inferring it from this
+page alone.
+
+--------------------------------------------------------------------------
+2. pages-cov (625 pages, --csv)
+--------------------------------------------------------------------------
+
+Gate: end-to-end CER <= 5.950% (control 5.900 + 0.05) AND drawing-category
+per-page CER delta sum <= 0 vs the char_bonus_slanted=3.44 control CSV.
+
+| char_bonus_slanted | end-to-end CER | line-matched CER | drawing Delta | all-category Delta | wall (s) |
+|--------------------:|----------------:|-------------------:|---------------:|---------------------:|---------:|
+|                 4.5 |          5.900% |             5.899% |       +0.000000 |            +0.000000 |    529.3 |
+|                 7.5 |          5.900% |             5.899% |       +0.000000 |            +0.000000 |    537.1 |
+
+Both are **byte-identical to the 3.44 control on every one of 625 pages, in
+every one of the seven categories, at 8 decimal places of CER precision**
+(`diff` against the control CSV returns zero changed lines), even at 7.5, the
+most extreme value swept. This confirms the ARCHITECTURE.md design note that
+"drawing exposure is bounded by construction" -- the estimator flags at most
+one word on 9 of 90 drawing pages, and apparently even the most extreme
+tested bonus never flips a decode decision on those few flagged words in this
+corpus. pages-cov is not evidence *for* the parameter (nothing on it changed)
+but it is not evidence against it either: the drawing-category gate passes
+trivially, by zero exposure, not by a real trade being won. 5.9 was not run
+separately on pages-cov since the two extremes already bracket zero effect
+and a midpoint would tell nothing new (the same reasoning the char_bonus
+resweep used for values that already cleared or already failed a gate).
+
+--------------------------------------------------------------------------
+3. finfilings (60 pages, --csv)
+--------------------------------------------------------------------------
+
+Gate: must beat 12.167% end-to-end AND 11.122% line-matched.
+
+| char_bonus_slanted | end-to-end CER | line-matched CER | pages changed vs control |
+|--------------------:|----------------:|-------------------:|---------------------------:|
+|                 3.44 (control) | 12.167% | 11.122% | -- |
+|                 4.5  |         12.141% |            11.098% | 7 of 60 |
+|                 5.9  |         12.158% |            11.112% | 6 of 60 |
+
+Both **beat both gates**. 4.5 wins by the larger margin (-0.026 / -0.024
+points) than 5.9 (-0.009 / -0.010 points).
+
+Per-page deltas at 4.5 (fraction units, variant - control; only the 7 pages
+that changed):
+
+| page               | control CER | 4.5 CER   | delta     |
+|--------------------|------------:|----------:|----------:|
+| filing__r000033    |    0.207254 |  0.208196 | +0.000942 |
+| filing__r000495    |    0.054889 |  0.052530 | -0.002359 |
+| filing__r000517    |    0.232737 |  0.227621 | -0.005115 |
+| filing__r000528    |    0.074528 |  0.070189 | -0.004339 |
+| filing__r000583    |    0.239819 |  0.244344 | +0.004525 |
+| filing__r000594    |    0.080230 |  0.075981 | -0.004249 |
+| filing__r000660    |    0.087922 |  0.085327 | -0.002595 |
+
+**r000583 -- the page this parameter was built from -- gets measurably
+worse** (+0.0045), confirming the screen-test direction in section 1 was a
+real effect, not noise. So does r000033 (+0.0009, smaller). The other five
+pages improve, and their combined improvement (-0.0189) outweighs the two
+regressions (+0.0055) by roughly 3.4x, giving the net win recorded above. At
+5.9 the same six of these seven pages move further in the same direction (not
+shown row-by-row; r000517/r000528/r000594/r000660 improve slightly more,
+r000583 regresses much more, to +0.0299), which is why 5.9's net margin is
+smaller than 4.5's -- the point where r000583's growing loss starts eating
+the gain faster than the other pages compound it.
+
+The finding worth stating plainly: **the autopsy's own evidence page is not
+where this parameter's win comes from.** The letter autopsy reverse-engineered
+~5.9 from two decoder-stage losses on r000583, and the italic-bank rebuild
+already fixed most of what ailed that page (40.633% to 23.982%, in the prior
+entry). What remains wrong on r000583 is apparently not decoder-stage
+merge-vs-split arithmetic that a bigger per-character credit rescues -- the
+bonus increase makes it monotonically worse instead, at every point tried, on
+both the raw page and inside the pooled corpus. The net win instead comes
+from a handful of other filing pages carrying a few slanted words each, where
+the same increase this time helps. This is the identical mechanism the plain
+char_bonus resweep found (a larger bonus favours more-characters paths, and
+running prose/number-with-units text usually has a word-level context that
+repays that) -- restricting it to slanted words only changes *which* words
+pay the drawing-style identifier-rewrite cost the resweep also found, not
+whether the mechanism itself is context-blind within the words it touches.
+
+--------------------------------------------------------------------------
+4. Identifier-preservation check
+--------------------------------------------------------------------------
+
+crates/ocrcer-core/src/decode/viterbi.rs's identifier-shape tests
+(a_digit_heavy_word_with_letters_in_it_is_identifier_shaped, case_penalties on
+"M8x1.25") are unaffected: they exercise upright, non-slanted words, so
+char_bonus_slanted never reaches their score regardless of its value. The
+new bonus applies only inside the slant estimator's own gate, and CAD/ISO
+drawing text reads upright (0 of 625 pages-cov pages showed a measurable
+byte-level change at any swept value), so identifier-shaped text is not
+exposed to this change by construction, consistent with the design intent
+recorded in ARCHITECTURE.md's 2026-09-24 char_bonus re-sweep entry.
+
+--------------------------------------------------------------------------
+5. Disposition
+--------------------------------------------------------------------------
+
+**4.5 passes both hard gates and ships as the new measured default.**
+`decode.char_bonus_slanted` moves from 3.44 (guess, behaviour-neutral) to 4.5
+(measured) in both crates/ocrcer-core/src/params.rs and model/params.tsv.
+No .ocrw rebuild was required (params.tsv and Params::DEFAULT already agreed
+on every other value; only this one row's provenance and number changed, and
+the_file_and_the_compiled_defaults_agree was re-checked after the edit).
+
+5.9 also passes both finfilings gates but by a smaller margin and was not
+chosen, consistent with picking the best of the survivors rather than every
+survivor.
+
+Carried forward:
+- **The screen-then-corpus funnel earned its keep here.** Taken alone,
+  section 1's r000583 screen would have said "stop, this makes the target
+  page worse at every value" -- and it would have been factually correct
+  about that one page, but wrong about the parameter, which wins on the
+  pooled corpus specifically because it is not confined to that page. Do not
+  shortcut the funnel on a single evidence page's direction alone, even when
+  that page is the one the parameter was designed around.
+- r000583 itself is now slightly *worse* than it was before this session
+  (23.982% to 24.434% under the new shipped default) even though the shipped
+  default improves finfilings overall. This is a real, reported cost, not a
+  rounding artefact -- see the per-page table in section 3. Whatever
+  r000583's four remaining decoder-stage losses need, a bigger slanted-word
+  bonus is not it; the next lever for that specific page is unidentified and
+  not scheduled.
+- pages-cov's complete insensitivity to this parameter (byte-identical CSV at
+  every value from 3.44 to 7.5) means the drawing-category gate is not doing
+  discriminating work for this particular parameter the way it did for plain
+  char_bonus -- it is passing because there is nothing to fail, not because a
+  real trade was resolved in drawing's favour. If a future drawing-category
+  regression is ever traced to slanted CAD annotation text, this parameter is
+  the first place to look, since it has never actually been tested against a
+  drawing page with more than one flagged word.
