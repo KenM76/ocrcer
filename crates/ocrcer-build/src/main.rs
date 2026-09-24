@@ -54,7 +54,7 @@
 //! Exit status is `0` on success and `1` on any failure, with the reason on
 //! stderr.
 
-use ocrcer_build::{bank, corpus, emit, ocrw, page, tables, ttf_load};
+use ocrcer_build::{bank, corpus, emit, llm_pack, ocrw, page, tables, ttf_load};
 
 use std::process::ExitCode;
 
@@ -75,6 +75,9 @@ fn main() -> ExitCode {
         ["metrics", "--local"] => report(run_metrics(true)),
         ["pages", out, px] => report(run_pages(out, px, false)),
         ["pages", out, px, "--local"] => report(run_pages(out, px, true)),
+        ["llm-pack", hf_dir, out, "--quant", quant, "--model-id", model_id, "--revision", revision] => {
+            report(run_llm_pack(hf_dir, out, quant, model_id, revision))
+        }
         _ => {
             eprintln!("usage: ocrcer-build render <font-file> <char> <px-per-em> [face-index]");
             eprintln!(
@@ -85,9 +88,23 @@ fn main() -> ExitCode {
             eprintln!("       ocrcer-build pages <out-dir> <sizes> [--local]");
             eprintln!("       ocrcer-build metrics [--local]");
             eprintln!("       ocrcer-build aspect [--local]");
+            eprintln!(
+                "       ocrcer-build llm-pack <hf-model-dir> <out.ocrl> --quant <f32|q8> --model-id <id> --revision <sha>"
+            );
             ExitCode::FAILURE
         }
     }
+}
+
+/// Converts a Hugging Face Qwen model directory into a `.ocrl` file
+/// (`ARCHITECTURE.md` section 11, 2026-09-24). `model_id` and `revision` are
+/// recorded in `meta` for attribution; they are supplied on the command line
+/// rather than read from the directory because a local clone's path is not
+/// the upstream identity, and the revision is what the operator pinned when
+/// they downloaded it, not something the directory's contents can attest to.
+fn run_llm_pack(hf_dir: &str, out: &str, quant: &str, model_id: &str, revision: &str) -> Result<(), String> {
+    let quant = llm_pack::Quant::parse(quant)?;
+    llm_pack::convert(std::path::Path::new(hf_dir), std::path::Path::new(out), quant, model_id, revision)
 }
 
 /// Reports what a `.ocrw` carries, as the runtime sees it.

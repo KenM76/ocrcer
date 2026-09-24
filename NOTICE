@@ -1,0 +1,30 @@
+OCRcer is MIT-licensed (see LICENSE). This NOTICE covers third-party material
+used by the optional LLM add-on (`ocrcer-llm`, `ocrcer-build llm-pack`,
+`.ocrl` files) only; the core OCR engine, prototype bank, lexicon, and
+decoder tables have no third-party content (`ARCHITECTURE.md` section 11,
+`CLAUDE.md` rule 2).
+
+## Qwen3-0.6B and Qwen2.5-0.5B-Instruct
+
+The optional add-on converts published weights for these two models into the
+`.ocrl` format via `ocrcer-build llm-pack`. Neither model's weights, nor any
+`.ocrl` file built from them, is committed to this repository — the operator
+downloads and converts them locally (`ARCHITECTURE.md` section 11,
+2026-09-24). This notice exists because a converted `.ocrl` file is a
+derivative artifact of that upstream work and Apache License 2.0 section 4(d)
+requires attribution to travel with it; `ocrcer-build llm-pack` also embeds
+the model's full upstream LICENSE text directly into the `.ocrl` file's
+`meta` block for the same reason.
+
+- **Qwen3-0.6B** — Copyright the Qwen Team, Alibaba Cloud.
+  Source: https://huggingface.co/Qwen/Qwen3-0.6B
+  Licensed under the Apache License, Version 2.0.
+
+- **Qwen2.5-0.5B-Instruct** — Copyright the Qwen Team, Alibaba Cloud.
+  Source: https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct
+  Licensed under the Apache License, Version 2.0.
+
+A copy of the Apache License, Version 2.0 is available at
+http://www.apache.org/licenses/LICENSE-2.0. Use of either model is subject
+to that license's terms, including its NOTICE and attribution requirements
+and its disclaimer of warranties.
