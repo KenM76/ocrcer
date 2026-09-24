@@ -8,6 +8,11 @@ value a deterministic script computes from rendered glyphs. There is no
 training run, no dataset, no gradient descent, and therefore no corpus licence
 to inherit.
 
+> **Superseded in part, 2026-09-24 (operator decision, §11):** fitting from
+> licence-clean data is now permitted under the provenance and held-out rules
+> recorded there. The architecture below is unchanged; what changes is where
+> some of its numbers may come from.
+
 That constraint chose the architecture. A convolutional recogniser's weights
 are only reachable by fitting, so the engine is instead a **segmentation-driven
 prototype-matching recogniser with a lattice decoder** — the design commercial
@@ -6657,3 +6662,68 @@ Decision:
   already suppresses the lexicon term is its natural gate. It is recorded
   here as the candidate if the slanted arm leaves the upright 4.5 gain on
   the table.
+
+### 2026-09-24 — Operator: the model may be trained; an optional local LLM is wanted later
+
+This is the operator's decision, in his words. "The model can be trained. I
+only stated that because I didn't think we had enough data." He also wants an
+optional local LLM: "doesn't have to be included but can", preferring
+Qwen2.5-0.5B-Instruct or its latest successor. This **supersedes the
+2026-09-18 "Constructed model, not a fitted one" entry** as a rule. That entry
+stays as history, and the architecture it chose stays.
+
+**What does not change:**
+- Determinism.
+- The per-value provenance labels. `fitted` joins authored, measured and
+  guess.
+- `ocrcer-core`'s three invariants.
+- Rule 4, one implementation per stage. Any fitting script runs the core
+  extractor and matcher.
+- Rule 6, the lexicon is only ever a bonus.
+- The gates.
+
+**What is added:**
+1. **Train/score separation.** It is written into PLAN chunk 11's firewall
+   and CLAUDE.md rule 1. Nothing is fitted until a committed split manifest
+   exists. finfilings, pages-cov and the fixtures are permanently
+   scoring-only.
+2. **Data licences, as checked on disk today** (from each dataset's README or
+   LICENSE):
+   - MultiFinBen-EnglishOCR is Apache-2.0, 3.3 GB. Our 60 finfilings pages
+     came from it, so the rest is the natural training pool, minus those 60.
+   - CORD-v2 is CC-BY-4.0.
+   - SROIE is CC-BY-4.0.
+   - The scribeocr benchmark repo is AGPL-3.0 and includes scene text, so it
+     is **excluded** on both licence and scope.
+   - IRS forms in `inbox` are US federal works. CRA forms are Crown copyright
+     and are **not cleared**; they go to the operator before any use.
+   - An earlier measurement found the receipts (CORD, SROIE) out of domain.
+     They are training candidates only for their glyph appearance, not for
+     layout or language.
+3. **Order of work, cheapest and most auditable first.** None of this is
+   scheduled until the slanted-bonus measurement in flight is closed.
+   - (a) Fit the existing `guess`-labelled params on the training split,
+     replacing hand sweeps.
+   - (b) Real-scan prototypes. Glyph crops from ground-truth-aligned training
+     pages are added to the bank as rows, with their source recorded. This is
+     kNN "training" and needs no format change. It attacks the documented
+     scan gap (FEASIBILITY §6).
+   - (c) A domain lexicon and bigrams counted from training-split text.
+   - (d) Learned feature weights, i.e. metric learning over the 107
+     dimensions.
+   A fitted neural classifier is **not** on this list. It would reopen the
+   architecture and the wasm/zero-dependency posture, and it needs its own
+   decision.
+4. **The optional LLM** is a post-correction stage outside `ocrcer-core`,
+   behind a feature flag or in a sibling crate. It needs runtime inference,
+   such as a GGUF runner, which cannot live in the zero-dependency core. It
+   is not bundled.
+   - Licences, checked on the web today:
+     - Qwen2.5-0.5B-Instruct is Apache-2.0.
+     - The current successors are Qwen3-0.6B (Apache-2.0) and the Qwen3.5
+       small line, whose smallest is 0.8B (Apache-2.0, multimodal).
+     - Qwen3.6 has no sub-1B model.
+   - Constraint from rule 6: the LLM may only propose. It never rewrites
+     identifier-shaped tokens. Its every change is reported with the
+     original, and the change carries its own lowered confidence.
+   - Scheduled only when the operator asks.

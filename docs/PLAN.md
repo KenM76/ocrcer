@@ -450,6 +450,11 @@ preparation work that feeds it. Owner `ocrcer-bench`.
   evaluation corpus. This is a live risk, not a theoretical one — a future
   session looking for lexicon material will find a large clean text corpus
   already sitting in the repository, and the prohibition is what stops it.
+  **Amended 2026-09-24 (operator, `ARCHITECTURE.md` §11):** a corpus may now
+  feed the model, but only from a *training split* that is disjoint from every
+  scoring split. The splits are fixed by a committed manifest before any fitting
+  runs. The scoring pages (the 60 `finfilings` pages, `pages-cov`, and every
+  fixture) stay on the scoring side permanently.
 - **Not before the engine can read a page.** Acquisition does not start until
   chunks 2, 5 and 6 have landed. An external corpus carries a page-level
   transcription, not the per-glyph boxes the present oracle-segmented harness

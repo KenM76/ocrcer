@@ -9,34 +9,42 @@ engineering contract), `docs/PLAN.md` (chunk staging and budget).
 
 ---
 
-## 1. The model is constructed, never fitted
+## 1. Every number in the model can be reproduced and explained
 
-Every number in the model file is one of two things: authored from knowledge —
-a lexicon entry, a bigram probability, a confusion rule, a threshold — or
-computed by a deterministic script that anyone can re-run and get the same
-bytes from. There is no gradient anywhere in this project.
+Every number in the model file is one of three things:
+- **authored** from knowledge: a lexicon entry, a bigram, a confusion rule, a
+  threshold;
+- **computed** by a deterministic script from rendered glyphs;
+- **fitted** by a deterministic script from a licence-clean training split.
 
-This is not a limitation being worked around, it is the property that makes the
-model auditable. A parameter that came from a training run can only be
-explained by the run; a parameter here can be explained by a sentence, and if
-the sentence is wrong the parameter can be argued with. Anything that cannot be
-justified that way does not belong in the file.
+Anyone can re-run any of them and get the same bytes. Fitting was lifted by
+operator decision on 2026-09-24 (`ARCHITECTURE.md` §11); the model was never
+meant to exclude it on principle.
 
-The corollary that bites: **a plausible-looking number is not a number.** If a
-threshold is a guess, it is labelled a guess in the parameter block's metadata
-and it is on chunk 8's tuning list. Quietly inventing a value and letting it
-read as measured is the failure mode this rule exists to prevent.
+Every value carries its label (authored / measured / fitted / guess) and a
+source. A fitted value names the script, the data manifest and the split. The
+corollary still bites: **a plausible-looking number is not a number.** A guess
+is labelled a guess and goes on the tuning list.
 
-## 2. Nothing with an upstream licence enters the model
+**Train and score never touch.** Data that scores the engine never feeds it.
+Splits are fixed in a committed manifest before any fitting runs. The scoring
+pages (finfilings, pages-cov, every fixture) are permanently scoring-only.
 
-The entire licence case is that the tables are an original work. No scraped
-text, no downloaded corpora, no adapted third-party model, no word list of
-unknown provenance. Lexicon content is authored or public-domain.
+## 2. Only licence-clean inputs enter the model
 
-Glyphs are rendered only from unambiguously permissive faces — SIL OFL, Apache,
-or public domain. No font data ships in the model file; only feature vectors
-derived from rendered shapes. A face whose licence is unclear goes to the
-operator. It does not get assumed into the bank.
+Every input to the model has a known licence that permits it:
+- a font face;
+- a training corpus;
+- a word list;
+- any optional model OCRcer can call.
+
+Anything unclear goes to the operator; it is not assumed in. Attribution
+licences (CC-BY, Apache) are recorded in the model's `meta` and in `NOTICE`.
+Share-alike, non-commercial and copyleft data (for example AGPL) stays out.
+
+No font data ships in the model file, only feature vectors derived from
+rendered shapes. An optional LLM (see `ARCHITECTURE.md` §11) is never bundled
+into the core model or crate. It is a separate, opt-in component.
 
 ## 3. Three invariants in `ocrcer-core`, and none of them bend
 

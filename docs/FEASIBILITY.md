@@ -8,6 +8,11 @@ prior knowledge rather than produced by a training run.**
 constraint that chose the architecture, and there is exactly one high-accuracy
 OCR design that satisfies it.
 
+> **2026-09-24, operator:** the no-training requirement was a judgement about
+> data volume, not a principle, and it is lifted. Fitting from licence-clean data
+> is permitted under `ARCHITECTURE.md` §11's rules. The assessment below is
+> kept as written.
+
 ---
 
 ## 1. The constraint, and how it is satisfied
