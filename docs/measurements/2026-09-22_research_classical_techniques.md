@@ -642,3 +642,43 @@ Constraints specific to OCRcer if this is ever scheduled:
 Sources: [Prototype Reduction in Nearest Neighbor Classification — SCI2S](https://sci2s.ugr.es/pr);
 [Prototype Selection for Nearest Neighbor Classification: Survey of Methods](https://sci2s.ugr.es/sites/default/files/files/TematicWebSites/pr/T-4-2010-PSMethods.pdf);
 [Evaluation of prototype learning algorithms for NN classifiers in character recognition](https://www.academia.edu/14544487/Evaluation_of_prototype_learning_algorithms_for_nearest_neighbor_classifier_in_application_to_handwritten_character_recognition).
+
+## Addendum 2026-09-24: forced alignment for real-scan glyph samples (PLAN chunk 13)
+
+**Problem.** Chunk 13 needs character-labelled crops from real scans. The
+training pages carry a transcription, not per-character boxes.
+
+**The classical answer is forced alignment.** Take the page's own
+segmentation lattice and constrain the decoder to emit exactly the
+ground-truth string for a line or word. The best path through that
+constrained lattice assigns each truth character to a cut span, and that span
+is the crop. The literature does the same with word boxes plus
+transcriptions, or with character boxes transferred from an electronic
+original.
+
+What this means for OCRcer:
+
+- **Use core's own segmenter and Viterbi, with the truth as a hard
+  constraint.** No second segmenter (rule 4). The crops are then exactly the
+  spans the runtime would see, cut by the same rules, which is what a
+  prototype row must represent.
+- **Align lines first, then characters.** The existing line-matched scorer
+  already pairs predicted lines with truth lines, and that pairing is the
+  first stage.
+- **Accept conservatively.** Keep a crop only when all of these hold:
+  - the constrained path exists;
+  - every character's matched distance to its truth class is within that
+    class's rendered-bank spread;
+  - the unconstrained decode agrees on at least the word's neighbours.
+
+  A mislabelled crop in a nearest-neighbour bank is a permanent wrong
+  answer. Rejecting a good crop costs only coverage.
+- **Diplomatic transcription matters.** Truth text that normalises glyphs
+  (ligatures, quotes, dashes) produces mislabelled crops unless it is mapped
+  through the charset's own folding first.
+- **The training split only.** The manifest check refuses `score` rows
+  (chunk 12).
+
+Sources: [Automated OCR Ground Truth Generation — IEEE](https://ieeexplore.ieee.org/document/4669952/);
+[Automatic extraction of character ground truth data from images — USPTO 8755595](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/8755595);
+[Aligning Ground Truth Text with OCR Degraded Text](https://www.researchgate.net/publication/333945862_Aligning_Ground_Truth_Text_with_OCR_Degraded_Text).
