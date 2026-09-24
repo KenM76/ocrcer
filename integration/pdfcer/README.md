@@ -1,16 +1,13 @@
 Ready-to-paste `pdfcer` binding for OCRcer.
 
-**Do not paste this in yet.** Per `docs/PLAN.md` §2c, `pdfcer` is only told
-to add OCRcer after a documented CER/WER comparison shows it beats `ocrs` on
-the finfilings/pages-cov corpora — that comparison has not passed as of this
-writing. This directory is infrastructure for that future, gated hand-off,
-built now so the `pdfcer`-side change is a few lines when it happens.
+Apply now, as an **opt-in** engine (operator, 2026-09-24; `ARCHITECTURE.md`
+§11). `ocrs` stays the default until the head-to-head says otherwise.
 
 Proven against a real `pdfcer-core` checkout in a throwaway out-of-tree
 harness — see `docs/measurements/2026-09-24_pdfcer_binding.md` for what was
 run and what it showed. Nothing here has been applied to the `pdfcer` repo.
 
-## What to paste, when the gate passes
+## What to paste
 
 1. Copy `ocrcer_engine.rs` to `crates/pdfcer-core/src/ocr/engine_ocrcer.rs`,
    unmodified.
@@ -50,7 +47,9 @@ run and what it showed. Nothing here has been applied to the `pdfcer` repo.
    And in `[dependencies]`:
 
    ```toml
-   ocrcer-core = { version = "<pin the released version>", optional = true }
+   ocrcer-core = { path = "../../../OCRcer/crates/ocrcer-core", optional = true }
+   # Local path for now (operator, 2026-09-24); a pinned git dependency once
+   # OCRcer is published.
    ```
 
 ## Why not default
