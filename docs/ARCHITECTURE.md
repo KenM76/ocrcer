@@ -6381,3 +6381,30 @@ sides**, and that needs the pixels.
 Gates are unchanged: the four-page screen must improve, then pages-cov must
 stay within 6.114 with drawing Δ ≤ 0, then finfilings must be under
 12.786/11.686.
+
+### 2026-09-24 — Checkbox drop ships: `lines.checkbox_drop` 1, border coverage, measured
+
+Code landed in `8badef6`. Readings are in `docs/measurements/2026-09-23_checkbox_drop.txt`.
+- **Screen:** r000407 24.464 → 23.866, r000308 14.500 → 14.274, r000066
+  18.123 → 17.879, r000396 unchanged. Recall held or rose on every page.
+- **pages-cov:** 6.064, with the per-page CSV byte-identical to the control
+  (drawing Δ 0). No component in that corpus reaches the side gate.
+- **finfilings:** end-to-end 12.786 → **12.708**, line-matched 11.686 →
+  **11.602**. Recall is unchanged. 22 pages improved; 2 got worse by under
+  0.1 point each (r000660, r000671), per my own CSV diff.
+
+Two points are recorded as reviewed:
+- **Provenance.** `checkbox_side_min` 0.85 is labelled `measured` in the
+  sense of *passed all gates at this one value*. It was not swept. The
+  remaining box thresholds stay `guess`. All of them go on the chunk-8
+  tuning list.
+- **Test helper.** `segment.rs`'s `lattice_of` helper draws a hollow 3×3
+  box, so it now pins `checkbox_drop: false`. That is a correct scoping of
+  the helper, not a re-bless: the helper tests the segmentation lattice, not
+  furniture.
+
+The gain is modest, about 0.08 CER. What limits it: r000396's boxes still
+do not clear the side gate, and the remaining ®/~/B insertions there are
+the next thing to look at when checkboxes come up again.
+
+New controls: finfilings **12.708 / 11.602**, pages-cov **6.064**.
