@@ -6495,3 +6495,51 @@ was"). Decision, following the protocol's cheapest-fix-first rule:
    segmentation). This is the structural answer to slanted touching letters,
    but it adds a pipeline stage and changes what the extractor sees on
    italic lines. It is decided on the residual after steps 1–2, not before.
+
+### 2026-09-24 — Italic faces: huge win on italic, broad loss on upright; gate them by measured slant
+
+Measured in `docs/measurements/2026-09-24_italic_faces.txt` (commit
+`090be84`, fonts reverted). The rebuild added 22 Italic/BoldItalic faces of
+12 families already in the bank, each licence re-verified: 54 faces, 50,095
+prototypes, 5.28 MB, and a 13 m 10 s build.
+
+| | control | italic bank |
+|---|---|---|
+| r000583 | 40.633 | **23.077** |
+| finfilings e2e / lm | 12.708 / 11.602 | **12.162 / 11.123** |
+| pages-cov | 6.064 | 6.202 (**fail**) |
+| drawing Δ sum | 0 | +0.136 (**fail**) |
+| finfilings wall | 1019.5 s | 1699.0 s (+67%) |
+
+Six of the seven pages-cov categories regress. Only prose improves. Pooled
+italic prototypes win on upright glyphs they merely resemble. So the italic
+*shapes* are right and the *pooling* is wrong. Pooling also costs 67% more
+wall time on every glyph.
+
+Decision: **italic prototypes compete only on words measured as slanted.**
+- **Slant estimator, per word, before segmentation.** Shear the word's
+  binarized pixels by integer angles from 0 to 20° and score each shear's
+  vertical projection by a sum of squared column counts (research addendum,
+  2026-09-24). A word is slanted when the best angle is at least
+  `layout.slant_min_deg` (guess 6°) *and* its score beats 0° by at least
+  `layout.slant_margin` (a guess, as a ratio). Upright CAD text is expected
+  to read 0°. That is checked, not assumed: the gate needs 0 slanted words
+  flagged on `drawing` pages, or else the drawing Δ gate catches it.
+- **Match-time gating by face style.** `meta.faces[].style` already
+  distinguishes Italic/BoldItalic, and each prototype carries its face. So
+  this needs **no format change, no version bump, and no feature or charset
+  change**:
+  - On an upright word, italic-style prototypes are skipped.
+  - On a slanted word, italic-style prototypes are eligible. Upright ones
+    stay eligible too, since some italic-marked text is really oblique
+    roman.
+  - Skipping must happen before distance computation, so upright pages get
+    back the control wall time.
+- **Deslant (shear, then match the upright bank) is the fallback arm.** It
+  is measured after gating, as a comparison on r000583, because it needs no
+  bank growth.
+
+Gates are the usual ones, measured against the current controls: pages-cov
+≤ 6.114 with drawing Δ ≤ 0, and finfilings < 12.708 / 11.602. Wall time is
+recorded against the control. A regression in wall time on upright-only
+pages is a defect to fix, not a trade.
