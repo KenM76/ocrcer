@@ -7016,3 +7016,18 @@ against a real `pdfcer-core` checkout, native and wasm32
 (`docs/measurements/2026-09-24_pdfcer_binding.md`). Operator decisions:
 publish OCRcer as a public MIT repo after a history audit; until then
 pdfcer uses a local path dependency.
+
+
+### 2026-09-24 — Published: github.com/KenM76/ocrcer (public, MIT), master only
+
+A full-history audit found no font data, datasets, weights, SolidWorks
+tooling or secrets. NOTICE was completed before the push (fonts, datasets,
+Qwen fixtures), and agent-memory notes were untracked. Operator approved the
+push.
+
+SROIE's licence is unverified at source: the CC-BY-4.0 on mirrors may be
+the competition paper's licence. SROIE rows are held out of any fitting or
+bank building until the operator clears it (rule 2).
+
+Each future push still needs the operator's go. pdfcer keeps its local path
+dependency for now.
