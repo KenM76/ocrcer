@@ -372,6 +372,42 @@ pub struct Params {
     /// `filing__r000044`'s win holds and `filing__r000407` stays untouched.
     /// Ships `2.0`; see `docs/measurements/2026-09-23_cell_pairing.txt`.
     pub cell_wrap_slack: f32,
+
+    /// Whether [`drop_checkboxes`] runs on the finished row/fragment groups.
+    ///
+    /// `ARCHITECTURE.md` section 11, 2026-09-23 ("Checkboxes are furniture,
+    /// not text"): a form checkbox is drawn as a small, near-square, hollow
+    /// rectangular outline -- in this corpus's finfilings pages, a "?"
+    /// glyph centred in a box -- and ground truth never transcribes it
+    /// (`docs/measurements/2026-09-23_checkbox_truth_survey.md`: zero
+    /// checkbox characters across 685 truth files). Any charset entry for
+    /// the shape can only ever be an insertion error, so the fix is to drop
+    /// the shape before recognition, the same way [`Params::furniture_fraction`]
+    /// and [`Params::rule_aspect`] drop other non-text ink. Off by default
+    /// until measured against both corpora and the finfilings gates.
+    pub checkbox_drop: bool,
+    /// The lower size bound a checkbox candidate's longer side must clear,
+    /// as a multiple of the line's own x-height.
+    pub checkbox_min_x_heights: f32,
+    /// The upper size bound a checkbox candidate's longer side must not
+    /// exceed, as a multiple of the line's own cap-height.
+    pub checkbox_max_cap_heights: f32,
+    /// How far from square a candidate's bounding box may be --
+    /// `max(w,h) / min(w,h)` must not exceed this -- before it stops
+    /// looking like a checkbox and starts looking like an ordinary letter,
+    /// which in this engine's own faces is reliably taller than it is wide.
+    pub checkbox_aspect_max: f32,
+    /// The most ink a checkbox candidate's own bounding box may hold, as a
+    /// fraction of its area, before it is a solid mark rather than a hollow
+    /// outline.
+    pub checkbox_fill_max: f32,
+    /// How much of a checkbox candidate's own size a component fully
+    /// contained inside it may occupy, as a fraction, before that content
+    /// is ordinary glyph-sized text rather than a small checkbox mark. Above
+    /// this, both the outline and its contents survive -- the test that
+    /// lets a boxed `0`/`O`/`D` stand, per the decision's own false-positive
+    /// case.
+    pub checkbox_mark_fill_max: f32,
 }
 
 /// The shipped values, taken from the parameter block rather than restated.
@@ -543,6 +579,9 @@ pub fn group_with_bands(
     }
     if p.cell_pairing != 0 {
         out = pair_cells(out, p);
+    }
+    if p.checkbox_drop {
+        drop_checkboxes(&mut out, components, p);
     }
     out
 }
@@ -994,6 +1033,115 @@ pub(crate) fn is_glyphish(c: &Component, page_width: u32, page_height: u32, p: &
         }
     }
     true
+}
+
+/// Drops checkbox furniture from every line the grouping pass built.
+///
+/// `ARCHITECTURE.md` section 11, 2026-09-23 ("Checkboxes are furniture, not
+/// text"). Runs last, after [`pair_cells`] if it ran, so the box's presence
+/// -- a real printed feature -- still informs every row/column decision
+/// already made; only the transcription step is skipped, which is the only
+/// step ground truth never carries a character for.
+///
+/// A component's own bounding box and ink count is all this has to work
+/// with (`ARCHITECTURE.md` section 8: [`Component`] carries no raw mask this
+/// far downstream), so the outline is recognised by shape rather than by
+/// tracing its ring: near-square, roughly text-sized against the line's own
+/// x-height and cap-height, and short of ink for its area -- a hollow
+/// rectangle is mostly background inside its own bounding box, where a
+/// solid mark is not. A component fully inside a candidate is the
+/// checkbox's mark, if it has one; [`Params::checkbox_mark_fill_max`] is
+/// the line between "too small to be text" and "an ordinary boxed glyph",
+/// the case a boxed `0`/`O`/`D` must survive.
+fn drop_checkboxes(groups: &mut [Vec<TextLine>], components: &[Component], p: &Params) {
+    for group in groups.iter_mut() {
+        for line in group.iter_mut() {
+            drop_checkbox_members(line, components, p);
+        }
+        group.retain(|l| !l.members.is_empty());
+    }
+}
+
+/// Whether a component's shape and size are consistent with an empty or
+/// near-empty checkbox outline drawn at ordinary text scale on this line.
+fn is_checkbox_shaped(c: &Component, line: &TextLine, p: &Params) -> bool {
+    let (w, h) = (c.width(), c.height());
+    if w == 0 || h == 0 {
+        return false;
+    }
+    let (lo, hi) = (f64::from(w.min(h)), f64::from(w.max(h)));
+    if hi > f64::from(p.checkbox_aspect_max) * lo {
+        return false;
+    }
+    if hi < f64::from(line.x_height) * f64::from(p.checkbox_min_x_heights) {
+        return false;
+    }
+    if hi > f64::from(line.cap_height) * f64::from(p.checkbox_max_cap_heights) {
+        return false;
+    }
+    let density = f64::from(c.area) / (f64::from(w) * f64::from(h));
+    density <= f64::from(p.checkbox_fill_max)
+}
+
+/// Whether `inner`'s bounding box sits entirely within `outer`'s.
+fn contained_in(inner: &Component, outer: &Component) -> bool {
+    inner.x0 >= outer.x0 && inner.x1 <= outer.x1 && inner.y0 >= outer.y0 && inner.y1 <= outer.y1
+}
+
+/// Removes a line's checkbox outlines and, for each, either the small mark
+/// it holds or nothing, leaving [`Params::checkbox_mark_fill_max`]-sized
+/// content in place along with the box that holds it.
+fn drop_checkbox_members(line: &mut TextLine, components: &[Component], p: &Params) {
+    let mut drop: Vec<usize> = Vec::new();
+    for &bi in &line.members {
+        if drop.contains(&bi) {
+            continue;
+        }
+        let b = &components[bi];
+        if !is_checkbox_shaped(b, line, p) {
+            continue;
+        }
+        let marks: Vec<usize> = line
+            .members
+            .iter()
+            .copied()
+            .filter(|&mi| mi != bi && !drop.contains(&mi) && contained_in(&components[mi], b))
+            .collect();
+        if marks.is_empty() {
+            drop.push(bi);
+            continue;
+        }
+        let biggest = *marks.iter().max_by_key(|&&mi| components[mi].area).unwrap();
+        let m = &components[biggest];
+        let box_size = f64::from(b.width().max(b.height()));
+        let mark_size = f64::from(m.width().max(m.height()));
+        if box_size > 0.0 && mark_size / box_size > f64::from(p.checkbox_mark_fill_max) {
+            // Glyph-sized content: the box and its contents are ordinary
+            // text, not a checkbox. Both survive.
+            continue;
+        }
+        drop.push(bi);
+        drop.extend(marks);
+    }
+    if drop.is_empty() {
+        return;
+    }
+    line.members.retain(|m| !drop.contains(m));
+    if line.members.is_empty() {
+        return;
+    }
+    let (mut x0, mut y0, mut x1, mut y1) = (u32::MAX, u32::MAX, 0u32, 0u32);
+    for &i in &line.members {
+        let c = &components[i];
+        x0 = x0.min(c.x0);
+        y0 = y0.min(c.y0);
+        x1 = x1.max(c.x1);
+        y1 = y1.max(c.y1);
+    }
+    line.x0 = x0;
+    line.y0 = y0;
+    line.x1 = x1;
+    line.y1 = y1;
 }
 
 /// A line under construction: its span, its members, and the sorted member
@@ -2011,6 +2159,97 @@ mod tests {
     #[test]
     fn an_empty_page_has_no_lines() {
         assert!(group(&[], 100, 100).is_empty());
+    }
+
+    /// A component whose bounding box is filled well below
+    /// [`Params::checkbox_fill_max`] -- a hollow outline, not a solid glyph.
+    fn hollow(label: u32, x0: u32, y0: u32, w: u32, h: u32, fill: f32) -> Component {
+        let area = ((w * h) as f32 * fill) as u32;
+        Component { label, x0, y0, x1: x0 + w, y1: y0 + h, area }
+    }
+
+    fn checkbox_params() -> Params {
+        Params { checkbox_drop: true, ..Params::default() }
+    }
+
+    /// A bare, empty checkbox outline sitting beside ordinary text is
+    /// dropped entirely -- `ARCHITECTURE.md` section 11, 2026-09-23,
+    /// "Checkboxes are furniture, not text."
+    #[test]
+    fn an_empty_checkbox_is_dropped() {
+        let comps = vec![
+            c(1, 10, 10, 10, 20),
+            c(2, 25, 10, 10, 20),
+            c(3, 40, 10, 10, 20),
+            hollow(4, 60, 10, 20, 20, 0.30),
+        ];
+        let lines = group_with(&comps, 200, 100, &checkbox_params());
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].members, vec![0, 1, 2], "the box is dropped, the text survives");
+    }
+
+    /// A checkbox holding a small mark -- the "?" glyph the truth survey
+    /// found rendered inside every unfilled checkbox in the finfilings
+    /// corpus -- is dropped along with its contents, not just the outline.
+    #[test]
+    fn a_checkbox_with_a_small_mark_is_dropped_with_its_contents() {
+        let comps = vec![
+            c(1, 10, 10, 10, 20),
+            c(2, 25, 10, 10, 20),
+            c(3, 40, 10, 10, 20),
+            hollow(4, 60, 10, 20, 20, 0.30),
+            hollow(5, 67, 17, 6, 8, 0.90),
+        ];
+        let lines = group_with(&comps, 200, 100, &checkbox_params());
+        assert_eq!(lines.len(), 1);
+        assert_eq!(
+            lines[0].members,
+            vec![0, 1, 2],
+            "the box and its small mark are both dropped"
+        );
+    }
+
+    /// A boxed capital letter -- a CAD title-block cell, or a lone `O`/`0`/`D`
+    /// -- is not a checkbox: its contained mark is glyph-sized, not a small
+    /// tick, so the box and its contents both survive as ordinary text.
+    #[test]
+    fn a_boxed_capital_in_a_cad_style_cell_is_kept() {
+        let comps = vec![
+            c(1, 10, 10, 10, 20),
+            c(2, 25, 10, 10, 20),
+            c(3, 40, 10, 10, 20),
+            hollow(4, 60, 10, 20, 20, 0.30),
+            hollow(5, 64, 12, 12, 16, 0.90),
+        ];
+        let lines = group_with(&comps, 200, 100, &checkbox_params());
+        assert_eq!(lines.len(), 1);
+        assert_eq!(
+            lines[0].members,
+            vec![0, 1, 2, 3, 4],
+            "glyph-sized content inside the box means it is not a checkbox"
+        );
+    }
+
+    /// A wide table cell -- far from square -- never qualifies as a checkbox
+    /// candidate regardless of fill, so it and its contents survive.
+    #[test]
+    fn a_wide_table_cell_is_kept() {
+        let comps = vec![
+            c(1, 10, 10, 10, 20),
+            c(2, 25, 10, 10, 20),
+            c(3, 40, 10, 10, 20),
+            hollow(4, 60, 10, 80, 20, 0.30),
+        ];
+        // A wide page, so the cell's own width stays well under
+        // `furniture_fraction` and it is judged on aspect, not evicted as
+        // page furniture before the checkbox gate ever sees it.
+        let lines = group_with(&comps, 600, 100, &checkbox_params());
+        assert_eq!(lines.len(), 1);
+        assert_eq!(
+            lines[0].members,
+            vec![0, 1, 2, 3],
+            "a wide cell fails the near-square gate and is never touched"
+        );
     }
 
     /// Nothing about the answer may depend on the order the labeller happened

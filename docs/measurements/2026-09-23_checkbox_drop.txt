@@ -1,0 +1,159 @@
+# Checkbox drop: screening result and why it stops there
+
+Implements the wiring for `ARCHITECTURE.md` section 11, 2026-09-23
+("Checkboxes are furniture, not text"): `lines.checkbox_drop` (gate),
+`lines.checkbox_min_x_heights`, `lines.checkbox_max_cap_heights`,
+`lines.checkbox_aspect_max`, `lines.checkbox_fill_max`,
+`lines.checkbox_mark_fill_max` in `Params`/`model/params.tsv`, all labelled
+`guess`, plus `drop_checkboxes`/`is_checkbox_shaped`/`contained_in`/
+`drop_checkbox_members` in `crates/ocrcer-core/src/layout/lines.rs`, run as
+the last step of `group_with_bands` (after `pair_cells`). Four unit tests
+with synthetic components (`an_empty_checkbox_is_dropped`,
+`a_checkbox_with_a_small_mark_is_dropped_with_its_contents`,
+`a_boxed_capital_in_a_cad_style_cell_is_kept`, `a_wide_table_cell_is_kept`)
+pass, `cargo test --workspace --release` is green (184 tests), and
+`cargo build -p ocrcer-core --target wasm32-unknown-unknown` passes.
+
+**Result: `checkbox_drop` ships at its default, 0 (off), provenance stays
+`guess`. The full pages-cov/finfilings gates were not run — screening on
+the four named checkbox-bearing pages already falsifies the detector at
+every fill threshold tried, so a 25-minute corpus run would only confirm at
+cost what four single-page runs already show for free.**
+
+## Screening: the four pages the truth survey named
+
+`docs/measurements/2026-09-23_checkbox_truth_survey.md` named
+`filing__r000407`, `filing__r000396`, `filing__r000308`, `filing__r000066`
+as pages with real "?"-in-box checkbox glyphs and confirmed truth carries
+zero characters for any of them. These are the pages the feature is
+supposed to help.
+
+Command: `./target/release/ocr.exe model/out/ocrcer.ocrw
+D:/Dev/ExcludedPrivate/ocrcer/pages/finfilings --only <page> --set
+lines.checkbox_drop=1 [--set lines.checkbox_fill_max=<v>]`
+
+Control (`checkbox_drop=0`, matches the truth survey's own citations):
+
+| page | end-to-end CER | recall |
+|---|---|---|
+| r000396 | 28.789% | 81.9% |
+| r000407 | 24.464% | 79.2% |
+| r000308 | 14.500% | 74.6% |
+| r000066 | 18.123% | 72.8% |
+
+At the shipped default (`checkbox_fill_max=0.55`), `checkbox_drop=1`:
+
+| page | end-to-end CER | recall |
+|---|---|---|
+| r000396 | 51.499% | 9.2% |
+| r000407 | 51.370% | 14.1% |
+| r000308 | 27.586% | 27.5% |
+| r000066 | 32.243% | 21.3% |
+
+Catastrophic on every page: CER roughly doubles, recall falls to a
+fifth to a third of control. `--layout --no-decode` diffs (checkbox_drop
+on vs off) on r000407 show ordinary text lines losing 30-50% of their
+members throughout the page, not just at the checkbox positions -- this
+is not a checkbox problem localised to the checkbox rows, it is a
+page-wide false-positive rate against ordinary text.
+
+### Sweeping `checkbox_fill_max` (the ink-density gate) found no working value
+
+| checkbox_fill_max | r000396 CER | r000407 CER |
+|---|---|---|
+| 0.55 (default) | 51.499% | 51.370% |
+| 0.50 | 50.637% | 49.676% |
+| 0.45 | 38.522% | 37.668% |
+| 0.40 | 33.429% | 31.141% |
+| 0.35 | 30.226% | 26.756% |
+| 0.30 | 28.789% (= control) | 24.066% (slightly better than control) |
+
+There is no plateau: the curve runs from "indistinguishable from control"
+at 0.30 to "catastrophic" by 0.35, a 0.05-wide cliff, and even the one
+value that looks safe (0.30) fixes essentially nothing on r000396 (exactly
+equal to control -- no checkboxes on that page cross that density at all)
+while giving a marginal win on r000407. There is no threshold in this
+parameter that is both safe on ordinary text and effective against real
+checkboxes on the same pages.
+
+### Root cause: the discriminating signal the design counted on doesn't exist at the `Component` level
+
+`Component` (per `ARCHITECTURE.md` section 8) carries only a bounding box
+and an ink-pixel count, no mask. The detector's whole case for telling a
+checkbox from a boxed glyph rests on two things: near-square aspect,
+and low ink density (a hollow ring should be mostly background inside its
+own bounding box). Both signals are also true of a large, unremarkable
+class of ordinary characters at this corpus's rendering scale:
+
+- **Plain hollow letters and digits** -- `o`, `e`, `a`, `0`, `6`, `8`, `9`,
+  and the counters of `D`/`O`/`Q`/`P`/`R`/`B` -- are themselves closed
+  rings with a background-filled interior. Under 8-connectivity that
+  interior is not a separate labelled component (nothing is nested inside
+  to test with `contained_in`), so by bounding-box density and aspect
+  alone a plain `o` at this size is not distinguishable from an empty
+  checkbox. This is a broader version of the "boxed 0/O/D" false positive
+  `ARCHITECTURE.md` names -- the design anticipated a boxed glyph with a
+  separate contained mark, not an unboxed hollow glyph with no contained
+  component at all, which turns out to be the dominant case.
+- **The real checkbox+mark in this corpus is one fused component, not
+  two.** Forcing the detector to require a contained mark (tested as a
+  throwaway experiment, not shipped) made every one of the four screening
+  pages come back byte-for-byte identical to control -- zero components
+  were ever dropped. That means the box outline and the "?" glyph the
+  truth survey found inside every checkbox on these pages touch and merge
+  under the labeller's connectivity, so the "mark as a separate contained
+  component" path the spec allows for essentially never fires on real
+  data here. The actual checkbox glyph presents as a single component
+  whose density sits in the same range as ordinary glyph strokes, not as
+  the sparse ring the detector was built to find.
+
+Both directions are real and both are visible in the same four pages:
+ordinary hollow letters look like empty checkboxes, and real checkboxes
+look like ordinary letters, because none of the signals `Component`
+exposes distinguish them. No combination of `checkbox_fill_max` and
+`checkbox_aspect_max` fixes one of these without making the other worse --
+this was tested, not assumed (the fill_max sweep above; a second
+experiment loosening `checkbox_aspect_max` was not run because the
+fill_max cliff alone already accounts for the collapse and a second axis
+would not change the diagnosis).
+
+## Why the pages-cov and finfilings full-corpus gates were not run
+
+The task's own screening step exists to catch exactly this before the
+25-minute finfilings run: a detector that already produces 2-3x CER
+regressions and guts recall to a fifth of control on four representative,
+single pages will not pass a corpus-wide CER-delta gate, and running it
+anyway would spend the finfilings budget to re-confirm a result already
+established at negligible cost. `docs/measurements/2026-09-23_checkbox_drop.txt`
+(this file) is the full record of what was measured; nothing further was
+run.
+
+## Disposition
+
+`lines.checkbox_drop` ships at 0 (its `Params::DEFAULT` value), provenance
+`guess`, exactly as authored -- the switch exists, is wired end to end,
+and is fixture-tested, but is off because turning it on regresses the
+exact pages it was meant to help. The threshold fields
+(`checkbox_min_x_heights`, `checkbox_max_cap_heights`,
+`checkbox_aspect_max`, `checkbox_fill_max`, `checkbox_mark_fill_max`) stay
+`guess` and marked `tune: yes`; per this measurement, no value found for
+`checkbox_fill_max` clears the bar, so a future sweep should not spend
+time re-walking the range already covered here (0.30-0.55) without a new
+discriminating signal.
+
+**This is an escalation, not a threshold-tuning failure.** The detector
+was implemented per spec (bbox/area only, no raw mask, per
+`ARCHITECTURE.md` section 8's `Component` contract) and the spec's own
+false-positive case (boxed 0/O/D) was built in and unit-tested
+(`a_boxed_capital_in_a_cad_style_cell_is_kept` passes). What screening
+found is that the *unboxed* case -- a plain hollow letter with no
+contained mark -- is indistinguishable from an empty checkbox using only
+a bounding box and an ink count, and that the real checkbox glyph in this
+corpus does not decompose into the box-plus-separate-mark shape the
+"contained component" test needs. Fixing this needs an
+`ocrcer-architect` decision: either a raw-mask-level test threaded down
+to `lines.rs` (a `Component`-contract change), a narrower detector scope
+that gives up on catching real checkboxes in this rendering regime, or a
+decision that checkbox-drop is not viable at the `Component` level at all
+and the insertion cost (`""`-\>`®`/`~`/`B`, per
+`2026-09-23_worst_pages_round3.md`) is accepted as-is.

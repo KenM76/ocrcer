@@ -85,6 +85,12 @@ pub struct Lines {
     pub underline_strip: u32,
     pub cell_pairing: u32,
     pub cell_wrap_slack: f32,
+    pub checkbox_drop: u32,
+    pub checkbox_min_x_heights: f32,
+    pub checkbox_max_cap_heights: f32,
+    pub checkbox_aspect_max: f32,
+    pub checkbox_fill_max: f32,
+    pub checkbox_mark_fill_max: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -283,6 +289,32 @@ impl Params {
             // stays untouched. Not independently derived from
             // `cell_pairing`'s own value.
             cell_wrap_slack: 2.0,
+            // Guess, `ARCHITECTURE.md` section 11, 2026-09-23 ("Checkboxes
+            // are furniture, not text"): off until measured against both
+            // corpora and the finfilings gates. See
+            // `docs/measurements/2026-09-23_checkbox_drop.txt`.
+            checkbox_drop: 0,
+            // Guess, same entry: the lower size bound, as a multiple of the
+            // line's own x-height. "Roughly x-height" per the survey's
+            // pixel inspection of the four checkbox pages.
+            checkbox_min_x_heights: 0.9,
+            // Guess, same entry: the upper size bound, "about 1.6x cap
+            // height" per the decision text.
+            checkbox_max_cap_heights: 1.6,
+            // Guess, same entry: how far from square the outline may be.
+            // hi/lo <= this counts as "near-square"; a checkbox is drawn
+            // close to a perfect square, while a capital O/0/D in the
+            // charset's own faces is noticeably taller than it is wide.
+            checkbox_aspect_max: 1.25,
+            // Guess, same entry: the outline's own ink density (area over
+            // bounding-box area) must be at or below this to count as a
+            // hollow ring rather than a solid mark.
+            checkbox_fill_max: 0.55,
+            // Guess, same entry: how much of the outline's own size a
+            // contained mark may fill, as a fraction, before it counts as
+            // ordinary glyph-sized content rather than a small checkbox
+            // mark -- the test that lets a boxed 0/O/D survive.
+            checkbox_mark_fill_max: 0.55,
         },
         words: Words {
             min_gaps: 3,
@@ -436,6 +468,11 @@ impl Params {
             "lines.debris_heights" => &mut self.lines.debris_heights,
             "lines.thin_debris_heights" => &mut self.lines.thin_debris_heights,
             "lines.cell_wrap_slack" => &mut self.lines.cell_wrap_slack,
+            "lines.checkbox_min_x_heights" => &mut self.lines.checkbox_min_x_heights,
+            "lines.checkbox_max_cap_heights" => &mut self.lines.checkbox_max_cap_heights,
+            "lines.checkbox_aspect_max" => &mut self.lines.checkbox_aspect_max,
+            "lines.checkbox_fill_max" => &mut self.lines.checkbox_fill_max,
+            "lines.checkbox_mark_fill_max" => &mut self.lines.checkbox_mark_fill_max,
             "words.min_separability" => &mut self.words.min_separability,
             "words.lone_gap_x_heights" => &mut self.words.lone_gap_x_heights,
             "words.no_valley_x_heights" => &mut self.words.no_valley_x_heights,
@@ -480,6 +517,7 @@ impl Params {
             "lines.baseline_split" => &mut self.lines.baseline_split,
             "lines.underline_strip" => &mut self.lines.underline_strip,
             "lines.cell_pairing" => &mut self.lines.cell_pairing,
+            "lines.checkbox_drop" => &mut self.lines.checkbox_drop,
             "words.min_gaps" => &mut self.words.min_gaps,
             "words.pitch_min_glyphs" => &mut self.words.pitch_min_glyphs,
             "words.pitch_cell_merge" => &mut self.words.pitch_cell_merge,
@@ -497,7 +535,7 @@ impl Params {
 
     /// Every name this build understands, for a loader that wants to report
     /// which ones a file left at their defaults.
-    pub const NAMES: [&'static str; 66] = [
+    pub const NAMES: [&'static str; 72] = [
         "binarize.window",
         "binarize.k",
         "binarize.r",
@@ -526,6 +564,12 @@ impl Params {
         "lines.underline_strip",
         "lines.cell_pairing",
         "lines.cell_wrap_slack",
+        "lines.checkbox_drop",
+        "lines.checkbox_min_x_heights",
+        "lines.checkbox_max_cap_heights",
+        "lines.checkbox_aspect_max",
+        "lines.checkbox_fill_max",
+        "lines.checkbox_mark_fill_max",
         "words.min_gaps",
         "words.min_separability",
         "words.lone_gap_x_heights",
@@ -612,7 +656,7 @@ fn find_changed_u32(before: &Params, after: &Params) -> f32 {
     f32::NAN
 }
 
-fn f32_fields(p: &Params) -> [f32; 51] {
+fn f32_fields(p: &Params) -> [f32; 56] {
     [
         p.binarize.k,
         p.binarize.r,
@@ -636,6 +680,11 @@ fn f32_fields(p: &Params) -> [f32; 51] {
         p.lines.debris_heights,
         p.lines.thin_debris_heights,
         p.lines.cell_wrap_slack,
+        p.lines.checkbox_min_x_heights,
+        p.lines.checkbox_max_cap_heights,
+        p.lines.checkbox_aspect_max,
+        p.lines.checkbox_fill_max,
+        p.lines.checkbox_mark_fill_max,
         p.words.min_separability,
         p.words.lone_gap_x_heights,
         p.words.no_valley_x_heights,
@@ -668,7 +717,7 @@ fn f32_fields(p: &Params) -> [f32; 51] {
     ]
 }
 
-fn u32_fields(p: &Params) -> [u32; 15] {
+fn u32_fields(p: &Params) -> [u32; 16] {
     [
         p.binarize.window,
         p.lines.min_area,
@@ -676,6 +725,7 @@ fn u32_fields(p: &Params) -> [u32; 15] {
         p.lines.baseline_split,
         p.lines.underline_strip,
         p.lines.cell_pairing,
+        p.lines.checkbox_drop,
         p.words.min_gaps,
         p.words.pitch_min_glyphs,
         p.words.pitch_cell_merge,
@@ -730,6 +780,12 @@ impl Params {
             underline_strip: self.lines.underline_strip != 0,
             cell_pairing: self.lines.cell_pairing,
             cell_wrap_slack: self.lines.cell_wrap_slack,
+            checkbox_drop: self.lines.checkbox_drop != 0,
+            checkbox_min_x_heights: self.lines.checkbox_min_x_heights,
+            checkbox_max_cap_heights: self.lines.checkbox_max_cap_heights,
+            checkbox_aspect_max: self.lines.checkbox_aspect_max,
+            checkbox_fill_max: self.lines.checkbox_fill_max,
+            checkbox_mark_fill_max: self.lines.checkbox_mark_fill_max,
         }
     }
 
