@@ -42,6 +42,7 @@ pub struct Params {
     pub lines: Lines,
     pub words: Words,
     pub segment: Segment,
+    pub layout: Layout,
     pub matching: Matching,
     pub confidence: Confidence,
     pub decode: Decode,
@@ -118,6 +119,25 @@ pub struct Segment {
     pub valley_fraction: f32,
     pub min_piece_x_heights: f32,
     pub merge_overlap_frac: f32,
+}
+
+/// Word-level slant detection and the match-time gate it feeds
+/// (`ARCHITECTURE.md` section 11, 2026-09-24 decision: "italic prototypes
+/// compete only on words measured as slanted").
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Layout {
+    /// The smallest best-angle, in degrees, [`crate::layout::slant::estimate`]
+    /// will call slanted.
+    pub slant_min_deg: f32,
+    /// How much the best angle's shear score must beat the upright score by,
+    /// as a ratio.
+    pub slant_margin: f32,
+    /// `0` (default, until measured): italic-style prototypes are never
+    /// skipped, so `match::nearest` runs exactly as it did before this
+    /// section existed. `1`: an upright word skips italic-style prototypes
+    /// before distance computation; a slanted word leaves every prototype
+    /// eligible.
+    pub italic_gating: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -399,6 +419,15 @@ impl Params {
             // ("Atom merge by overlap fraction: 0.4").
             merge_overlap_frac: 0.4,
         },
+        // `slant_min_deg`/`slant_margin` are still guesses, `ARCHITECTURE.md`
+        // section 11, 2026-09-24: the research addendum's shear-and-score
+        // recipe gives the mechanism, not these two numbers, and they were
+        // not swept. `italic_gating` is measured:
+        // `docs/measurements/2026-09-24_italic_gating.txt` ran the detector
+        // against real italic and drawing pages and the gated 69-face bank
+        // against pages-cov and finfilings, and every gate passed, so
+        // gating ships on.
+        layout: Layout { slant_min_deg: 6.0, slant_margin: 1.15, italic_gating: 1 },
         matching: Matching { top_k: 5 },
         confidence: Confidence { lm_floor: 0.8 },
         decode: Decode {
@@ -523,6 +552,8 @@ impl Params {
             "segment.valley_fraction" => &mut self.segment.valley_fraction,
             "segment.min_piece_x_heights" => &mut self.segment.min_piece_x_heights,
             "segment.merge_overlap_frac" => &mut self.segment.merge_overlap_frac,
+            "layout.slant_min_deg" => &mut self.layout.slant_min_deg,
+            "layout.slant_margin" => &mut self.layout.slant_margin,
             "confidence.lm_floor" => &mut self.confidence.lm_floor,
             "decode.w_match" => &mut self.decode.w_match,
             "decode.char_bonus" => &mut self.decode.char_bonus,
@@ -563,6 +594,7 @@ impl Params {
             "words.pitch_grid_check" => &mut self.words.pitch_grid_check,
             "segment.max_merge" => &mut self.segment.max_merge,
             "segment.max_splits" => &mut self.segment.max_splits,
+            "layout.italic_gating" => &mut self.layout.italic_gating,
             "match.top_k" => &mut self.matching.top_k,
             "decode.identifier_min_length" => &mut self.decode.identifier_min_length,
             "decode.beam_width" => &mut self.decode.beam_width,
@@ -574,7 +606,7 @@ impl Params {
 
     /// Every name this build understands, for a loader that wants to report
     /// which ones a file left at their defaults.
-    pub const NAMES: [&'static str; 74] = [
+    pub const NAMES: [&'static str; 77] = [
         "binarize.window",
         "binarize.k",
         "binarize.r",
@@ -628,6 +660,9 @@ impl Params {
         "segment.valley_fraction",
         "segment.min_piece_x_heights",
         "segment.merge_overlap_frac",
+        "layout.slant_min_deg",
+        "layout.slant_margin",
+        "layout.italic_gating",
         "match.top_k",
         "confidence.lm_floor",
         "decode.w_match",
@@ -697,7 +732,7 @@ fn find_changed_u32(before: &Params, after: &Params) -> f32 {
     f32::NAN
 }
 
-fn f32_fields(p: &Params) -> [f32; 58] {
+fn f32_fields(p: &Params) -> [f32; 60] {
     [
         p.binarize.k,
         p.binarize.r,
@@ -739,6 +774,8 @@ fn f32_fields(p: &Params) -> [f32; 58] {
         p.segment.valley_fraction,
         p.segment.min_piece_x_heights,
         p.segment.merge_overlap_frac,
+        p.layout.slant_min_deg,
+        p.layout.slant_margin,
         p.confidence.lm_floor,
         p.decode.w_match,
         p.decode.char_bonus,
@@ -760,7 +797,7 @@ fn f32_fields(p: &Params) -> [f32; 58] {
     ]
 }
 
-fn u32_fields(p: &Params) -> [u32; 16] {
+fn u32_fields(p: &Params) -> [u32; 17] {
     [
         p.binarize.window,
         p.lines.min_area,
@@ -775,6 +812,7 @@ fn u32_fields(p: &Params) -> [u32; 16] {
         p.words.pitch_grid_check,
         p.segment.max_merge,
         p.segment.max_splits,
+        p.layout.italic_gating,
         p.matching.top_k,
         p.decode.identifier_min_length,
         p.decode.beam_width,
@@ -858,6 +896,13 @@ impl Params {
             valley_fraction: self.segment.valley_fraction,
             min_piece_x_heights: self.segment.min_piece_x_heights,
             merge_overlap_frac: self.segment.merge_overlap_frac,
+        }
+    }
+
+    pub fn slant(&self) -> crate::layout::slant::Params {
+        crate::layout::slant::Params {
+            slant_min_deg: self.layout.slant_min_deg,
+            slant_margin: self.layout.slant_margin,
         }
     }
 }

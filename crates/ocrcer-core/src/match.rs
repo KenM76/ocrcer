@@ -73,10 +73,18 @@ impl Match {
 /// than at the call site is what guarantees the query is measured with the
 /// file's own constants and not with a compiled-in copy of them.
 ///
+/// `italic_ok` is the caller's word-level slant verdict — pass `true` for a
+/// word measured as slanted, or when there is no word context at all (a
+/// diagnostic scanning isolated glyphs, say). It only has an effect when the
+/// model's `layout.italic_gating` is on (`ARCHITECTURE.md` section 11,
+/// 2026-09-24 decision): gating off means every prototype is always
+/// eligible, exactly as before this parameter existed, so an upright page
+/// gated off pays nothing for it beyond the one branch below.
+///
 /// `None` when `k == 0`, when the bank is empty, or when the query is not
 /// finite — a non-finite query would poison every comparison and is a bug
 /// upstream, not a glyph.
-pub fn nearest(model: &Model, raw: &[f32; FEATURE_DIMS], k: usize) -> Option<Match> {
+pub fn nearest(model: &Model, raw: &[f32; FEATURE_DIMS], k: usize, italic_ok: bool) -> Option<Match> {
     if k == 0 || model.n_prototypes() == 0 || model.classes.is_empty() {
         return None;
     }
@@ -110,9 +118,16 @@ pub fn nearest(model: &Model, raw: &[f32; FEATURE_DIMS], k: usize) -> Option<Mat
     let mut best_d = vec![f64::INFINITY; model.classes.len()];
     let mut best_p = vec![usize::MAX; model.classes.len()];
 
+    // Skipping happens before any distance is computed, so an upright page
+    // gets back the control wall time exactly (`ARCHITECTURE.md` section 11).
+    let skip_italic = model.params.layout.italic_gating != 0 && !italic_ok;
+
     for p in 0..model.n_prototypes() {
         let class = model.prototype_class[p] as usize;
         if !allowed[class] {
+            continue;
+        }
+        if skip_italic && model.prototype_italic.get(p).copied().unwrap_or(false) {
             continue;
         }
         let ceiling = best_d[class];
@@ -197,6 +212,7 @@ mod tests {
             sizes: Vec::new(),
             prototypes,
             prototype_class,
+            prototype_italic: Vec::new(),
             mean: [0.0; FEATURE_DIMS],
             sd: [1.0; FEATURE_DIMS],
             class_holes,
@@ -219,7 +235,7 @@ mod tests {
     #[test]
     fn the_nearest_prototype_wins_and_its_class_is_reported_once() {
         let m = bank(&[(0, 0.0, 0), (0, 0.4, 0), (1, 1.0, 0), (2, 5.0, 0)]);
-        let r = nearest(&m, &query(0.3, 0), 3).unwrap();
+        let r = nearest(&m, &query(0.3, 0), 3, true).unwrap();
         assert_eq!(r.best.len(), 3);
         assert_eq!(r.top().unwrap().class, 0);
         assert_eq!(r.top().unwrap().prototype, 1, "the closer of class 0's two");
@@ -232,7 +248,7 @@ mod tests {
     #[test]
     fn d2_skips_the_winner_s_own_class() {
         let m = bank(&[(0, 0.0, 0), (0, 0.01, 0), (1, 2.0, 0)]);
-        let r = nearest(&m, &query(0.0, 0), 3).unwrap();
+        let r = nearest(&m, &query(0.0, 0), 3, true).unwrap();
         assert!((r.d1 - 0.0).abs() < 1e-6);
         assert!((r.d2 - 2.0).abs() < 1e-5, "d2 was {}", r.d2);
     }
@@ -241,7 +257,7 @@ mod tests {
     #[test]
     fn the_hole_gate_removes_classes_with_the_wrong_count() {
         let m = bank(&[(0, 0.0, 1), (1, 0.1, 0), (2, 9.0, 1)]);
-        let r = nearest(&m, &query(0.0, 1), 5).unwrap();
+        let r = nearest(&m, &query(0.0, 1), 5, true).unwrap();
         assert!(r.gated);
         assert_eq!(r.best.iter().map(|c| c.class).collect::<Vec<_>>(), vec![0, 2]);
     }
@@ -251,7 +267,7 @@ mod tests {
     #[test]
     fn an_unseen_hole_count_drops_the_gate_rather_than_matching_nothing() {
         let m = bank(&[(0, 0.0, 0), (1, 1.0, 0)]);
-        let r = nearest(&m, &query(0.0, 2), 5).unwrap();
+        let r = nearest(&m, &query(0.0, 2), 5, true).unwrap();
         assert!(!r.gated);
         assert_eq!(r.best.len(), 2);
     }
@@ -264,7 +280,7 @@ mod tests {
         let m = bank(&rows);
         for step in 0..20 {
             let q = query(step as f32 * 0.5, 0);
-            let r = nearest(&m, &q, 7).unwrap();
+            let r = nearest(&m, &q, 7, true).unwrap();
             // Recompute the winner the slow, obvious way.
             let mut brute: Vec<(f64, u16)> = Vec::new();
             for (p, &(class, v, _)) in rows.iter().enumerate() {
@@ -282,10 +298,10 @@ mod tests {
     #[test]
     fn weights_scale_the_dimensions_they_name() {
         let mut m = bank(&[(0, 0.0, 0), (1, 1.0, 0)]);
-        let plain = nearest(&m, &query(0.9, 0), 2).unwrap();
+        let plain = nearest(&m, &query(0.9, 0), 2, true).unwrap();
         assert_eq!(plain.top().unwrap().class, 1);
         m.weights[0] = 0.0;
-        let blind = nearest(&m, &query(0.9, 0), 2).unwrap();
+        let blind = nearest(&m, &query(0.9, 0), 2, true).unwrap();
         assert_eq!(blind.top().unwrap().class, 0, "with dimension 0 ignored, the tie goes low");
         assert_eq!(blind.d1, 0.0);
     }
@@ -295,13 +311,13 @@ mod tests {
         let m = bank(&[(0, 0.0, 0)]);
         let mut q = query(0.0, 0);
         q[3] = f32::NAN;
-        assert!(nearest(&m, &q, 1).is_none());
+        assert!(nearest(&m, &q, 1, true).is_none());
     }
 
     #[test]
     fn the_ratio_is_zero_when_nothing_competed() {
         let m = bank(&[(0, 0.0, 0)]);
-        let r = nearest(&m, &query(0.0, 0), 1).unwrap();
+        let r = nearest(&m, &query(0.0, 0), 1, true).unwrap();
         assert!(r.d2.is_infinite());
         assert_eq!(r.ratio(), 0.0);
     }

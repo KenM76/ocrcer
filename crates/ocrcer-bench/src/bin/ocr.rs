@@ -736,7 +736,7 @@ fn run_distances(
                 baseline_dy: g.baseline as f32 - g.y as f32,
                 x_height: g.x_height,
             });
-            let Some(hit) = ocrcer_core::r#match::nearest(&m, &f, 1) else { continue };
+            let Some(hit) = ocrcer_core::r#match::nearest(&m, &f, 1, true) else { continue };
             let Some(top) = hit.best.first() else { continue };
             let px = truth.px_per_em.round() as u32;
             let e = by_size.entry(px).or_default();
@@ -862,10 +862,11 @@ fn run_layout(
     no_decode: bool,
 ) -> Result<(), String> {
     use ocrcer_core::image::{binarize, components, deskew};
-    use ocrcer_core::layout::{lines, words};
+    use ocrcer_core::layout::{lines, slant, words};
 
     let engine = engine_with(model, set)?;
     let p = engine.params();
+    let slant_p = p.slant();
 
     for pgm in select_pages(dir, limit, stride, offset, only)?.iter() {
         let (w, h, grey) = load_page(pgm)?;
@@ -929,6 +930,12 @@ fn run_layout(
             comps.len()
         );
         let mut i = 0usize;
+        // Slant-detector verification (`ARCHITECTURE.md` section 11,
+        // 2026-09-24 decision): per-word angle and verdict, plus a per-page
+        // count, so the detector can be eyeballed against known-italic and
+        // known-upright pages before it ever gates a prototype.
+        let mut page_words = 0usize;
+        let mut page_slanted = 0usize;
         for group in lines::group_with_bands(&comps, page.width, page.height, &p.lines()) {
             let rules = words::band_space_rules(&group, &comps, &p.words());
             let spans_by_line = words::split_band_with(&group, &comps, &p.words());
@@ -965,6 +972,58 @@ fn run_layout(
                     rule.separability,
                     spans.len()
                 );
+                let slants: Vec<slant::Slant> = spans
+                    .iter()
+                    .map(|span| {
+                        let mut member_labels: Vec<u32> =
+                            span.members.iter().map(|&idx| comps[idx].label).collect();
+                        member_labels.sort_unstable();
+                        member_labels.dedup();
+                        slant::estimate(
+                            &labels,
+                            page.width,
+                            span.x0,
+                            span.x1,
+                            span.y0,
+                            span.y1,
+                            &member_labels,
+                            line.baseline,
+                            &slant_p,
+                        )
+                    })
+                    .collect();
+                page_words += slants.len();
+                page_slanted += slants.iter().filter(|s| s.slanted).count();
+                println!(
+                    "    slant {:?}",
+                    spans
+                        .iter()
+                        .zip(&slants)
+                        .map(|(sp, s)| (sp.x1 - sp.x0, s.angle_deg, s.slanted))
+                        .collect::<Vec<_>>()
+                );
+                // SLANT_DEBUG=1 prints the whole 0..=20 score curve per word,
+                // not just the winner: a detector-verification aid for
+                // telling a real peak from a near-flat tie-break default.
+                if std::env::var("SLANT_DEBUG").as_deref() == Ok("1") {
+                    for span in &spans {
+                        let mut member_labels: Vec<u32> =
+                            span.members.iter().map(|&idx| comps[idx].label).collect();
+                        member_labels.sort_unstable();
+                        member_labels.dedup();
+                        let scores = slant::angle_scores(
+                            &labels,
+                            page.width,
+                            span.x0,
+                            span.x1,
+                            span.y0,
+                            span.y1,
+                            &member_labels,
+                            line.baseline,
+                        );
+                        println!("      scores[{},{}] {scores:?}", span.x0, span.x1);
+                    }
+                }
                 // Diagnostic only (2026-09-22 fixed-pitch detector diagnosis,
                 // amended 2026-09-22 for the cell-merge amendment, extended
                 // 2026-09-22 for the amendment ablation): centre-to-centre
@@ -1031,6 +1090,7 @@ fn run_layout(
                 i += 1;
             }
         }
+        println!("  slant summary: {page_slanted}/{page_words} words flagged slanted");
     }
     Ok(())
 }

@@ -22,6 +22,7 @@ pub const T_PROTOTYPES: &str = "prototypes";
 pub const T_PROTOTYPE_CLASS: &str = "prototype_class";
 pub const T_FEATURE_NORM: &str = "feature_norm";
 pub const T_CLASS_HOLES: &str = "class_holes";
+pub const T_PROTOTYPE_FACE: &str = "prototype_face";
 pub const T_LEXICON: &str = "lexicon";
 pub const T_BIGRAMS: &str = "bigrams";
 pub const T_CONFUSIONS: &str = "confusions";
@@ -43,8 +44,10 @@ pub fn tables(bank: &Bank) -> Vec<Table> {
     let (q, scales) = ocrw::quantise(&flat, n, FEATURE_DIMS);
 
     let mut class_bytes = Vec::with_capacity(n * 2);
+    let mut face_bytes = Vec::with_capacity(n * 2);
     for p in &bank.prototypes {
         class_bytes.extend_from_slice(&p.class.to_le_bytes());
+        face_bytes.extend_from_slice(&p.face.to_le_bytes());
     }
 
     let slots = bank.gates.len();
@@ -59,6 +62,12 @@ pub fn tables(bank: &Bank) -> Vec<Table> {
         Table::opaque(T_PROTOTYPE_CLASS, vec![n as u32], class_bytes),
         Table::f32s(T_FEATURE_NORM, vec![2, FEATURE_DIMS as u32], &norm),
         Table::opaque(T_CLASS_HOLES, vec![slots as u32], holes),
+        // Face index per prototype, little-endian u16, so the runtime can
+        // derive `prototype_italic` from `meta.faces[i].style` without a
+        // second copy of the style string in every row (`ARCHITECTURE.md`
+        // section 11, 2026-09-24 decision). Optional in the format, but
+        // written by every build from here on.
+        Table::opaque(T_PROTOTYPE_FACE, vec![n as u32], face_bytes),
     ]
 }
 
@@ -173,6 +182,7 @@ pub fn meta(bank: &Bank, classes: &[Class], sizes: &[f32]) -> String {
     s.push_str(&format!("\"feature_dims\":{FEATURE_DIMS},"));
     s.push_str("\"prototype_class_encoding\":\"u16le\",");
     s.push_str("\"class_holes_encoding\":\"u8 bitmask, bit n = n holes observed\",");
+    s.push_str("\"prototype_face_encoding\":\"u16le, index into faces\",");
     s.push_str(&format!("\"prototypes\":{},", bank.prototypes.len()));
 
     s.push_str("\"sizes\":[");
@@ -289,5 +299,7 @@ mod tests {
         assert_eq!(c.data.len(), n as usize * 2);
         let f = ts.iter().find(|t| t.name == T_FEATURE_NORM).unwrap();
         assert_eq!(f.data.len(), 2 * FEATURE_DIMS * 4);
+        let pf = ts.iter().find(|t| t.name == T_PROTOTYPE_FACE).unwrap();
+        assert_eq!(pf.data.len(), n as usize * 2);
     }
 }

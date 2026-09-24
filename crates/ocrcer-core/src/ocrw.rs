@@ -294,6 +294,15 @@ pub struct Model {
     pub prototypes: Vec<f32>,
     /// One class index per prototype row.
     pub prototype_class: Vec<u16>,
+    /// One flag per prototype row: whether its face's style names it Italic
+    /// or Oblique (`ARCHITECTURE.md` section 11, 2026-09-24 decision,
+    /// "match-time gating by face style"). Derived at load from the optional
+    /// `prototype_face` table plus `faces[].style`, never from a second table
+    /// of booleans — a style rename in `meta.faces` and this flag must never
+    /// be able to disagree. Empty when the file carries no `prototype_face`
+    /// table, which a caller reads the same way as "no prototype is italic":
+    /// a file built before this decision has no italic prototypes to gate.
+    pub prototype_italic: Vec<bool>,
     /// Per-dimension mean used to standardise a query before matching.
     pub mean: [f32; FEATURE_DIMS],
     /// Per-dimension standard deviation. Never zero: the builder substitutes
@@ -403,6 +412,27 @@ impl Model {
                 weights[i] = *v;
             }
         }
+        let faces = parse_faces(&c.meta);
+
+        // Optional and additive: a `prototype_face` table names each row's
+        // face index, and italic-ness is derived from that face's own style
+        // string rather than stored twice. Absent means every prototype
+        // predates the decision that would need this, so none is italic.
+        let mut prototype_italic: Vec<bool> = Vec::new();
+        if let Some(t) = c.table(T_PROTOTYPE_FACE) {
+            let idx = t.u16s()?;
+            if idx.len() != n {
+                return Err(Error::BadTable {
+                    name: T_PROTOTYPE_FACE.into(),
+                    why: "one face index per prototype row is required",
+                });
+            }
+            prototype_italic = idx
+                .iter()
+                .map(|&f| faces.get(f as usize).is_some_and(|face| is_italic_style(&face.style)))
+                .collect();
+        }
+
         let classes = parse_charset(&c.meta)?;
         let class_info: Vec<crate::decode::viterbi::ClassInfo> =
             classes.iter().map(|k| crate::decode::viterbi::ClassInfo::of(k.codepoint)).collect();
@@ -471,7 +501,7 @@ impl Model {
             build_id: c.meta.get("build_id").and_then(Json::as_str).unwrap_or("").to_string(),
             feature_version,
             classes,
-            faces: parse_faces(&c.meta),
+            faces,
             sizes: c
                 .meta
                 .get("sizes")
@@ -480,6 +510,7 @@ impl Model {
                 .unwrap_or_default(),
             prototypes,
             prototype_class,
+            prototype_italic,
             mean,
             sd,
             class_holes,
@@ -526,6 +557,12 @@ pub const T_BIGRAMS: &str = "bigrams";
 pub const T_CONFUSIONS: &str = "confusions";
 /// Optional: the parameter block. Absent means the authored defaults.
 pub const T_PARAMS: &str = "params";
+/// Optional: one face index per prototype row, into `meta.faces`. Absent from
+/// every file written before the 2026-09-24 italic-gating decision; a reader
+/// that does not find it treats every prototype as non-italic, which is the
+/// only fact such a file's prototypes can attest to (`ARCHITECTURE.md`
+/// section 11).
+pub const T_PROTOTYPE_FACE: &str = "prototype_face";
 
 /// The case-fold map the lexicon graph is keyed on: every uppercase class
 /// maps to its lowercase twin and everything else to itself.
@@ -574,6 +611,14 @@ fn parse_charset(meta: &Json) -> Result<Vec<Class>, Error> {
         });
     }
     Ok(out)
+}
+
+/// Whether a face's style string names it italic or oblique. One place this
+/// test is written, so match-time gating and any future report of "which
+/// faces are italic" read the same rule off the same field.
+pub fn is_italic_style(style: &str) -> bool {
+    let s = style.to_ascii_lowercase();
+    s.contains("italic") || s.contains("oblique")
 }
 
 fn parse_faces(meta: &Json) -> Vec<Face> {

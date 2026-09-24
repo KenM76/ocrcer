@@ -307,7 +307,7 @@ mod tests {
     #[test]
     fn the_font_table_loads_with_a_usable_face_present() {
         let fonts = load_fonts(&model_dir()).expect("fonts.tsv");
-        assert_eq!(fonts.len(), 47, "font row count");
+        assert_eq!(fonts.len(), 69, "font row count");
         let usable = fonts
             .iter()
             .filter(|f| f.distribution != Distribution::Excluded && f.file().is_some())

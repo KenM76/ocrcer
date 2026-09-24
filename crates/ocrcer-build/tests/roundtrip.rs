@@ -218,6 +218,7 @@ fn the_emitted_keys_and_table_names_match_the_architecture() {
             ocrcer_core::ocrw::T_PROTOTYPE_CLASS,
             ocrcer_core::ocrw::T_FEATURE_NORM,
             ocrcer_core::ocrw::T_CLASS_HOLES,
+            ocrcer_core::ocrw::T_PROTOTYPE_FACE,
         ]
     );
 
@@ -227,6 +228,7 @@ fn the_emitted_keys_and_table_names_match_the_architecture() {
         "feature_dims",
         "prototype_class_encoding",
         "class_holes_encoding",
+        "prototype_face_encoding",
         "prototypes",
         "sizes",
         "faces",

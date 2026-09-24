@@ -224,9 +224,35 @@ impl Engine {
             for (line, spans) in group.iter().zip(spans_by_line) {
                 let mut got: Vec<Word> = Vec::new();
                 for span in spans {
+                    // Slant is measured once per word, ahead of segmentation,
+                    // per `ARCHITECTURE.md` section 11 (2026-09-24 decision):
+                    // gating off skips the measurement entirely, so an upright
+                    // page pays nothing beyond this one branch.
+                    let italic_ok = if p.layout.italic_gating != 0 {
+                        let mut member_labels: Vec<u32> =
+                            span.members.iter().map(|&i| comps[i].label).collect();
+                        member_labels.sort_unstable();
+                        member_labels.dedup();
+                        crate::layout::slant::estimate(
+                            &labels,
+                            page.width,
+                            span.x0,
+                            span.x1,
+                            span.y0,
+                            span.y1,
+                            &member_labels,
+                            line.baseline,
+                            &p.slant(),
+                        )
+                        .slanted
+                    } else {
+                        true
+                    };
                     let lat =
                         segment::build_with(&span, &comps, &labels, page.width, line, &seg_p);
-                    let Some(w) = self.read_word(&lat, line, &labels, page.width, &tables) else {
+                    let Some(w) =
+                        self.read_word(&lat, line, &labels, page.width, &tables, italic_ok)
+                    else {
                         continue;
                     };
                     if !w.text.is_empty() {
@@ -267,6 +293,7 @@ impl Engine {
         labels: &[u32],
         page_width: u32,
         tables: &Tables<'_>,
+        italic_ok: bool,
     ) -> Option<Word> {
         let p = &self.model.params;
         let k = p.matching.top_k.max(1) as usize;
@@ -281,7 +308,7 @@ impl Engine {
                 continue;
             }
             let raw = crate::feature::extract(&g.input(line));
-            let Some(m) = crate::r#match::nearest(&self.model, &raw, k) else {
+            let Some(m) = crate::r#match::nearest(&self.model, &raw, k, italic_ok) else {
                 continue;
             };
             let ratio = m.ratio();

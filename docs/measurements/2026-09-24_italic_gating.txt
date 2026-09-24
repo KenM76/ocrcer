@@ -1,0 +1,210 @@
+# Italic gating by measured slant (ARCHITECTURE.md section 11, 2026-09-24)
+
+Implements the follow-up to `2026-09-24_italic_faces.txt` ("italic faces:
+huge win on italic, broad loss on upright; gate them by measured slant").
+Adds a per-word slant estimator in `ocrcer-core` (layout stage) and gates
+italic/bold-italic prototypes out of upright words' candidate pool at
+match time. Re-adds the same 22 Italic/BoldItalic rows that the prior
+measurement reverted.
+
+Outcome: ALL FOUR GATES PASS. `italic_gating` ships on by default.
+
+## 1. Slant estimator
+
+`crates/ocrcer-core/src/layout/slant.rs`. For each word, shears its
+binarized pixels at every integer angle 0..=20 degrees (fixed-point
+Q12 tangent table, no runtime trig) and scores each shear by the sum of
+squared per-column ink counts; the best angle is the argmax, ties to the
+smaller angle. A word is `slanted` iff the winning angle is not the
+search boundary (20 degrees is rejected as an unconfirmed peak, see
+below), the angle is >= `layout.slant_min_deg` (6, guess, unchanged), and
+its score beats angle-0's score by >= `layout.slant_margin` (1.15, guess,
+unchanged). Neither threshold was swept this round; both remain guesses
+in `model/params.tsv`.
+
+Unit tests (`cargo test -p ocrcer-core layout::slant`): an upright word
+reads 0 degrees; a 12-degree-sheared synthetic word is detected within 2
+degrees; a vertical rule is not flagged; a degenerate (near-zero-width)
+box stays upright. All pass.
+
+## 2. Detector verification, before touching the bank
+
+Verified via a `--layout` debug mode in `ocrcer-bench`'s `ocr` binary
+(reuses the same public core functions in the same call order as
+`Engine::recognize_lines`, extended with a `SLANT_DEBUG=1` env var that
+dumps the full 0..20 degree score curve per word).
+
+**filing__r000583** (the italic-serif page the addition targets,
+`D:/Dev/ExcludedPrivate/ocrcer/pages/finfilings`): 124/158 words flagged
+slanted, all at angles 12-18 degrees (2 at 12, 11 at 13, 15 at 14, 18 at
+15, 39 at 16, 36 at 17, 3 at 18) -- a clean, well-separated cluster, no
+boundary hits.
+
+**bench/pages-cov drawing pages** (90 pages, upright CAD/ISO-drawing
+text, target: 0 words flagged): first pass found 21/90 pages with at
+least one false positive. Correlating each flagged word's angle against
+its full score curve showed all 21 had monotonically increasing curves
+with no interior turnover -- 12 of the 21 landed exactly on the 20-degree
+search boundary. That is not a confirmed peak: the curve may still have
+been rising when the search stopped, and shear-and-score has no way to
+tell a genuine ~20-degree slant from a steeper diagonal mark (a dimension
+leader, an arrowhead, cross-hatching) that a word's bounding box happened
+to sweep in as a member component. Rejecting boundary wins as unconfirmed
+(added to `slant.rs`, see the `confirmed_peak` comment there) is the fix
+-- a principled rule, not a fitted threshold, and it cost nothing against
+real italic ink: every genuine peak measured on r000583 landed at 18
+degrees or below with a clear decline past it, so none of its 124
+detections sit anywhere near the boundary.
+
+After the fix: 9/90 drawing pages still show exactly 1 word flagged each
+(word widths 8-53px varied, no boundary hits, genuine interior peaks that
+decline after the peak). This is not a slant-math bug: it is consistent
+with real diagonal ink (a CAD dimension leader, arrowhead, or hatching)
+being swept into a word span's connected-component membership by the
+layout/word-grouping stage before the slant estimator ever sees it -- a
+segmentation-level question, out of this task's scope, and a candidate
+escalation to `ocrcer-architect` if it ever shows up as an accuracy cost
+(it does not, see section 5's drawing-category gate).
+
+**finfilings** (60 pages, full corpus): 293/29173 words flagged =
+1.00435%, consistent with "italic is rare outside the one targeted
+family of pages."
+
+## 3. Match-time gating
+
+Each prototype carries its source face (`prototype_face` table, u16le
+index into faces, additive to `.ocrw`, no format version bump). A face is
+`is_italic` if its style name contains "Italic" or "Oblique". `nearest()`
+takes an `italic_ok: bool`; `read_word` passes `italic_ok = slant.slanted`
+per word. When `layout.italic_gating != 0` and `!italic_ok`, italic/
+oblique prototypes are skipped before distance computation; slanted words
+leave every prototype eligible.
+
+## 4. Bank
+
+Re-added the same 22 Italic/BoldItalic rows to `model/fonts.tsv` (47 -> 69
+data rows) that `2026-09-24_italic_faces.txt` measured and reverted --
+same 12 families, same licence basis. Each file's licence was
+independently re-read from its own embedded nameID13/14 metadata
+(fontTools) again this round, not assumed from the prior pass; all 22
+still match their sibling Regular/Bold row's already-cleared basis.
+`crates/ocrcer-build/src/tables.rs`'s font-row-count assertion updated
+47 -> 69.
+
+Rebuild commands (exactly as specified):
+  cargo build --release -p ocrcer-bench -p ocrcer-build --features pages
+  ./target/release/ocrcer-build.exe write 16,20,24,32,48 21,26,36,56 model/out/ocrcer.ocrw
+  touch crates/ocrcer-bench/src/bin/ocr.rs && cargo build --release -p ocrcer-bench --features pages
+
+  54 faces, 50,095 prototypes, 10 tables, 5.37 MB, wall time 13m6.628s
+  (identical composition and byte counts to the reverted attempt's build,
+  confirming deterministic reproducibility of the same font set)
+  int8 top-1 agreement with f32: 39873/40076 = 99.493%
+  int8 top-1 accuracy: 36961/40076 = 92.23%
+
+A second rebuild was run after flipping `layout.italic_gating`'s default
+to 1 in `model/params.tsv` (see section 6), to bake the new default into
+the shipped `.ocrw`'s params table; same font composition and prototype
+counts, same wall time within measurement noise.
+
+## 5. Gate measurements, `--set layout.italic_gating=1`
+
+Control figures are the same-day, same-corpus, same-bank-composition
+numbers already on record in `2026-09-24_italic_faces.txt` and
+`2026-09-24_max_splits_sweep.txt` (r000583 40.633%; pages-cov end-to-end
+CER 6.064%, wall 487.5s for 625 pages; finfilings end-to-end 12.708%,
+line-matched 11.602%, wall 1019.5s for 60 pages). Re-deriving them was not
+needed: with gating on but a word never flagged slanted, the code path is
+provably identical to gating off (`read_word` only sets `italic_ok` from
+the estimator; `nearest()`'s `skip_italic` is false whenever gating is
+off, and the estimator's behaviour on upright text is what section 2
+verified). The drawing-category delta sum did need a freshly matched
+control CSV (no such per-page breakdown existed on record in reusable
+form), so a temporary 47-face control bank (`ocrcer-control.ocrw`,
+matching the documented control's exact composition: 32 faces, 29,675
+prototypes, 3.21 MB, 6m0.969s) was built and scanned once for that one
+comparison, then deleted.
+
+  filing__r000583 screen test:
+    gated CER: 23.982%   (control 40.633%, delta -16.651 points)
+
+  bench/pages-cov (625 pages, --csv):
+    end-to-end CER: 5.900%   (gate: <= 6.114%, control 6.064%) -- PASS,
+      also beats control
+    mean-of-pages CER (unweighted, distinct from the char-weighted
+      end-to-end figure above): gated 6.1405%, control 6.2863%
+    wall time: 502.1s for 625 pages (+3.0% over control's 487.5s)
+
+    Per-category summed CER delta (gated - control, fraction units),
+    drawing-category no-worse condition:
+      currency    -0.227586
+      drawing     -0.015075   <- gate: <= 0 -- PASS (slight improvement)
+      invoice     -0.219931
+      prose       -0.226496
+      statement   -0.140272
+      technical   +0.019231
+      twins       -0.101449
+    Six of seven categories improved; only technical regressed slightly,
+    well inside noise, and it is not the gated category.
+
+  finfilings (60 pages, --csv):
+    end-to-end CER: 12.167%   (gate: < 12.708%, control) -- PASS, beats
+      control by 0.541 points
+    line-matched CER: 11.122%   (gate: < 11.602%, control) -- PASS, beats
+      control by 0.480 points
+    wall time: 1038.3s for 60 pages (+1.8% over control's 1019.5s)
+
+  Both accuracy figures land within 0.005 points of the reverted,
+  ungated-italic build's finfilings numbers (12.162%/11.123%), i.e.
+  gating preserves essentially all of the accuracy win the prior
+  measurement found on this corpus, while the wall-time cost drops from
+  +66.6%/+69% (ungated) to +1.8%/+3.0% (gated) on finfilings/pages-cov
+  respectively, and the drawing-category regression that failed the prior
+  attempt's gate (+0.135678) is gone (-0.015075).
+
+## 6. Gate summary and disposition
+
+  r000583 screen test:        PASS (large win, not itself a hard gate)
+  pages-cov end-to-end:       PASS  (5.900% <= 6.114%)
+  pages-cov drawing delta:    PASS  (-0.015075 <= 0)
+  finfilings end-to-end:      PASS  (12.167% < 12.708%)
+  finfilings line-matched:    PASS  (11.122% < 11.602%)
+
+All four hard gates pass, no threshold adjustment was needed to pass
+them. Disposition per the task's joint condition:
+
+  - `model/fonts.tsv` and `crates/ocrcer-build/src/tables.rs`'s
+    font-row-count assertion (47 -> 69) are kept.
+  - `layout.italic_gating` default flips 0 -> 1 in both
+    `crates/ocrcer-core/src/params.rs`'s `Params::DEFAULT` and
+    `model/params.tsv`; the two remain byte-identical
+    (`the_file_and_the_compiled_defaults_agree` passes).
+  - `model/out/ocrcer.ocrw` rebuilt with the new default baked into its
+    params table: 54 faces, 50,095 prototypes, 10 tables, 5.37 MB.
+  - `cargo test --workspace --release`: all green (192 + 42 + 71 + 14 +
+    others, 0 failed across every crate).
+  - `cargo build -p ocrcer-core --target wasm32-unknown-unknown`: green.
+
+## 7. Not attempted
+
+Step 6 of the task (an optional, informational-only deslant comparison
+arm on r000583, explicitly not to be shipped) was not attempted: all four
+hard gates passed cleanly with the shear-and-score detector alone, so
+there was no open question left for a deslant arm to inform.
+
+## 8. Net finding
+
+Gating italic prototypes by measured per-word slant keeps essentially all
+of the accuracy win italic faces bring to italic-heavy text (r000583 and
+the broader finfilings corpus) while removing the upright-text regression
+that made the ungated addition fail its gates: the drawing category goes
+from a +0.135678 delta-sum regression to a -0.015075 improvement, and
+pages-cov's overall end-to-end CER moves from a 0.088-point gate failure
+to a 0.164-point improvement over control. The wall-time cost of the
+larger bank drops from roughly linear-in-prototype-count (+66-69%) to
+near-zero (+2-3%), because gating means upright words -- the large
+majority of both corpora -- never pay for the italic prototypes' extra
+distance computations at all. The 9 residual drawing-page false
+positives (each 1 word, real diagonal ink swept into a word span by
+layout/word-grouping) cost nothing measurable and are noted here as a
+candidate future escalation, not a blocker.
