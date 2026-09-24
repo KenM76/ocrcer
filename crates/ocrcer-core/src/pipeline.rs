@@ -155,6 +155,42 @@ impl Engine {
         Ok(self.recognize_lines(img)?.into_iter().flat_map(|l| l.words).collect())
     }
 
+    /// Recognises a page from a raw 8-bit greyscale buffer.
+    ///
+    /// `width`/`height` are pixels; `pixels` is row-major, top-down, one byte
+    /// per pixel, `width * height` bytes long — the layout every external OCR
+    /// consumer takes, `pdfcer`'s `OcrEngine::recognize` included. This is
+    /// [`Engine::recognize`] with the [`crate::Gray`] borrow built for the
+    /// caller, so an embedder never has to name that type itself; it performs
+    /// no work of its own and is not a second implementation of anything
+    /// (`CLAUDE.md` rule 4).
+    ///
+    /// # Coordinates
+    ///
+    /// [`Word::rect`] and each [`CharBox::rect`] are in the coordinates of
+    /// this image, y-down, unrotated. This crate never converts to a
+    /// page-space or a y-up convention — see the pipeline module's own
+    /// contract doc.
+    ///
+    /// # Confidence
+    ///
+    /// [`Word::confidence`] is the calibrated match-margin score from
+    /// `confidence.rs` (`CLAUDE.md` rule 5), already a geometric mean over
+    /// the word's characters — never a raw distance.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::BadTable`] if `pixels.len() != width * height`. Never errors
+    /// on a blank or unreadable page; "no text here" returns `Ok(vec![])`.
+    pub fn recognize_bytes(
+        &self,
+        width: u32,
+        height: u32,
+        pixels: &[u8],
+    ) -> Result<Vec<Word>, Error> {
+        self.recognize(crate::Gray { width, height, data: pixels })
+    }
+
     /// Recognises a page, keeping the line grouping.
     pub fn recognize_lines(&self, img: crate::Gray<'_>) -> Result<Vec<Line>, Error> {
         let p = &self.model.params;
