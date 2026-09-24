@@ -6408,3 +6408,27 @@ do not clear the side gate, and the remaining ®/~/B insertions there are
 the next thing to look at when checkboxes come up again.
 
 New controls: finfilings **12.708 / 11.602**, pages-cov **6.064**.
+
+### 2026-09-24 — `segment.max_splits` is not the bottleneck; cut *candidates* are
+
+Measured in `docs/measurements/2026-09-24_max_splits_sweep.txt` (commit
+`c75b49b`). Sweeping N from 3 to 8 left filing__r000583 and filing__r000308
+**byte-identical**. filing__r000022 improved slightly (37.099 → 36.877) and
+plateaued at N=5, at 6% more wall time. The valley detector offers fewer
+than 3 cuts on the fused serif atoms, so the cap never binds. Lattice cost
+grows quadratically with the number of cuts, so N stays 3 (guess).
+
+Decision: the next target is **cut-candidate generation** on fused atoms,
+not the cut budget. The order of work:
+1. Diagnose: dump r000583's fused atoms with their projection profiles and
+   candidate lists, and name which test rejects the obvious between-letter
+   minima (depth, width, or position).
+2. Only then pick the generator: relax that test, or add contour/drop-fall
+   candidates (`docs/measurements/2026-09-22_research_classical_techniques.md`
+   addenda). Recognition already arbitrates between candidates in the
+   lattice, so extra candidates cost time, not correctness. That is the
+   property that makes over-generation safe.
+
+Controls were reproduced exactly: pages-cov 6.064 (487.5 s / 625 pages) and
+finfilings 12.708 / 11.602 (1019.5 s / 60 pages). These are the first
+recorded wall times for either corpus.
