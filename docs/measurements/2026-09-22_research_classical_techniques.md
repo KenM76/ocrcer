@@ -682,3 +682,35 @@ What this means for OCRcer:
 Sources: [Automated OCR Ground Truth Generation — IEEE](https://ieeexplore.ieee.org/document/4669952/);
 [Automatic extraction of character ground truth data from images — USPTO 8755595](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/8755595);
 [Aligning Ground Truth Text with OCR Degraded Text](https://www.researchgate.net/publication/333945862_Aligning_Ground_Truth_Text_with_OCR_Degraded_Text).
+
+
+## Addendum 2026-09-24: augmentation for the chunk-15 classifier — use Baird's defect model
+
+The chunk-15 contract lists noise, blur, threshold jitter and sub-pixel
+shift. Baird's document-image defect model is the classical, explanatory
+version of that list. It is a closed set of physical parameters:
+- size (the spatial sampling rate);
+- rotation (skew);
+- horizontal and vertical scaling, set independently;
+- sub-pixel translation;
+- per-pixel jitter;
+- Gaussian point-spread (blur);
+- per-pixel sensor-sensitivity noise;
+- the binarisation threshold.
+
+Recommendation for chunk 15:
+- Draw each augmentation from these parameters with a seeded PRNG, and
+  record the ranges in the build as `guess` until real-scan crops from
+  chunk 13 can check them.
+- Add the three missing axes: small rotation, anisotropic scale, and
+  per-pixel sensitivity noise.
+- The ranges can later be checked against measured scan statistics
+  (stroke width, edge blur) on the training split. That keeps the
+  augmentation explainable parameter by parameter (rule 1).
+
+Tooling like Augraphy (Python) is not usable. Rule 4 requires a single
+Rust implementation, and Augraphy's effects are descriptive rather than
+physical.
+
+Sources: [The State of the Art of Document Image Degradation Modelling — Baird](https://link.springer.com/chapter/10.1007/978-1-84628-726-8_12),
+[Augraphy](https://arxiv.org/pdf/2208.14558).
