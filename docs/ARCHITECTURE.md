@@ -7059,3 +7059,35 @@ Separately, 300 dpi garbles (x-height 30 px), a binarisation issue. pdfcer
 rasterises at 150 dpi by default, a value chosen for `ocrs`. Whether
 OCRcer should ask pdfcer for a different dpi is open. One page is not
 evidence; a dpi sweep on more pages decides it.
+
+
+### 2026-09-24 — pdfcer vendors OCRcer's local HEAD and builds it by default (supersedes "local path dependency")
+
+Operator, in pdfcer's session (pdfcer decision 160, Pass 327.1, merged to
+pdfcer `main`): "always use the latest version of ocrcer available in
+d:\dev\ocrcer; github might be a few versions behind."
+
+How it works now:
+- `ocrcer-core` is copied from OCRcer's committed HEAD into pdfcer's
+  `vendor/ocrcer-core` by pdfcer's `tools/sync-ocrcer.py`.
+- `integration/pdfcer/ocrcer_engine.rs` is copied by the same script.
+- pdfcer's feature `ocrcer` is on by default. `ocrs` is still the default
+  engine.
+- The model is still neither shipped nor downloaded.
+
+This supersedes the "pdfcer keeps its local path dependency" line in
+today's publishing entry. That entry stands as it was written.
+
+Consequences for OCRcer:
+- Every OCRcer commit that touches `ocrcer-core` code or the adapter trips
+  pdfcer's `check-ocrcer-vendored.py` until pdfcer re-syncs. That is by
+  design, and it is pdfcer's to run. OCRcer does not edit pdfcer's
+  `vendor/`.
+- So OCRcer master must stay releasable at every commit. Unreviewed or
+  ungated core changes stay on branches until they pass. That was already
+  the practice; it now has a consumer.
+- pdfcer's LLM rescoring add-on (their Pass 327.2) unblocks when an LLM
+  adapter appears in `integration/pdfcer/`. That is chunk 16b's hand-off
+  point.
+- The pdfcer-gui engine choice is being handled through pdfcer-gui's own
+  feature-request channel. OCRcer does not build it.
