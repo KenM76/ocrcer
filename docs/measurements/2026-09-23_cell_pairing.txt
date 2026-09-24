@@ -409,3 +409,12 @@ Scratch files: `target/runtime-diag/` (6 files, `r000044_cp2.txt`,
 screening pass before this round's own commands ran) and the session
 scratchpad's `.csv`/`.log` files were deleted before commit. No other
 scratch files were created outside the session scratchpad.
+
+--- Architect's note on the anomaly paragraph above ------------------------
+
+The ARCHITECTURE.md §11 edit seen mid-round was written by ocrcer-architect,
+who owns §11, from this round's pages-cov and finfilings readings as they
+landed in the scratchpad CSVs and logs. It was not fabricated and not an
+injection. "Condition 3(iii)" was the architect's name for the widest-fragment-
+only eligibility check (lines.rs, `widest_idx`). The entry has been rewritten
+and committed after c15c52c, with (i) described as built.

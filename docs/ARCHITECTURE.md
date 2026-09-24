@@ -6305,3 +6305,41 @@ Decision:
 
 Out of scope: detecting checked state (ticked vs empty) and emitting it as
 text. Truth does not record it, and v1 does not need it.
+
+### 2026-09-23 — Cell pairing ships: `lines.cell_pairing` 3, `cell_wrap_slack` 2.0, measured
+
+Code landed in `c15c52c`. Readings are in `docs/measurements/2026-09-23_cell_pairing.txt`.
+- **pages-cov:** the per-page CSV is **byte-identical** to the control's
+  (checked with `cmp`). 0 of 625 pages moved. The aggregate stays 6.064 and
+  the drawing delta is 0, so both gates pass. The 35 drawing and 2 invoice
+  pages that rule 2 broke are all back to the control.
+- **finfilings:** end-to-end 13.161 → **12.786**, line-matched 12.290 →
+  **11.686**. The control was re-run in the same session and reproduced
+  13.161/12.290 exactly.
+
+Rule 3 keeps roughly half of rule 1's gain (rule 1: 10.744 line-matched, at
+a cost of 0.92 on pages-cov) and none of its CAD damage. That is the right
+trade under `FEASIBILITY.md` §6.
+
+Where the code departs from the decision above, reviewed and accepted:
+- **(i) as built** is sibling exclusion. A single-fragment row cannot vouch
+  for a column if it reaches into the column of a sibling fragment of the
+  candidate (`column_cell_slice_match`). The decision's literal wording
+  ("anchor inside a cell-width slice") broke r000044's required win in both
+  directions, as the measurement log records. The built version catches the
+  mechanism the regressors diagnosis named, a wide unsplit row spanning both
+  cells.
+- **Widest-fragment-only eligibility.** Under rule 3, only a row's widest
+  fragment (ties broken to the leftmost) is tested as a wrapping label. A
+  marker cell (checkbox, list marker, value box) is never a multi-line
+  label. The implementing agent added this, and it was reviewed here.
+
+`cell_wrap_slack` 2.0 has only been run at this one value under rule 3. It
+stays a guess on the chunk-8 tuning list.
+
+Note on the measurement log's "anomaly" paragraph: the earlier draft of this
+entry, which the implementing agent reverted, was written by
+`ocrcer-architect` (owner of §11) while that agent's run was still in
+progress. It was not a tooling fault or an injection. What it called
+"condition 3(iii)" is the widest-fragment rule above, under a different
+name.
