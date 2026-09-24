@@ -6795,3 +6795,86 @@ against a contract:
      justification here.
    - Model size is reported.
    - A loss is filed as prominently as a win.
+
+### 2026-09-24 — Operator: build the optional LLM add-on, self-contained, with no network and no server
+
+The operator's requirement, verbatim in substance: "whatever is needed to
+implement the LLM [is] contained within our project and compact as possible.
+No network components required or local servers running or forcing the user
+to have to download some other dependency separately, they should just need
+to download the addon feature." This is PLAN chunk 16.
+
+The contract:
+
+1. **The engine is a new workspace crate, `ocrcer-llm`.**
+   - It is pure safe Rust (`#![forbid(unsafe_code)]`) and depends on
+     `std` only. Parallel matmul uses `std::thread`.
+   - There is no llama.cpp, no ONNX runtime, no candle and no Python at
+     runtime. Every one of those is an external dependency, a native
+     library or both, which the requirement rules out, and each would dwarf
+     the engine.
+   - It implements exactly one architecture family, Qwen decoder-only:
+     RMSNorm, RoPE, grouped-query attention, SwiGLU, tied embeddings. It
+     also implements that family's byte-level BPE tokenizer. Nothing else is
+     implemented.
+   - It is **not** part of `ocrcer-core`, whose invariants are unaffected,
+     and pdfcer enables it with a cargo feature.
+   - A wasm32 build is desirable, but it is not a gate.
+2. **The add-on is one file, `.ocrl`.** It is a container in the style of
+   `.ocrw`, holding:
+   - a header and `version`;
+   - `meta` JSON: model id, architecture config, quantisation, the full
+     licence text and attribution;
+   - the tokenizer's vocabulary and merges;
+   - the quantised tensors.
+   Installing the add-on means putting this file where the app looks for it.
+   That is the whole install: no second download, no server, no network at
+   runtime. It is built by a converter in `ocrcer-build` from the upstream
+   safetensors and `tokenizer.json`, parsed in Rust with no new
+   dependencies. The upstream files and the built `.ocrl` stay in
+   `D:/Dev/ExcludedPrivate` and are never committed.
+3. **Model choice.**
+   - The default is **Qwen3-0.6B**, used in non-thinking mode. It is the
+     current text-only successor to the operator's named choice and is
+     Apache-2.0 (checked 2026-09-24).
+   - **Qwen2.5-0.5B-Instruct**, also Apache-2.0, is supported through the
+     same code. Its differences are QKV bias and no QK-norm, both of which
+     are config flags.
+   - Qwen3.5-0.8B is multimodal and larger. Its text architecture has not
+     been checked against this implementation, so it is out of scope until
+     it is.
+4. **Size: Q8 first, then Q4 only by measurement.** Weights are stored as
+   block-quantised int8 (blocks of 32, one f32 scale per block). A 4-bit
+   variant is added only if its agreement with Q8 is measured and
+   acceptable. The size estimates below are projections: Qwen3-0.6B is about
+   0.6–0.65 GB at Q8 and about 0.35–0.4 GB at Q4. The tied 151 K × 1024
+   embedding is a large share of either.
+5. **How OCR uses it: rescoring only, never free generation.** This is
+   rule 6 applied to an LLM.
+   - The decoder emits an n-best list for **low-confidence** lines only. The
+     LLM scores each candidate's log-likelihood in its line context, and the
+     final choice is the OCR score plus λ·LLM score.
+   - The LLM therefore **cannot introduce a string the OCR did not
+     propose.**
+   - Identifier-shaped tokens are held fixed.
+   - Every changed line is reported with the OCR's first choice, and the
+     line's confidence is recomputed, not inherited.
+   - λ and the confidence threshold are `fitted` on the chunk-12 validation
+     split.
+6. **Verification (16a) happens before any OCR measurement.**
+   - Logits must match a reference implementation on fixed prompts: the
+     upstream `transformers` library, run outside the repo as a test
+     oracle, the way `ocrs` is used in `vs-ocrs`.
+   - The f32 path must match closely, and the Q8 path must agree on top-1.
+     Tolerances are to be proposed with evidence.
+   - Token ids must match the reference tokenizer on a fixed test set that
+     includes digits, punctuation, currency and identifiers.
+   - The expected values are committed as a small fixture. The weights are
+     not committed.
+7. **Gates (16b).**
+   - Beat the prevailing finfilings controls.
+   - pages-cov ≤ control + 0.05, with drawing Δ ≤ 0.
+   - The identifier-preservation test passes.
+   - Report wall time with the add-on on and off, and report the add-on
+     size.
+   - With the add-on absent, behaviour must be byte-identical to today.
