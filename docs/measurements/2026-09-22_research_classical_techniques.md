@@ -566,3 +566,37 @@ vertical projection has no minimum because the serif spans the gap. A
 concavity above the serif and one below it (or the baseline) define a short,
 nearly vertical cut through the serif. Whether r000583 needs this depends on
 the cut-candidate diagnosis (`2026-09-24_cut_candidates_r000583.md`).
+
+## Addendum 2026-09-24: slant estimation and deslant, for the held deslant option
+
+Read, not measured. Sources: "Slant estimation algorithm for OCR systems"
+(Pattern Recognition, ScienceDirect S0031320300001539); the Fast-Hough slant
+rectification in a passport OCR system (ResearchGate 315365387); and the
+survey of deslanting methods for historical documents (J. Imaging 4(6):80).
+
+- **Standard classical method:** shear the binarized line or word by
+  candidate angles α and score each result's vertical projection for
+  "peakiness". Sources give it as a maximum of a profile functional, e.g. a
+  sum of squared column counts or a Wigner–Ville energy. Pick the α that
+  maximises the score and apply that shear. The functional peaks when
+  vertical strokes line up with columns.
+- **Alternative:** a Hough transform over near-vertical stroke edges, from
+  the x-derivative of the line image. The histogram of their angles gives
+  the slant directly.
+- **Printed italic is the easy case.** The slant is uniform per run of text,
+  typically 10–15° for Latin serif and sans italics. That is unlike
+  handwriting, where slant varies within a word and needs non-uniform
+  methods. A per-line or per-word uniform shear is enough.
+
+How this would fit OCRcer, if steps 1–2 of the 2026-09-24 italic decision
+leave a residual:
+- Estimate α per word with a small integer-degree search (0..20°) on a
+  sum-of-squares projection score. That is deterministic, integer-only and
+  zero-dep.
+- Shear only when the best α beats α=0 by a margin, a guess threshold, so
+  upright CAD text is untouched by construction.
+- Shearing happens before cut-candidate generation, so slanted touching
+  letters recover vertical minima.
+- The extractor would then see deslanted italic glyphs, and these match the
+  upright bank better. So deslant and italic prototypes partly overlap, and
+  the residual decides whether both are needed.
