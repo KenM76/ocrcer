@@ -1,82 +1,45 @@
-Ready-to-paste `pdfcer` binding for OCRcer.
+OCRcer's `pdfcer` binding. `ocrcer_engine.rs` here is the source of truth for
+pdfcer's `crates/pdfcer-core/src/ocr/engine_ocrcer.rs`.
 
-Apply now, as an **opt-in** engine (operator, 2026-09-24; `ARCHITECTURE.md`
-§11). `ocrs` stays the default until the head-to-head says otherwise.
+## How pdfcer consumes it (pdfcer Pass 327.0 + 327.1, on pdfcer `main`)
 
-Proven against a real `pdfcer-core` checkout in a throwaway out-of-tree
-harness — see `docs/measurements/2026-09-24_pdfcer_binding.md` for what was
-run and what it showed. Nothing here has been applied to the `pdfcer` repo.
+- pdfcer's `tools/sync-ocrcer.py` copies OCRcer's **committed HEAD** into
+  pdfcer's tree: `crates/ocrcer-core` goes to `vendor/ocrcer-core`, and this
+  adapter goes to `engine_ocrcer.rs`. Operator rule (pdfcer decision 160):
+  always use the newest local OCRcer, because GitHub may lag.
+- pdfcer's `tools/check-ocrcer-vendored.py` fails when its copy differs from
+  OCRcer HEAD. So any OCRcer commit that touches `ocrcer-core` code or this
+  adapter needs a re-sync on pdfcer's side.
+- Feature `ocrcer` is on by default in pdfcer, and `ocrs` stays the default
+  engine. CLI: `pdfcer ocr --ocr-engine ocrs|ocrcer [--model-dir DIR]`.
+- The model `ocrcer.ocrw` is read from `models/ocrcer/` beside the exe, or
+  from `--model-dir`. It is neither shipped nor downloaded.
 
-## What to paste
+Rules for OCRcer's side:
+- Change the adapter **here**, never in pdfcer's copy.
+- OCRcer master must be releasable at every commit, because pdfcer can
+  sync it at any time. Keep ungated core work on a branch.
+- A new adapter here, such as the LLM rescoring add-on from chunk 16b, is
+  the signal that unblocks pdfcer's matching backlog item (Pass 327.2).
 
-1. Copy `ocrcer_engine.rs` to `crates/pdfcer-core/src/ocr/engine_ocrcer.rs`,
-   unmodified.
-
-2. In `crates/pdfcer-core/src/ocr/mod.rs`, next to the existing
-   `engine_ocrs` declaration:
-
-   ```rust
-   #[cfg(feature = "ocrcer")]
-   pub mod engine_ocrcer;
-   ```
-
-3. In `crates/pdfcer-core/Cargo.toml`, a feature mirroring the `ocrs` block
-   (do **not** add `ocrcer` to `default` — see "Why not default" below):
-
-   ```toml
-   # The OCRcer text-recognition engine — see
-   # https://github.com/<org>/ocrcer, `crates/pdfcer-core/src/ocr/engine_ocrcer.rs`.
-   #
-   # WHAT IS AND IS NOT GATED, mirroring the `ocrs` feature above: NOT gated
-   # is everything in `ocr::{RecognizedWord, OcrPage, OcrEngine,
-   # words_to_page_space}` and `ocr::layer`; gated is `ocr::engine_ocrcer`
-   # alone.
-   #
-   # LICENCE: MIT, zero dependencies outside core/alloc/std
-   # (`ocrcer-core`'s own CLAUDE.md rule 3), so this feature adds no new
-   # licence obligation and no new supply-chain surface — no C toolchain, no
-   # prebuilt binary, nothing for `cargo-about` to miss.
-   #
-   # NO NETWORK, structurally: `ocrcer_core::pipeline::Engine::from_bytes`
-   # takes bytes the caller already has; the crate contains no I/O of its
-   # own. Model location is resolved by `ocr::models::resolve_model_dir`,
-   # exactly as it is for `ocrs`.
-   ocrcer = ["dep:ocrcer-core"]
-   ```
-
-   And in `[dependencies]`:
-
-   ```toml
-   ocrcer-core = { path = "../../../OCRcer/crates/ocrcer-core", optional = true }
-   # Local path for now (operator, 2026-09-24); a pinned git dependency once
-   # OCRcer is published.
-   ```
-
-## Why not default
-
-The strippable-capability convention in this file's header (rule 1: default
-ON) is written for a capability already known to be at least as good as what
-it might replace. OCRcer is not that yet — the hand-off gate in OCRcer's
-`PLAN.md` §2c is specifically the thing that turns "an available engine"
-into "the trusted default", and that decision belongs to a fresh operator
-go, not to this paste-in. Ship it opt-in first; promote it (and decide
-`ocrs`'s own fate — replaced, kept as a fallback, or both available) as a
-separate, deliberate change once the comparison is in hand.
-
-## What the adapter needs from `ocrcer-core`, already present
+## What the adapter uses from `ocrcer-core`
 
 - `ocrcer_core::pipeline::Engine::from_bytes(&[u8]) -> Result<Engine, Error>`
-- `Engine::recognize_bytes(width: u32, height: u32, pixels: &[u8]) -> Result<Vec<Word>, Error>`
-  — validates `pixels.len() == width as usize * height as usize` itself.
-- `Word { text: String, rect: Rect, confidence: f32, .. }`, `Rect { x, y, width, height }` (`u32`, pixel space, y-down).
-- `ocrcer_core::Error: std::error::Error + Send + Sync + 'static` — satisfies
-  `OcrEngine::Error`'s bound directly; the adapter does not wrap it.
+- `Engine::recognize_bytes(width: u32, height: u32, pixels: &[u8]) -> Result<Vec<Word>, Error>`.
+  It validates `pixels.len() == width as usize * height as usize` itself.
+- `Word { text: String, rect: Rect, confidence: f32, .. }` and
+  `Rect { x, y, width, height }`: `u32` pixel space, y-down.
+- `ocrcer_core::Error: std::error::Error + Send + Sync + 'static`, which
+  satisfies `OcrEngine::Error`'s bound directly.
+- `MODEL_DIR` = `"ocrcer"` and `MODEL_FILE` = `"ocrcer.ocrw"`, mirroring
+  `engine_ocrs`.
 
-## What OCRcer cannot yet satisfy
+Changing any of these signatures breaks pdfcer on its next sync. Treat them
+as a public contract.
 
-Nothing in `pdfcer`'s `OcrEngine` trait itself is unsatisfiable — the trait
-is two methods and both are fully implementable today, as the adapter shows.
-The gap is entirely upstream of the trait: OCRcer has not yet been shown to
-beat `ocrs` on the gated corpora (`PLAN.md` §2c), which is a model-quality
-question, not an API one. See
-`docs/measurements/2026-09-24_pdfcer_binding.md`.
+## Default engine
+
+Whether OCRcer replaces `ocrs` as the default is decided by the head-to-head
+comparison, not by the integration (`ARCHITECTURE.md` §11, 2026-09-24).
+Evidence so far: `docs/measurements/2026-09-24_pdfcer_binding.md` and
+`2026-09-24_pdfcer_smoke_misses.md`.
