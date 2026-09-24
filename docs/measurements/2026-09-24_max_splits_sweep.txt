@@ -1,0 +1,187 @@
+2026-09-24 -- segment.max_splits sweep (measurement only; no default change)
+HEAD at start: e34c9f3bf5c573ab98d5ddd3e0756482591152c0
+Model: model/out/ocrcer.ocrw rebuilt this session, 29675 prototypes, 32 faces
+Command: ocrcer-build.exe write 16,20,24,32,48 21,26,36,56 model/out/ocrcer.ocrw
+
+--------------------------------------------------------------------------
+0. Mechanism check (segment.rs read before measuring, as instructed)
+--------------------------------------------------------------------------
+
+crates/ocrcer-core/src/layout/segment.rs:347-398 (interior_cuts) and
+crates/ocrcer-core/src/params.rs:395 (max_splits: 3, "guess").
+
+- `max_splits` is a HARD CAP on the number of interior-cut candidates an
+  atom is allowed to keep, applied at segment.rs:394
+  (`cands.truncate(p.max_splits)`). Candidates are valley positions in the
+  atom's ink-column profile at or below `valley_fraction * mean`, gated by
+  a margin (`min_piece_x_heights`) at each end. They are sorted by
+  (valley depth, then x-position ascending) before truncation, so raising
+  the cap only ever *adds* shallower/later-found valleys on top of the
+  ones already kept -- it can never remove or replace a cut that a lower
+  cap already offered. An atom is capped at `max_splits + 1` output pieces.
+
+- It is a hard cap, not a per-atom or width-scaled figure: every atom in
+  every word uses the same constant regardless of its width or x-height.
+
+- Lattice-size effect (segment.rs:210-259): each atom contributes
+  `interior_cuts + 2` node positions (left edge, cuts, right edge). The
+  "pieces of one atom" edge-generation loop enumerates ALL pairs among
+  those positions (`for a in lo..hi { for b in a+1..=hi { ... } }`), i.e.
+  `C(m, 2)` split edges where `m = cuts + 2`. That is quadratic in the cut
+  count, not linear -- so raising the cap for atoms that actually have
+  many valley candidates would grow the lattice (and viterbi/match cost
+  over it) quadratically, not proportionally. Measured wall-time impact
+  below is small because in practice very few atoms on the screened pages
+  have more than 3 candidate valleys in the first place (see section 1).
+
+- A width-aware alternative (`allowed = max(max_splits, floor(width /
+  (k * x_height)))`) is a one-line change: compute a per-atom bound from
+  `ax1 - ax0` and `line.x_height` in `interior_cuts` and truncate to that
+  instead of the constant. Not implemented -- this is the architect's
+  call per the task instructions. NOTE (see section 1): a width-aware cap
+  would not, by itself, fix r000583/r000308, because on those pages the
+  cap is not the binding constraint -- the valley-detector already finds
+  fewer than 3 candidates for the fused atoms responsible for the errors.
+  A width-aware cap only ever raises the *ceiling* on how many cuts an
+  atom may keep; it does nothing if the ceiling was never being hit.
+
+--------------------------------------------------------------------------
+1. Screen: filing__r000583, filing__r000022, filing__r000308
+--------------------------------------------------------------------------
+Command shape:
+  ./target/release/ocr.exe model/out/ocrcer.ocrw \
+    D:/Dev/ExcludedPrivate/ocrcer/pages/finfilings \
+    --only <stem> --set segment.max_splits=N
+
+filing__r000583 (the page this sweep was motivated by; per
+docs/measurements/2026-09-23_worst_pages_round2.md (a), its dominant loss
+is serif crossbar/base-serif bbox chaining that survives merge_overlap_frac
+because the tightest chains clear the "one fully inside the other's column
+range always merges" branch):
+
+  N   end-to-end CER   line-matched CER   recall     wall time (1 page)
+  3      40.633%          40.633%         24.540%     6.2s  (6178 ms)
+  4      40.633%          40.633%         24.540%     6.2s  (unmeasured to ms; ~same)
+  5      40.633%          40.633%         24.540%     6.2s  (unmeasured to ms; ~same)
+  6      40.633%          40.633%         24.540%     6.2s  (unmeasured to ms; ~same)
+  8      40.633%          40.633%         24.540%     6.4s  (6395 ms)
+
+  MEASURED: byte-identical decode output (confusions table, worst-page
+  line, all metrics) across the entire N=3..8 range. `diff` of full stdout
+  for N=3 vs N=8 shows only the `--set` echo line and the speed line
+  differ. Confirms the cap is NOT the binding constraint on this page: the
+  valley-detector is already finding <=3 candidate cuts per fused atom, so
+  widening the cap from 3 to 8 offers nothing further to take. This
+  directly falsifies, for this page, the hypothesis in the task brief that
+  raising max_splits would let a longer fused run avoid deletion.
+
+filing__r000308 (per round2 doc (b), dominant mechanism is line-grouping
+fusing adjacent text lines into one Fallback band, not atom chaining):
+
+  N   end-to-end CER   line-matched CER   recall     wall time (1 page)
+  3      14.274%          12.917%         74.597%    17.4s (17359 ms)
+  4      14.274%          12.917%         74.597%    17.6s (17623 ms)
+  5      14.274%          12.917%         74.597%    17.8s (17761 ms)
+  6      14.274%          12.917%         74.597%    17.7s (17695 ms)
+  8      14.274%          12.917%         74.597%    17.8s (17825 ms)
+
+  MEASURED: also byte-identical across the whole sweep. Consistent with
+  round2's diagnosis that this page's loss is a line-grouping problem, not
+  an atom-splitting one -- max_splits cannot touch it.
+
+filing__r000022 (touching digits, "already diagnosed" per round2 doc line
+21 as its own separate mechanism):
+
+  N   end-to-end CER   line-matched CER   recall     wall time (1 page)
+  3      37.099%          34.330%         32.857%     9.8s  (9756 ms)
+  4      36.932%          34.109%         32.857%    10.2s (10213 ms)
+  5      36.877%          34.053%         32.857%    10.4s (10375 ms)
+  6      36.877%          34.053%         32.857%    10.4s (10354 ms)
+  8      36.877%          34.053%         32.857%    10.4s (10428 ms)
+
+  MEASURED: small, real movement -- end-to-end CER improves 0.222pp and
+  line-matched improves 0.277pp going from N=3 to N=5, then plateaus
+  (N=5, 6, 8 identical). Wall time on this one page rises ~6% (9.8s ->
+  10.4s). Recall/precision/F1 unchanged (WER unchanged at 77.143%), so the
+  gain is confined to a handful of characters recovered within already-
+  matched words, not new correct words.
+
+--------------------------------------------------------------------------
+2. Decision: did any N "clearly help" the screen? No.
+--------------------------------------------------------------------------
+
+Two of the three screened pages -- including r000583, the page this whole
+sweep was commissioned to fix -- show ZERO sensitivity to max_splits across
+the full tested range 3..8. The one page with any movement (r000022) shows
+a 0.2-0.3pp CER improvement that plateaus at N=5, at a real per-page wall-
+time cost (+6%), and with no word-level (WER/F1) change at all.
+
+Per the task's conditional instruction ("take the best one or two N values
+that clearly help the screen to the full runs"), nothing here clearly
+helps. Given the lattice is quadratic in cut count per atom (section 0)
+and the corpus-wide cost is unknown a priori, spending two ~25-minute
+finfilings runs (~50 min) plus a pages-cov run (~8 min) per candidate N on
+a change the screen already shows is inert on the primary target, and only
+worth ~0.25pp on a secondary page, is not justified. No swept full-corpus
+run was performed. Control runs were performed anyway (below) to (a)
+validate the harness against the stated baselines and (b) leave both
+scratch control CSVs in place for whichever agent picks up the next
+experiment on these three pages, per the task's explicit instruction to
+keep them for later agents.
+
+--------------------------------------------------------------------------
+3. Full-corpus controls (default segment.max_splits = 3, unchanged)
+--------------------------------------------------------------------------
+
+bench/pages-cov (625 pages), command:
+  ./target/release/ocr.exe model/out/ocrcer.ocrw bench/pages-cov \
+    --csv <scratch>/ctrl_cov_0924.csv
+
+  MEASURED: end-to-end CER 6.064%  WER 26.682%  recall 78.002%
+            precision 77.052%  F1 77.524%
+            line-matched CER 6.064%
+            speed: 487.5s for 625 pages, 780 ms/page
+  Reproduces the stated control (6.064) exactly. Gate for this corpus
+  (<=6.114) was not tested against any candidate N -- no candidate was
+  promoted to a full run (section 2).
+  CSV: <scratch>/ctrl_cov_0924.csv (625 rows)
+
+D:/Dev/ExcludedPrivate/ocrcer/pages/finfilings (60 pages), command:
+  ./target/release/ocr.exe model/out/ocrcer.ocrw \
+    D:/Dev/ExcludedPrivate/ocrcer/pages/finfilings \
+    --csv <scratch>/ctrl_fin_0924.csv
+
+  MEASURED: end-to-end CER 12.708%  WER 30.144%  recall 76.937%
+            precision 75.808%  F1 76.369%
+            line-matched CER 11.602%
+            speed: 1019.5s for 60 pages, 16992 ms/page (~17.0 min total)
+  Reproduces the stated controls (12.708 / 11.602) exactly.
+  CSV: <scratch>/ctrl_fin_0924.csv (60 rows)
+
+Scratch files kept at:
+  C:/Users/Ken/AppData/Local/Temp/claude/D--Dev-OCRcer/ac0cfc3e-37a8-4d34-81e6-fcda09a387d6/scratchpad/ctrl_cov_0924.csv
+  C:/Users/Ken/AppData/Local/Temp/claude/D--Dev-OCRcer/ac0cfc3e-37a8-4d34-81e6-fcda09a387d6/scratchpad/ctrl_fin_0924.csv
+
+--------------------------------------------------------------------------
+4. Outcome
+--------------------------------------------------------------------------
+
+No value of segment.max_splits passes the screen. params.rs and
+model/params.tsv are UNCHANGED (still 3, still labelled "guess"). No
+full-corpus sweep run, no model default change, no wasm/test rebuild
+required by this measurement. Only this file is committed.
+
+The finding for the architect: the hard cap on interior cuts is not
+r000583's or r000308's binding constraint. On r000583, the surviving tight
+serif-bbox chains (round2 doc (a)) apparently already yield <=3 valley
+candidates in their column profile -- the fix, if any, is either in valley
+detection itself (ceiling/margin tuning) or in a genuinely different
+technique for touching/glued ink (drop-fall or contour cuts, as
+ARCHITECTURE.md's 2026-09-23 entry already flagged as queued and distinct
+from a width-scaled max_splits). On r000308, the dominant loss is line-
+grouping fusing adjacent lines (round2 doc (b)), which max_splits cannot
+address by construction -- it operates strictly within one already-formed
+line/atom.
+
+Whole-corpus wall-time change: none measured (no full-corpus run was
+performed at any N other than the current default, which is unchanged).
