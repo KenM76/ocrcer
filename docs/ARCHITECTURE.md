@@ -6249,3 +6249,28 @@ being joined or split differently, not just reordered.
 Next: list pages-cov per-page CER at control vs rule 2 (slack 2.0). Name the
 top regressors and the layout shape they share before any rule 3. The switch
 stays default 0.
+
+### 2026-09-23 — Cell pairing, rule 3 decided: fail-closed fullness, and an unsplit row cannot vouch for a column
+
+Measured in `docs/measurements/2026-09-23_cell_pairing_pagescov_regressors.md`
+(commit `782395c`; per-page `--csv` added to the bench in `5983367`). Only 37
+of 625 pages-cov pages move under rule 2, and every one gets worse: 35
+`drawing` pages (CAD title blocks, 7 mono fonts) and 2 invoices. That is the
+core domain (`FEASIBILITY.md` §6), so this regression matters more than the
+aggregate suggests. There are two mechanisms, both traced
+fragment-by-fragment:
+- An unsplit wide row below a correctly split row overlaps every column
+  above it. The upper row's right cell (`SHEET 1 OF 3`, an `Amount` value)
+  then reads as wrapping into it.
+- The fullness test passes vacuously when the column-extent scan finds
+  nothing wider than the candidate, because the extent equals its own edge.
+
+Decision: rule 3 = rule 2 plus both proposed conditions:
+- **(i)** In the column-match and extent scans, a single-fragment row counts
+  only if the anchor lies inside a cell-width slice of it, not merely 40%
+  overlapped.
+- **(ii)** An extent that equals the candidate's own right edge fails closed.
+
+Gates are as before, plus one addition: `drawing`-category pages must not
+regress at all in aggregate (per-page CSV, control vs rule 3), because CAD
+text is what the engine is for. r000044's win must be re-checked.
