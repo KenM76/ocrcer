@@ -674,6 +674,183 @@ given how long this has been outstanding.
 
 ---
 
+### Chunk 7 — pdfcer binding: merged; published; vendored by pdfcer (2026-09-24)
+
+Full narrative: `ARCHITECTURE.md` §11, five entries from "Operator: integrate
+into pdfcer now" through "pdfcer vendors OCRcer's local HEAD" — pointer
+only, not restated.
+
+- **Operator directive:** integrate into pdfcer now; beating `ocrs` is no
+  longer a precondition of the hand-off (supersedes the 2026-09-21 gate in
+  `PLAN.md` §2c). The head-to-head still runs and still reports losses
+  (rule 8) — it now decides the *default* engine, not whether integration
+  happens.
+- **Merged to master:** the binding entry point, proven byte-identical to
+  the pipeline path, native and wasm32.
+- **Published:** `github.com/KenM76/ocrcer`, public, MIT, master only, after
+  a full-history audit (no font data, datasets, weights, SolidWorks
+  tooling, secrets). **Standing rule from here: each future push needs the
+  operator's own go, every time** — not a one-time approval, per the
+  publish entry's own wording.
+- **pdfcer vendors OCRcer's local HEAD**, not the GitHub copy: pdfcer's
+  `tools/sync-ocrcer.py` copies `ocrcer-core` and the adapter from
+  `D:\Dev\OCRcer` HEAD into pdfcer's `vendor/`. Consequence for this repo:
+  **`master` must stay releasable at every commit** — ungated core changes
+  now stay on a branch until they pass, because a consumer resyncs from
+  HEAD, not from a pinned release. This was already the working practice;
+  it now has a name and a downstream reason.
+- **A five-miss smoke test on real pdfcer pages** found no feature-vector
+  gap: all five were substitutions inside correctly-bounded words (e→a at
+  150dpi, gone by 200dpi; word-initial c→C/s→S at any dpi). The case cue
+  already exists at feature dims 105–107; declined as a feature-vector
+  change, redirected to `ocrcer-runtime` as a possible decode-side geometric
+  case check, off by default, threshold `fitted` on the training split, not
+  measured yet. A 300dpi binarisation garble on the same page is flagged,
+  not yet chased (one page is not evidence).
+
+**Exit gate:** not restated here (chunk 7's own gate is in `PLAN.md`); this
+entry records what shipped and what remains open, per the rule against
+restating a passed-gate claim without its number.
+
+---
+
+### Chunks 12–16 opened by three operator directives (2026-09-24) — fitting, real-scan prototypes, a neural classifier, and a self-contained LLM add-on
+
+**Full narrative: `ARCHITECTURE.md` §11, six entries from "Operator: the
+model may be trained" through "Chunk 16b rescoring: spec details fixed" —
+pointer only.** `PLAN.md` §2's table does not yet carry these six chunk
+numbers or their scope — **flagged to `ocrcer-architect`** rather than
+invented here; this filing uses the numbers exactly as they appear in the
+decision log and no others.
+
+- **Operator, verbatim: "The model can be trained. I only stated that
+  because I didn't think we had enough data."** This supersedes the
+  2026-09-18 "constructed model, not a fitted one" entry as a *rule*
+  (`ARCHITECTURE.md` marks that entry itself, "superseded in part,
+  2026-09-24"). `CLAUDE.md` rule 1 already documents the corollary — every
+  fitted value still carries provenance, split manifest and script. Data
+  licences checked same-day: MultiFinBen-EnglishOCR (Apache-2.0, training
+  pool minus the 60 finfilings pages already in scoring use), CORD-v2 and
+  SROIE (CC-BY-4.0, **SROIE's licence at source is unverified** — held out
+  of any fitting or bank build until the operator clears it, see *Open
+  questions* below), scribeocr (AGPL-3.0, excluded), IRS/CRA forms (not
+  cleared, held for the operator).
+- **Chunk 12 — fit the existing `guess` params on the training split.** In
+  progress, unmerged, on branch `fit-12b` — see the *Unmerged work*
+  section below for status.
+- **Chunk 13 — real-scan prototypes from aligned training crops** (kNN
+  "training", no format change) — scope decided, build status not
+  independently confirmed by this filing.
+- **Chunk 14 — a domain lexicon and bigrams counted from training-split
+  text** — scope decided, build status not independently confirmed.
+- **Chunk 15 — a neural glyph classifier as a second matcher, selected by
+  `match.classifier` (0 prototypes / 1 network / 2 fused), pure safe Rust
+  in `ocrcer-core`, wasm32-buildable, weights in an optional `nn` table,
+  gated on beating the prevailing controls plus a wall-time report** — full
+  contract in `ARCHITECTURE.md`'s "build the neural network recognizer"
+  entry; build status not independently confirmed by this filing.
+- **Chunk 16 — the LLM add-on, `ocrcer-llm`, a new workspace crate.**
+  Pure safe Rust, `std`-only (GPU is a later, feature-gated relaxation),
+  implements exactly the Qwen decoder-only family, ships as one file
+  (`.ocrl`, same container style as `.ocrw`, weights never committed).
+  Rescoring only — an n-best list on low-confidence lines, never free
+  generation, identifier-shaped tokens held fixed (rule 6 applied to an
+  LLM). Sub-stages, per the operator's own ordering: **16a** (Qwen3/
+  Qwen2.5 CPU engine, correctness) → **16b** (OCR rescoring, gated) →
+  **16c** (Qwen3.5 text) → **16d** (Qwen3.5 vision, image-conditioned
+  rescoring) → **16e** (optional `gpu` feature via `wgpu`, no extra
+  download).
+  - **Qwen3.5-0.8B addition is flagged as an operator-directive reading**:
+    he asked for "Qwen3-0.8B", no such model exists, and the model with the
+    described capabilities is Qwen3.5-0.8B — recorded as an inference to
+    him in `ARCHITECTURE.md`, not silently assumed correct.
+  - **16a measured and accepted for correctness, not for speed**
+    (`docs/measurements/2026-09-24_llm_engine.txt`): tokenizer matches
+    50/50 reference strings both models; f32 logits within 1.1e-4 of
+    `transformers`, top-1 matching every prompt; Q8 keeps 96.8–97.3% top-1
+    agreement, mean KL ~1e-3 nats, on a 219-token text. `.ocrl` sizes 673 MB
+    (Qwen3-0.6B) / 558 MB (Qwen2.5-0.5B) at Q8, neither committed. **Speed
+    measured at 3–4 tok/s at 20 threads (only 2.1–2.3× from 1 thread) — too
+    slow for rescoring a real page.** A 16a-speed step (persistent thread
+    pool, blocked-matmul kernel, restricted `lm_head`) was required before
+    16b, against the measured f32/Q8 outputs as the regression oracle.
+  - **`decode.char_bonus_slanted` (from the italic/slant-gating work):
+    mechanism kept, sweep-picked value not shipped.** Sweeping it on
+    scoring data (finfilings) to pick a winner would have broken the
+    train/score firewall the operator's own directive just wrote in;
+    shipped at the neutral 3.44 (= `char_bonus`), labelled `guess`, handed
+    to chunk 12's fit rather than hand-tuned. `r000583`'s residual loss is
+    not fixed by this lever.
+
+**Measured 2026-09-24 — dense-page matching speed, a second cross-class
+early-abandon ceiling (merge `f7757de`).** Full detail:
+`docs/measurements/2026-09-24_dense_page_speed.md`, filed by this entry as
+an alpha blocker for the pdfcer integration above, not as chunk 16 work —
+`nearest()`'s only cross-prototype pruning was per-class; with 187 classes
+and a 50,095-prototype bank, a losing class's prototypes were still scanned
+to near completion. Added an **exact** cross-class ceiling
+(`global_ceiling`, the m-th smallest finite `best_d`, `m = max(top_k, 2)`);
+proof of exactness recorded in the measurement file (partial sums never
+exceed true distance; `best_d` entries only fall; the final acceptance test
+is untouched). **Per-page: 1.40–1.51x speedup on three profiled dense
+`finfilings` pages** (early-abandon rate 58–64%→96–98%); **output
+byte-identical to the unoptimised matcher on both scoring corpora**
+(`pages-cov` 625/625 rows, `finfilings` 60/60 rows, `diff` exit 0 both).
+**Full-corpus wall times are reported but explicitly not filed as a
+reading**: the machine was shared with other jobs during the four runs
+(finfilings 25.8 min baseline → 15.9 min optimised) — indicative only,
+per-page 1.40–1.51x is this chunk's actual measured claim, a pinned-core
+rerun is the outstanding step. `cargo test --workspace --release` green;
+`cargo build -p ocrcer-core --target wasm32-unknown-unknown` clean.
+
+---
+
+### Unmerged branches, inventoried 2026-09-24 (all local, `D:\Dev\ExcludedPrivate\ocrcer\wt-*`, none pushed)
+
+Not shipped, not on master. Recorded so the next session does not have to
+reconstruct branch state from scratch.
+
+- **`llm-speed`** (commits `1a21c1f`, `3e6507d`, `fac7b34`) — 16a-speed
+  (persistent thread pool + blocked matmul kernel) and 16a-speed2 (batched
+  `score_candidates`). **Pinned single-thread readings**, from the branch's
+  own `docs/measurements/2026-09-24_llm_speed.md`: qwen2.5-0.5b Q8 prefill
+  1.58→3.82 tok/s, decode 1.57→2.81 tok/s. Batched path is bit-identical to
+  the per-candidate path in synthetic tests; **speed of the batched path
+  itself is unmeasured**. The ~46 min single-thread / ~10 min
+  multi-thread-for-50-lines×8-candidates figure in that doc is a
+  **projection**, not a measurement. **Pending before merge:** a serial
+  real-weights oracle run (`--test-threads=1`, never concurrent with
+  another heavy job) plus pinned timings.
+- **`nbest`** (`8bb5799`) — `Engine::recognize_lines_nbest`,
+  `decode_word = decode_word_nbest(..,1)`. **Pending:** a byte-identical
+  check against master's corpus output, and an oracle best-of-8 CER on
+  finfilings-val (unmeasured).
+- **`case-geom`** (`5e0dd1a`, `6567531`) — `decode.case_geom_penalty`
+  default 0.0, provenance `guess`. **Pending:** a train-split sweep and its
+  gates; needs rebasing onto `nbest` first, since `nbest` changes
+  `decode_word`'s signature.
+- **`fit-12b`** — chunk 12's coordinate-descent fit, **in progress, on
+  `finfilings-train` only.** Tier 1 (decode weights) accepted at confirm
+  scale: 21.823 vs. 22.091 (stride-6 train sample). Tier 2 (line params)
+  inner sweeps tentatively chose `descender_fraction` 0.17 and
+  `descender_reach_fraction` 0.55 (inner 22.129 vs. 22.348, others kept);
+  **tier-2 confirm not yet run.** `w_lex` reverted 0.35→0.6 on resume,
+  pending a confirm-scale A/B. **The campaign was killed three times today
+  by Claude Code's memory-pressure reaper** — once because the architect
+  ran all real-weights LLM oracle tests concurrently at ~7 GB, twice from
+  general machine memory pressure (the campaign itself runs at ~70 MB).
+  **Awaiting the operator's go to resume** — not restarted on any agent's
+  own initiative, per the standing rule below.
+
+**Standing rule, new this filing:** run LLM oracle tests with
+`--test-threads=1` and never alongside a fitting campaign — the one
+documented case of concurrent heavy jobs is what killed `fit-12b`'s run
+today. A job killed by the memory-pressure reaper is restarted only on the
+operator's say-so, never automatically by the next agent that notices it
+stopped.
+
+---
+
 ## Next up
 
 Whichever of chunk 2 or the remainder of chunk 3 the operator prioritises
@@ -749,6 +926,19 @@ for the full narrative):
   `crates/ocrcer-core/src/image/binarize.rs`, confirmed by grep this
   session. Recorded here only so the survey's own ranking isn't misread as
   a to-do list against current code.
+
+**Research leads added to the architect queue, 2026-09-24 — candidates,
+not commitments; none scheduled as a chunk by this filing:**
+
+- A Tesseract-style per-page adaptive classifier, candidate chunk **13b**.
+- Vertical/rotated CAD text — candidate chunk **13c**, explicitly **in
+  scope** (CAD drawing text is named domain, `CLAUDE.md` rule 7).
+- x-height rescaling before Sauvola binarization.
+- A specialised small correction model (char-level, n-best-constrained,
+  fitted on finfilings-train) as chunk 16b's fallback arm if the LLM's
+  measured gain comes in under its own gates — already named in
+  `ARCHITECTURE.md`'s 16b spec entry as the fallback, not a new idea, but
+  not started, per that entry's own condition.
 
 ---
 
@@ -962,6 +1152,26 @@ requirement moves to chunk 9 as a semantic question and to chunk 11 as a
 ground-truth normalisation that has to be declared in the report. See
 `ARCHITECTURE.md` section 11, 2026-09-22.
 
+11. **SROIE's licence needs the operator's clearance before use, raised
+    2026-09-24.** The CC-BY-4.0 shown on SROIE mirrors may be the
+    competition paper's licence rather than the dataset's own — unverified
+    at source (`ARCHITECTURE.md` §11, "Published" entry). SROIE rows are
+    held out of any fitting or prototype-bank build until he clears it
+    (`CLAUDE.md` rule 2). Distinct from the older, unrelated "re-run SROIE
+    as an eval corpus" backlog item elsewhere in this file, which is about
+    scoring, not training input.
+
+12. **Resume the `fit-12b` tuning campaign.** Killed three times today by
+    the memory-pressure reaper (see *Unmerged branches* above); not
+    restarted without his go, optionally as a detached process to escape
+    the reaper.
+
+13. **Each future push to `github.com/KenM76/ocrcer` needs his go, every
+    time — not a standing default.** Recorded here because it is the one
+    case in this project where a one-time approval (the initial publish)
+    explicitly does **not** generalise to a standing rule, unlike the git
+    *commit* default below — the publish entry states this itself.
+
 ---
 
 ## Standing rules
@@ -974,8 +1184,27 @@ chunk is not done, and saying so is the cheapest thing in the project.
 pins `* text=auto eol=lf` (LF everywhere) because fixtures are compared
 byte-for-byte and a checkout-time CRLF rewrite would change their hashes;
 `.pbm`/`.png`/`.ocrw` are also marked binary explicitly. **Commit after each
-passing change from here forward** — not batched at session end. As of this
-session's git log (most recent five: `13c422f`, `e01cf6a`, `3816af6`,
-`e60211a`, `69fa60d`), the tree was clean and fully committed through the
-atom-merge-overlap ship; this filing adds documentation and lesson commits
-on top, never code.
+passing change from here forward** — not batched at session end.
+
+**Public since 2026-09-24: `github.com/KenM76/ocrcer`, MIT, master
+only.** Unlike the commit-after-each-change default above, **pushing is
+not a standing default** — every push still needs Ken's own go, per the
+publish decision itself (`ARCHITECTURE.md` §11). **`master` must stay
+releasable at every commit**: pdfcer vendors this repo's local HEAD
+directly (`tools/sync-ocrcer.py`), not a pinned release, so an unreviewed
+or ungated change to `ocrcer-core` or the pdfcer adapter now has a live
+downstream consumer and stays on a branch until it passes.
+
+**Run LLM oracle tests with `--test-threads=1`, never concurrently with a
+fitting campaign** — added 2026-09-24 after `fit-12b`'s run was killed by
+the memory-pressure reaper while a full real-weights LLM oracle suite ran
+alongside it at ~7 GB. A campaign killed by the reaper is resumed only on
+Ken's own say-so.
+
+As of the last verified git log (most recent five before this filing:
+`13c422f`, `e01cf6a`, `3816af6`, `e60211a`, `69fa60d`), the tree was clean
+through the atom-merge-overlap ship. Commit activity since then (merge
+`f7757de` for dense-page speed, `49b4df9` for the chunk 16b spec, and
+whatever this filing's own doc commit adds) is per this session's own
+report and not independently re-walked by this filing beyond the two
+named hashes given in the dispatch brief.

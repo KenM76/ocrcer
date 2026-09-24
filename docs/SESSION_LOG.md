@@ -1028,3 +1028,58 @@ the one-time `rustfmt` pass (both awaiting Ken's go), and whether "commit
 after each passing change" extends to Ken's other project trees. Token
 spend against `/usage` remains unmeasured — no shell in this dispatch —
 now across seven sessions.
+
+---
+
+## 2026-09-24 — Checkpoint refresh: dense-page speed ships, chunk 16b spec fixed, five unmerged branches inventoried
+
+**Request:** a checkpoint refresh of `ROADMAP.md`, this log and `RESUME.md`
+against today's state, without touching `ARCHITECTURE.md`, `PLAN.md`,
+`FEASIBILITY.md` or the untracked publish-audit note.
+
+**Reconnaissance performed.** Read `ROADMAP.md` and `RESUME.md` (both last
+updated mid-session, before the day's operator directives on training, the
+neural classifier, the LLM add-on and the pdfcer hand-off change); read
+`ARCHITECTURE.md` §11 forward from the last point either file reflected
+(the italic-gating ship) through the newest entry (chunk 16b's spec); read
+`docs/measurements/2026-09-24_dense_page_speed.md` in full.
+
+**The finding that this filing exists to fix.** `ROADMAP.md`'s "In
+progress"/"Next up"/"Backlog" sections still read as if chunk 9 were the
+active frontier and chunks 2/3 were next up, while `ARCHITECTURE.md` §11
+had already logged three operator directives opening chunks 12 through 16,
+a pdfcer integration-priority change, a GitHub publish, and a pdfcer
+vendoring model — none reflected in either file. This is recorded as a
+gap this filing closes by pointer to `ARCHITECTURE.md`, not by restating
+its narrative; `PLAN.md` §2's table does not yet carry chunks 12–16 either,
+flagged to `ocrcer-architect` rather than invented here.
+
+**Delivered.** `ROADMAP.md`: new "In progress" sections for chunk 7
+(pdfcer binding — merged, published, vendored), the chunks-12–16 opening
+(training approved, neural classifier contract, LLM add-on contract,
+16a's correctness-yes/speed-no result), the dense-page speed ship (merge
+`f7757de`, per-page 1.40–1.51x, byte-identical on both corpora, full-corpus
+wall time explicitly flagged as indicative-only/shared-machine), and an
+inventory of five unmerged local branches (`llm-speed`, `nbest`,
+`case-geom`, `fit-12b`) with their pending-before-merge conditions; three
+new *Open questions for the operator* (SROIE licence, resume `fit-12b`,
+per-push approval is not a standing default); research leads (13b/13c
+candidates, x-height-before-Sauvola, the 16b fallback model) filed to
+Backlog as candidates, not commitments; two new Standing rules (`master`
+must stay releasable now that pdfcer vendors HEAD; run LLM oracle tests
+`--test-threads=1`, never beside a fitting campaign). `RESUME.md` rewritten
+to the current state.
+
+**Not independently re-verified by this filing:** no shell in this
+dispatch. The chunk 16a `.ocrl` sizes, wall-time figures, `fit-12b`'s
+inner-sweep numbers and the branch commit hashes are filed as reported by
+the sessions that measured them, per their own measurement files and
+`ARCHITECTURE.md` entries — this filing did not re-run anything.
+
+**Open, carried forward:** everything in `ROADMAP.md`'s now-updated
+Backlog and *Open questions* sections; `fit-12b`'s tier-2 confirm run; the
+`llm-speed` branch's serial real-weights oracle run and pinned timings;
+`nbest`'s byte-identical corpus check and oracle best-of-8 CER; the
+`/usage` calibration, still outstanding.
+
+---
