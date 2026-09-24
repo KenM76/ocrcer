@@ -6985,3 +6985,34 @@ What does not change:
   (rule 8). It now informs the default engine choice rather than gating
   integration.
 - Accuracy work (chunks 12–16) continues after integration.
+
+
+### 2026-09-24 — Chunk 16a accepted for correctness; speed is not yet usable
+
+Readings from `docs/measurements/2026-09-24_llm_engine.txt`:
+- **Correctness.** The tokenizer matches on 50/50 strings for both models.
+  f32 logits are within 1.1e-4 of transformers, with top-1 matching on
+  every prompt. Q8 keeps 96.8–97.3% top-1 agreement on a 219-token text,
+  with mean KL around 1e-3 nats.
+- **Size.** Q8 `.ocrl` files are 673 MB (Qwen3-0.6B) and 558 MB
+  (Qwen2.5-0.5B). Neither is committed.
+- **Speed.** 3–4 tok/s at 20 threads, and 20 threads buys only 2.1–2.3×.
+  That is too slow for rescoring on real pages.
+
+Decision: the engine is accepted as the correctness reference. Before
+16b, a 16a-speed step is required:
+- a blocked matmul kernel with fixed reduction order;
+- a persistent thread pool instead of scoped spawns per matmul;
+- restricting `lm_head` to the positions that need a distribution.
+
+The measured f32/Q8 outputs are the regression oracle for that step. The
+target is set by what 16b needs, not by comparison with other runtimes:
+rescoring the low-confidence lines of a dense page in a time comparable to
+OCR-ing it. That target is a projection, to be measured.
+
+Also on 2026-09-24: the pdfcer binding (chunk 7) merged into master. Its
+entry point is proven byte-identical to the pipeline path and compiles
+against a real `pdfcer-core` checkout, native and wasm32
+(`docs/measurements/2026-09-24_pdfcer_binding.md`). Operator decisions:
+publish OCRcer as a public MIT repo after a history audit; until then
+pdfcer uses a local path dependency.
