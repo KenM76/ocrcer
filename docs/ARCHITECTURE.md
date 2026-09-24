@@ -7031,3 +7031,31 @@ bank building until the operator clears it (rule 2).
 
 Each future push still needs the operator's go. pdfcer keeps its local path
 dependency for now.
+
+
+### 2026-09-24 — pdfcer smoke misses: case confusion is not a feature-vector change
+
+Source: `docs/measurements/2026-09-24_pdfcer_smoke_misses.md`, one page. All
+five misses were substitutions inside correctly bounded words. Three were
+e→a (at 150 dpi, x-height 15 px; gone at 200 dpi). Two were word-initial
+c→C and s→S, which persist across dpi.
+
+The diagnosis flagged case as possibly needing a new feature. **Declined.**
+The size cue already exists: §3 dims `105..107` carry `baseline_dy / x_height`
+and `(height - baseline_dy) / x_height`, so `c` (top ≈ 1 x-height) and `C`
+(≈ 1.4) differ there. They are just 2 of 107 dims in an unweighted
+distance. Two things could be failing:
+- the line's x-height is wrong;
+- the cue is drowned out in the distance.
+
+Neither needs a charset, feature or format change. The work goes to
+`ocrcer-runtime`: measure those dims on the failing glyphs, and if the cue
+is sound, add a decode-side geometric case check as a new param. That
+check is off by default until it passes the usual gates, and its threshold
+is fitted on the training split. The decoder's leading-capital allowance
+(`case_penalties`) is left as is; sentence case is real.
+
+Separately, 300 dpi garbles (x-height 30 px), a binarisation issue. pdfcer
+rasterises at 150 dpi by default, a value chosen for `ocrs`. Whether
+OCRcer should ask pdfcer for a different dpi is open. One page is not
+evidence; a dpi sweep on more pages decides it.
