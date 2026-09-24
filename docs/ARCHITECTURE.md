@@ -6565,3 +6565,61 @@ nothing, which is the pre-decision behaviour. The mismatch that §7's
 arise. §2 lists the table, and its size will be recorded from the first file
 that carries it.
 
+
+### 2026-09-24 — Slant-gated italic prototypes ship: `layout.italic_gating` 1, measured
+
+These are readings, from `docs/measurements/2026-09-24_italic_gating.txt`. The
+italic bank from the reverted attempt is back: 22 rows, 54 faces, 50,095
+prototypes. Italic prototypes now compete only on words the per-word slant
+estimator flags.
+
+| Gate | Control | Gated | |
+|---|---|---|---|
+| pages-cov end-to-end | 6.064 | **5.900** | pass (≤ 6.114) |
+| drawing-category Δ sum | — | **−0.015** | pass (≤ 0; the ungated attempt gave +0.136) |
+| finfilings end-to-end | 12.708 | **12.167** | pass |
+| finfilings line-matched | 11.602 | **11.122** | pass |
+| r000583 (screen) | 40.633 | 23.982 | the ungated attempt gave 23.077 |
+| wall time, pages-cov / finfilings | 487.5 / 1019.5 s | 502.1 / 1038.3 s | +3.0% / +1.8%; the ungated attempt cost +67% |
+
+These are the **new controls: finfilings 12.167 / 11.122, pages-cov 5.900.**
+
+Review notes, accepted with three corrections to the record:
+
+1. **The boundary rejection was added after the first detector pass, and it
+   is accepted.** A best shear at 20° is now "unconfirmed" and does not count
+   as slanted. It was added because 21 of 90 drawing pages had false flags,
+   12 of them at the boundary. It was justified from the score curves, not
+   from CER. It is a structural rule rather than a fitted number. r000583's
+   real peaks are all ≤ 18°. 9 drawing pages still flag one word each. The
+   agent's reading is diagonal CAD ink swept into a word. That is plausible
+   but not confirmed, and it has no measured cost.
+2. **The "upright path is provably identical to control" claim in the log
+   is wrong in one respect, and the gates were not affected.** `feature_norm`
+   is computed over the whole bank, and so are the per-dimension int8
+   scales. Adding 20,420 italic prototypes therefore shifted the
+   standardisation and quantisation that every upright prototype and query
+   go through. This is not a stale-pair hazard, because the constants travel
+   inside the file with the prototypes they describe. The gates compare
+   against the real 47-face control, so they stand. But part of the upright
+   improvement (prose −0.23, invoice −0.22 in the delta sums) may come from
+   the norm shift rather than from italic matches. That split was not
+   measured. It matters only if a future change wants to use the norms
+   independently of the bank.
+3. **The model file grew from 1.99 MB to 5.37 MB** (5,634,540 B on disk). No
+   gate governs size. FEASIBILITY §3's "~2.2 MB" is a projection, not a
+   limit. The cost is recorded here so it is not discovered later. The
+   deferred bank-pruning work is where to recover it. The `prototype_face`
+   table should be 50,095 × 2 = 100,190 B. That figure is derived from the
+   dimensions, not read from the file, so §2's row stays "not yet measured"
+   until a dump reads it.
+
+Carried forward:
+- `slant_min_deg` 6 and `slant_margin` 1.15 remain guesses and go on the
+  chunk-8 tuning list.
+- The deslant arm was not run, because nothing it would inform was open.
+  It stays held.
+- r000583 left 34 of 158 words unflagged. The 0.9-point gap to the ungated
+  bank is the ceiling for any slant-threshold tuning on that page.
+- Next, per the 2026-09-24 italic entry: re-sweep `decode.char_bonus` on this
+  bank.
