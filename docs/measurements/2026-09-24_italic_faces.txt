@@ -1,0 +1,179 @@
+# Italic faces (ARCHITECTURE.md section 11, 2026-09-24 decision, step 1)
+
+Implements: "Add italic (and bold-italic where available) faces of the
+families already in the bank, licence-cleared as before. Rebuild the bank
+whole. No charset, feature or normalisation change, and no format bump."
+
+Outcome: GATES FAIL. `model/fonts.tsv` and the matching row-count assertion
+in `crates/ocrcer-build/src/tables.rs` are reverted. Only this measurement
+file is committed.
+
+## 1. Fonts added
+
+22 new rows in `model/fonts.tsv` (47 -> 69 data rows), Italic and
+BoldItalic siblings of families already in the bank. Each file's licence
+was independently re-read from its own embedded nameID13/14 metadata
+(fontTools), not assumed from the family; every one matched its sibling
+Regular/Bold row's already-cleared licence basis, so no new escalation was
+needed this round.
+
+  Liberation Sans    Italic, BoldItalic   (sans)
+  Liberation Serif   Italic, BoldItalic   (serif)  <- r000583's italic is serif
+  Liberation Mono    Italic, BoldItalic   (mono)
+  Noto Sans          Italic only          (sans)   -- no BoldItalic file present
+  Noto Serif         Italic, BoldItalic   (serif)  <- priority row
+  Roboto             Italic, BoldItalic   (sans)
+  Roboto Condensed   Italic, BoldItalic   (condensed)
+  Roboto Mono        Italic, BoldItalic   (mono)
+  Lato               Italic, BoldItalic   (sans)
+  PT Sans            Italic, BoldItalic   (sans)   -- dual-licence caution carried forward from existing rows
+  Inter              Italic only          (sans)   -- no Bold sibling exists in the bank at all
+  JetBrains Mono     Italic, BoldItalic   (mono)
+
+Checked and confirmed absent on disk (no row added, listed here for
+operator visibility, not escalated -- these are simply missing files, not
+licence problems): Open Sans Condensed, PT Mono, Inconsolata, Fira Code,
+Cascadia Code, Cascadia Mono, STIX Two Math.
+
+## 2. Bank rebuild
+
+Commands run exactly as specified:
+  cargo build --release -p ocrcer-bench -p ocrcer-build --features pages
+  ./target/release/ocrcer-build.exe write 16,20,24,32,48 21,26,36,56 model/out/ocrcer.ocrw
+  touch crates/ocrcer-bench/src/bin/ocr.rs && cargo build --release -p ocrcer-bench --features pages
+
+  control (Regular+Bold only): 32 faces, 29,675 prototypes, 3.15 MB
+  this build (+ italic/bold-italic): 54 faces, 50,095 prototypes, 5.28 MB
+  growth: faces +68.8%, prototypes +68.8%, file size +67.6%
+
+  build wall time: 13m9.898s (real), measured via `time`.
+
+  int8 top-1 agreement with f32: 39873/40076 = 99.493%
+  int8 top-1 accuracy: 36961/40076 = 92.23%
+
+COST FLAGGED per FEASIBILITY.md section 4 / CLAUDE.md "keep the rebuild
+cheap": 13m9.9s is inside "minutes," but `run_write` (crates/ocrcer-build/
+src/main.rs) calls `bank::build()` twice per invocation -- once for the
+shipped bank, once for a quantised copy used only for the int8-agreement
+sanity check above -- then re-extracts and re-matches every eval glyph
+(4 eval sizes x 54 faces x 187 classes, two `nearest()` scans each) against
+both banks. That second pass scales with face count on top of the bank
+build itself, so this stage's cost grows faster than prototype count alone
+as more faces are added. Not fixed here (task was to rebuild via the given
+commands, not to change `ocrcer-build`); reporting it as an emerging cost
+of continued font growth, per rule 8.
+
+## 3. Shortlist/pruning size (match.top_k) -- reviewed, not changed
+
+`model/params.tsv` line 84: `match.top_k = 5` (provenance: guess).
+
+Hole-count pruning (ARCHITECTURE.md 4.1) buckets on the class's Euler
+number, a property of the 187 charset classes, not of face count -- adding
+54 faces' worth of prototypes to each existing bucket does not change the
+~70% elimination rate or which classes it excludes.
+
+`top_k` gates how many *classes* survive per lattice edge into the decoder,
+not how many *prototypes* are scanned. Its adequacy question is "does the
+correct class's best prototype rank in the top 5 across all faces," which
+is a harder bar as faces grow (more competing near-distance classes), but
+the failure mode actually observed in this run (below) is not a shortlist
+miss -- it is the *wrong* class winning outright with the correct class
+plausibly still in or near the top 5, driven by italic prototypes changing
+which class is nearest, not by the correct class falling out of contention.
+Raising `top_k` would not address that; it would only pass more candidates
+into a decoder stage that is already scoring the wrong class highest.
+
+Conclusion: no change recommended to `match.top_k` from this run. If a
+future, larger font addition starts showing lattice-stage (not match-stage)
+losses -- the correct class absent from the shortlist entirely, as
+distinct from present-but-outscored -- that would be the actual trigger to
+revisit this value, and that trigger has not fired here.
+
+## 4. Screen test: filing__r000583 (the case this addition targets)
+
+  D:/Dev/ExcludedPrivate/ocrcer/pages/finfilings, --only filing__r000583
+
+  control CER: 40.633%
+  this build:  23.077%
+  delta:       -17.556 points -- large, clear win on the targeted page.
+
+## 5. Full bench/pages-cov (--csv)
+
+  control:    end-to-end CER 6.064%  (gate: <= 6.114%)
+  this build: end-to-end CER 6.202%  -- FAILS gate by 0.088 points
+  line-matched CER 6.201% (this build)
+  wall time: 826.2s for 625 pages (1322 ms/page)
+
+Per-category summed CER delta (new - control, fraction units), the
+drawing-category no-worse condition:
+
+  category    n   sum_delta    mean_delta
+  currency    85  +0.089655   +0.001055
+  drawing     90  +0.135678   +0.001508   <- FAILS required <= 0
+  invoice     90  +0.147766   +0.001642
+  prose       90  -0.141026   -0.001567   (only category that improved)
+  statement   90  +0.230769   +0.002564
+  technical   90  +0.250000   +0.002778
+  twins       90  +0.268116   +0.002979
+  overall    625  +0.980959   +0.001570
+
+The drawing category -- upright CAD/ISO-drawing text -- got measurably
+worse, exactly the risk the 2026-09-24 decision named: italic prototypes
+stole some matches from upright classes. Six of seven categories regressed;
+only prose (closest in shape to the finfilings-style italic-heavy prose
+this addition targets) improved.
+
+## 6. Full finfilings (--csv)
+
+  control:      end-to-end CER 12.708%,  line-matched CER 11.602%,
+                wall time 1019.5s for 60 pages
+  this build:   end-to-end CER 12.162%,  line-matched CER 11.123%,
+                wall time 1699.0s for 60 pages (28,316 ms/page)
+
+  Both finfilings gates PASS:
+    end-to-end   12.162% < 12.708%  (beats control by 0.546 points)
+    line-matched 11.123% < 11.602%  (beats control by 0.479 points)
+
+  Wall time is +679.5s / +66.6% over control -- tracks the bank's +68.8%
+  prototype growth roughly linearly; flagged as an inference-time cost of
+  this addition, not a gate (finfilings has no wall-time gate) but worth
+  recording per rule 8.
+
+  Per-page delta sum across the 60-page corpus: -0.330493 (net
+  improvement). r000583 alone accounts for -0.1756 of that; the next 14
+  best movers (filing__r000660, r000550, r000616, r000572, r000638,
+  r000528, r000594, r000561, r000627, r000539, r000605, r000495, r000473,
+  r000671) each improved by 0.0096-0.0294, suggesting other italic-styled
+  finfilings pages beyond the one autopsied also benefited. Worst mover:
+  filing__r000484 (+0.0212), filing__r000451 (+0.0090); all other
+  regressions were under +0.005. 55 of 60 pages improved or were flat; 5
+  regressed slightly.
+
+## 7. Gate summary and disposition
+
+  r000583 screen test:      PASS (large win, not itself a hard gate)
+  pages-cov end-to-end:     FAIL  (6.202% > 6.114%)
+  pages-cov drawing delta:  FAIL  (+0.135678 > 0)
+  finfilings end-to-end:    PASS
+  finfilings line-matched:  PASS
+
+Per the task's joint gate condition, two of the four hard gates fail.
+Disposition: model/fonts.tsv and crates/ocrcer-build/src/tables.rs (the
+font-row-count assertion, 47 -> 69) are reverted to their pre-session
+committed state. `cargo test --workspace` passes clean in the reverted
+state. Only this measurement file is committed. The bank at
+model/out/ocrcer.ocrw is gitignored and was not committed at any point.
+
+The net finding: italic faces fix the targeted italic-serif failure mode
+convincingly (r000583 and several sibling finfilings pages), and the
+finfilings corpus as a whole improves, but the cost lands exactly where
+predicted -- on upright CAD/drawing-category text across the broader
+pages-cov corpus -- and that cost is large enough to fail both the overall
+pages-cov CER gate and the drawing-category no-regression gate. This is a
+real trade-off, not a measurement artifact: italic prototypes are winning
+some matches against upright glyphs they should not be competing for.
+Recommendation for a follow-up attempt: constrain italic prototypes from
+competing against upright classes at match time (e.g. a style-consistency
+tie-breaker within a line, per the deslant discussion already on hold in
+this decision), rather than relying on distance alone once italic
+prototypes are simply added to the shared pool.
