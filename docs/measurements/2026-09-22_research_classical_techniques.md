@@ -962,3 +962,46 @@ Candidate, if the `case-geom` sweep leaves case misses on lines whose
 x-height estimate is wrong: add word-internal consistency as a second arm.
 Each case-twin choice would carry an implied x-height interval from its
 bank heights, and each path would intersect them. Not specced.
+
+## Addendum 2026-09-25: fitting the confidence curve, and what a word score should mean
+
+**Why.** The character curve in `confidence.rs` (`AUTHORED`) is six guessed
+knots. Nothing in the bench measures calibration yet. The LLM add-on's
+low-confidence mode picks lines by this number, so a wrong curve sends the
+wrong lines.
+
+**Method: isotonic regression (PAV), not Platt.** Niculescu-Mizil and
+Caruana (UAI 2005, *Obtaining Calibrated Probabilities from Boosting*) find
+Platt scaling better "when the calibration set is small (less than about
+2000 cases)", and isotonic regression better above that. Isotonic
+regression is fitted with the pair-adjacent-violators algorithm (PAV). It
+assumes only that accuracy is monotone in the score, which is the shape
+`AUTHORED` already states. finfilings-val has 103 pages and far more than
+2000 characters, so PAV fits. Its output is piecewise constant. Reduce it to
+the struct's knots: put the knot x-values at equal-mass quantiles of the
+fitting data and read y off the PAV fit. Both steps are deterministic.
+
+**Measuring it.** Plain ECE with equal-width bins hides the sparse high-
+and low-confidence regions. Use equal-mass (adaptive) bins, the ACE of
+Nixon et al. (CVPR-W 2019, *Measuring Calibration in Deep Learning*), and
+show the reliability diagram. Also report the one figure a reviewer acts
+on: at each flag threshold, the share of errors caught against the share
+of characters flagged.
+
+**Labels.** Align output with truth per matched line, as the line-matched
+CER does. An output character is correct if it aligns as a match, and
+wrong if it is a substitution or an insertion. A deletion has no output
+character, so no confidence can flag it. Report the deletion rate beside
+the calibration figures.
+
+**Word scores.** Tesseract reports one certainty per word. It is the
+minimum over the word's characters: `WERD_CHOICE::set_unichar_id` keeps
+`certainty_` as the running minimum (`ratngs.h`, read 2026-09-25). Word
+confidence is then `ClipToRange(100 + 5 * certainty, 0, 100)`, and a line's
+is the mean over its words (`ltrresultiterator.cpp`, read 2026-09-25). Ours
+is the geometric mean of the characters. That is a per-character average,
+not the probability that the word is right. Ten characters at 0.95 give a
+word score of 0.95, but if errors were independent the word would be right
+about 60% of the time. So a calibrated character curve does not by itself
+make the word score calibrated. The word score needs its own measured
+curve over the geometric mean, fitted against whole-word correctness.
