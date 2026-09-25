@@ -8051,3 +8051,39 @@ the (count, pages) grid replaced it. The length floor stays:
 `model/lexicon_exclusions.txt` is the committed list that the reconciled
 entry allows. It gains a row only when val shows a specific entry doing
 harm. Its header says so, and a build does not read it as a review step.
+
+### 2026-09-25 — Clarified: a fitted confidence curve is one params row per knot coordinate
+
+This settles the row convention that item 4 of "A character's confidence is
+its own margin, and the curves are fitted, not authored" left open. The
+fitter's review found no existing convention for a multi-knot curve.
+
+**Rows.** Each knot is two `f32` rows:
+- `confidence.agree.r0` … `r5` and `confidence.agree.c0` … `c5`: the
+  ratio and the confidence of each of the 6 `agree` knots;
+- `confidence.override.r0`, `r1`, `c0`, `c1`;
+- `confidence.word.r0`, `r1`, `c0`, `c1`.
+
+The knot counts are the array sizes in `confidence::Calibration`. The fitter
+reduces to exactly those counts, so a fitted curve always has the same shape
+as the struct. Changing a count is a new entry here.
+
+**Labels.** Each row is labelled `fitted`, names `fit-calibration`, the split
+manifest and `finfilings-val`, and is `tune = no`. The parameter campaign
+never sweeps these rows. Calibration moves no output text, so a CER sweep
+over them would only report a tie.
+
+**Validation at load.** The runtime assembles each curve and checks it:
+- the ratios ascend;
+- `agree` does not rise and `override` does not fall;
+- `word` does not fall;
+- every confidence lies in [0, 1].
+
+A curve that fails is a load error, not a silent fallback to `AUTHORED`.
+A file that carries none of these rows loads with `AUTHORED`, under the
+existing rule that a reader skips row names it does not know.
+
+**Who writes them.** `fit-calibration` prints the rows in `params.tsv` form
+and never writes the file. Copying them into `params.tsv` and
+`Params::DEFAULT` is a reviewed act, adjudicated here, in the same way as
+blessing a fixture.
