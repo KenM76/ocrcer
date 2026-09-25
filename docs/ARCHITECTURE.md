@@ -7130,3 +7130,49 @@ Adds to the 16a entry's point 5 and point 7; nothing there is withdrawn.
   `forward_tokens_batch` are two copies of one transformer step, held
   together only by an equality test. 16b folds `forward_token` into the
   batch-of-one path once a pinned benchmark shows no regression.
+
+
+### 2026-09-24 — Operator: LLM rescoring offers modes, including a full run
+
+Operator: build the rest of 16b now, alongside the speed work, with "a few
+options for using the LLM such as only using it on parts where the ocr
+confidence was low … plus a full run."
+
+**Modes** (one enum, chosen per call; default `Off`):
+- `Off`. No LLM is loaded or called. Output is byte-identical to the
+  engine without the add-on.
+- `LowConfidence { threshold, max_lines }`. Only lines whose OCR line
+  confidence is below `threshold` are rescored. If `max_lines` is set, the
+  least-confident lines are taken first, up to that cap, with ties going to
+  reading order. This is a time budget for slow machines.
+- `Full`. Every line with two or more distinct candidates is rescored.
+
+**What does not change in any mode:**
+- The LLM only chooses among the OCR's n-best. It never generates text
+  (rule 6).
+- Identifier-shaped words are fixed across every candidate.
+- Each changed line reports the OCR's first choice alongside the chosen
+  text.
+- Word boxes come from the chosen candidate's own word choices.
+- Ties go to the OCR's top-1.
+
+**Confidence.** A changed line's confidence is recomputed, never inherited.
+Until a calibration curve for the combined score is fitted, it is capped at
+the OCR's own confidence for that line. This follows rule 5: an uncalibrated
+number must not claim more certainty than the OCR had.
+
+**Gates per mode.** `LowConfidence` keeps 16b's no-harm gate: lines above
+the threshold are byte-identical. `Full` cannot meet that gate by
+definition, so it is gated on:
+- net CER improvement on finfilings;
+- pages-cov ≤ control + 0.05, with drawing Δ ≤ 0;
+- the identifier-preservation test.
+
+Both modes report wall time and the number of lines rescored. λ, β and the
+threshold ship labelled `guess` until they are fitted on finfilings-train.
+
+**Where the code lives.** A new crate, `ocrcer-rescore`, depends on
+`ocrcer-core` and `ocrcer-llm`. `ocrcer-core` stays LLM-free, with its three
+invariants intact. `ocrcer-llm` keeps no dependency on `ocrcer-core`. The
+pdfcer-facing adapter is added in `integration/pdfcer/` beside the existing
+one. Its arrival is the hand-off signal from the pdfcer-vendoring entry.
