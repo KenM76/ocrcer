@@ -2770,9 +2770,9 @@ filings list one per row.
     each of the eight values. The check is `(10 − sum mod 10) mod 10`.
   - The letters I and O are not issued, "since they might be mistaken for
     the digits 1 and 0".
-  - Wikipedia's summary page gets the doubled positions wrong. The rule
-    above is confirmed on `037833100` (Apple) and `921908844`, and by the
-    train pass rate below.
+  - The page was read through a summariser, which named the odd positions.
+    The even-position rule above is the one confirmed on `037833100`
+    (Apple) and `921908844`, and by the train pass rate below.
 - **ISIN** (12 characters).
   - Two letters for the country, a 9-character national number, then a
     check digit.
@@ -2787,8 +2787,10 @@ filings list one per row.
 - An adjacent swap is missed only for 0 and 9.
 - Insertions, deletions, splits and merges change the length, so the
   token no longer has the CUSIP shape.
-- Twenty letter/digit pairs were tested, covering every digit/letter row in
-  `model/confusions.tsv` plus common digit/digit misreads. Every pair is
+- Twenty pairs were tested: every digit/capital-letter row in
+  `model/confusions.tsv`, other digit/capital look-alikes, and common
+  digit/digit misreads. Lower-case rows do not apply, because a CUSIP has
+  no lower case. Every pair is
   caught at every position, except 5/S at an even position.
   - O/0 and I/1 need no check at all, because the standard excludes the
     letters.
