@@ -1489,3 +1489,81 @@ in the document, so it does not apply to financial statements.
 
 The decision is recorded in `ARCHITECTURE.md` §11, 2026-09-25 ("A one-band
 line that only descends is checked against the page's cap height").
+
+## Addendum 2026-09-25: a lone digit in a number column — using the column's type (a CAD paper, and a train reading)
+
+**Source.** Van Daele, Decleyre, Dubois & Meert, *An Automated Engineering
+Assistant: Learning Parsers for Technical Drawings*, arXiv 1909.08552
+(KU Leuven with Saint-Gobain Seals), §4.5.2. Read 2026-09-25 from the PDF.
+
+**What it does.**
+- The cells of a bill-of-materials quantity column are expected to be
+  numbers. That expectation is a prior over characters (for example
+  numeric 0.8, alphabetic 0.1, special 0.1).
+- The prior is multiplied into the OCR engine's distribution for the cell
+  and renormalised ("virtual evidence", Bayes conditioning).
+- Their worked cell: Tesseract 4.0 gave `]` 0.630 and `1` 0.130. After the
+  prior (`1` 0.615), `1` wins at 0.544.
+- The paper's reason is the one that applies here. A quantity cell is a
+  single character with no neighbours, so neither a dictionary nor a
+  neighbour rule can help.
+- Evidence: one illustrated cell. The paper reports **no accuracy
+  measurement** for this step.
+
+**What OCRcer already has, and the gap.**
+- The 11 `digit_neighbour` confusion rules need a digit next to the
+  doubtful glyph. The char-type addendum above adds the word-majority
+  type, which needs a word.
+- A cell that is **one glyph long** has neither. The only evidence left
+  is its column: the cells above and below it, which layout already
+  groups.
+
+**Reading: finfilings-train truth only, text only, no OCR run.**
+- **Method:**
+  - For each truth line, take the i-th whitespace token from the right,
+    for i < 4.
+  - A *numeric run* is 3 or more consecutive lines where that token is a
+    number (digits, `, . ( ) $ % -`).
+- **Result:**
+  - 2,306 runs on 98 of 427 pages, holding 8,628 numeric cells.
+  - **4,095 of those cells (47%) are a single digit**: `0` 2,979, `1` 572,
+    and the rest are scattered.
+  - They sit on 57 pages. The top 10 pages hold about a third of them
+    (13F holdings tables and the trade tables).
+- **Limits:**
+  - Truth has no geometry. On pages where each cell is its own truth line
+    (the 13F tables), a "run" follows reading order, so it can be a row
+    rather than a column.
+  - The count is the *population* a column prior could reach, not errors.
+    Whether OCRcer misreads these cells (`0`→`O`/`o`, `1`→`l`/`I`/`|`) is
+    unmeasured. That is the census's job.
+  - The 354 non-numbers that interrupt a run are almost all whole text
+    lines (row labels, issuer names, dates), not letters inside a numeric
+    column. So truth text cannot price the risk. That needs geometry.
+
+**How it would fit OCRcer, if built.**
+- **Form:** a type prior on single-glyph and short cells whose column
+  neighbours (from layout, not from truth) are overwhelmingly numeric. It
+  would add a digit-class bonus into the decoder score for that cell only.
+- **It is a bonus under rule 6, never a constraint.** It never removes a
+  letter candidate and never generates a character. A clear letter match
+  still wins.
+- **CAD support, with one assumption flagged.** A search result describing
+  the May 2014 ASME Y14.35 draft says revision letters omit I, O, Q, S, X
+  and Z, because they read as 1, 0, 5 and 2. The published standard has
+  not been read. If it holds, a numeric prior leaking into a revision
+  column cannot damage a valid revision letter in those four confusions.
+- **Where it must not fire:**
+  - cells in identifier-shaped columns (part numbers, CUSIPs such as
+    `64110L106`);
+  - any cell the identifier test covers.
+- **Gate:** the whole-train census must show that isolated single-glyph
+  numeric cells are misread at a material rate. Then it is specced as a
+  chunk-9 decoder feature, default off, gated by:
+  - the identifier test;
+  - CAD dev pages with a quantity column;
+  - a train stride run.
+
+**Decision rule, not a decision.** Add a census bucket: *errors in cells
+of one or two glyphs whose layout column is numeric*. Nothing is specced
+until that bucket has a number.
