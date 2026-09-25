@@ -17,6 +17,9 @@
 #   provenance  measured  -- read off a run that is named in `note`
 #               authored  -- follows from a stated principle, not a sweep
 #               guess     -- a plausible starting value and nothing more
+#               fitted    -- chosen by a committed, deterministic script on a
+#                            named training split and confirmed on a disjoint
+#                            validation split; `note` names the script and both
 #   tune        yes if chunk 8 should sweep it, no if sweeping it is
 #               meaningless (a definition rather than a threshold)
 #   note        one line: where the number came from, or what would change it
