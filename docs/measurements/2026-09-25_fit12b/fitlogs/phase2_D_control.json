@@ -1,0 +1,10 @@
+{
+  "cer": 23.809,
+  "line_matched_cer": 26.227,
+  "wer": 45.94,
+  "recall": 69.593,
+  "precision": 64.769,
+  "f1": 67.094,
+  "wall": 4092.257027864456,
+  "error": null
+}

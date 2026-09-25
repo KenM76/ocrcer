@@ -1,0 +1,1 @@
+{"label": "post:ablation:D_control:resume", "argv": ["D:/Dev/ExcludedPrivate/ocrcer/target-fit/release/ocr.exe", "model/out/ocrcer.ocrw", "D:/Dev/ExcludedPrivate/ocrcer/pages/finfilings-train", "--stride", "2"], "overrides": {}, "wall": 4092.257027864456, "stride": 2, "cer": 23.809, "wer": 45.94, "recall": 69.593, "precision": 64.769, "f1": 67.094, "line_matched_cer": 26.227}

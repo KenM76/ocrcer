@@ -1,0 +1,334 @@
+{
+  "phase": "done",
+  "started": 1790324592.970161,
+  "tie_reverts": {
+    "decode.seg_split_penalty": [
+      0.5,
+      0.75
+    ]
+  },
+  "final_campaign_base": {
+    "decode.w_lex": 0.6,
+    "decode.w_seg": 0.4,
+    "decode.lex_bonus_tier1": 1.0,
+    "decode.lex_bonus_tier2": 0.85,
+    "decode.lex_bonus_tier3": 0.7,
+    "decode.lex_bonus_tier4": 0.55,
+    "decode.lex_bonus_tier5": 0.4,
+    "decode.seg_ideal_aspect": 0.45,
+    "decode.seg_aspect_tolerance": 0.35,
+    "decode.seg_merge_penalty": 0.7,
+    "decode.seg_split_penalty": 0.75,
+    "decode.char_bonus_slanted": 3.44,
+    "lines.descender_fraction": 0.17,
+    "lines.descender_reach_fraction": 0.55,
+    "lines.inherit_x_height_below": 0.5,
+    "lines.baseline_split_sep": 0.6,
+    "lines.baseline_split_support": 0.25,
+    "lines.thin_debris_heights": 3.4288,
+    "words.pitch_min_glyphs": 6,
+    "words.pitch_agreement": 0.8,
+    "words.pitch_tolerance": 0.22,
+    "segment.max_merge_x_heights": 1.5,
+    "segment.valley_fraction": 0.65,
+    "segment.min_piece_x_heights": 0.28,
+    "layout.slant_min_deg": 6,
+    "layout.slant_margin": 1.08,
+    "match.top_k": 3,
+    "decode.beam_width": 14
+  },
+  "edge_walks_planned": {
+    "decode.w_seg": [
+      0.475,
+      0.55,
+      0.625
+    ],
+    "decode.seg_ideal_aspect": [
+      0.375,
+      0.3,
+      0.225
+    ],
+    "decode.seg_aspect_tolerance": [
+      0.25,
+      0.15,
+      0.05
+    ],
+    "decode.seg_merge_penalty": [
+      0.8,
+      0.9,
+      1.0
+    ],
+    "words.pitch_tolerance": [
+      0.255,
+      0.29,
+      0.325
+    ],
+    "segment.max_merge_x_heights": [
+      1.35,
+      1.2,
+      1.05
+    ],
+    "segment.valley_fraction": [
+      0.725,
+      0.8,
+      0.875
+    ],
+    "segment.min_piece_x_heights": [
+      0.32,
+      0.36,
+      0.4
+    ],
+    "layout.slant_margin": [
+      1.045,
+      1.01,
+      0.975
+    ]
+  },
+  "phase1_walks": {
+    "decode.w_seg": {
+      "walk": [
+        {
+          "value": 0.4,
+          "cer": 21.298
+        },
+        {
+          "value": 0.475,
+          "cer": 21.259,
+          "error": null
+        },
+        {
+          "value": 0.55,
+          "cer": 21.218,
+          "error": null
+        },
+        {
+          "value": 0.625,
+          "cer": 21.236,
+          "error": null
+        }
+      ],
+      "chosen": 0.55
+    },
+    "decode.seg_ideal_aspect": {
+      "walk": [
+        {
+          "value": 0.45,
+          "cer": 21.218
+        },
+        {
+          "value": 0.375,
+          "cer": 21.215,
+          "error": null
+        }
+      ],
+      "chosen": 0.45
+    },
+    "decode.seg_aspect_tolerance": {
+      "walk": [
+        {
+          "value": 0.35,
+          "cer": 21.218
+        },
+        {
+          "value": 0.25,
+          "cer": 21.256,
+          "error": null
+        }
+      ],
+      "chosen": 0.35
+    },
+    "decode.seg_merge_penalty": {
+      "walk": [
+        {
+          "value": 0.7,
+          "cer": 21.218
+        },
+        {
+          "value": 0.8,
+          "cer": 21.2,
+          "error": null
+        }
+      ],
+      "chosen": 0.7
+    },
+    "words.pitch_tolerance": {
+      "walk": [
+        {
+          "value": 0.22,
+          "cer": 21.218
+        },
+        {
+          "value": 0.255,
+          "cer": 21.233,
+          "error": null
+        }
+      ],
+      "chosen": 0.22
+    },
+    "segment.max_merge_x_heights": {
+      "walk": [
+        {
+          "value": 1.5,
+          "cer": 21.218
+        },
+        {
+          "value": 1.35,
+          "cer": 20.33,
+          "error": null
+        },
+        {
+          "value": 1.2,
+          "cer": 20.041,
+          "error": null
+        },
+        {
+          "value": 1.05,
+          "cer": 19.941,
+          "error": null
+        }
+      ],
+      "chosen": 1.05
+    },
+    "segment.valley_fraction": {
+      "walk": [
+        {
+          "value": 0.65,
+          "cer": 19.941
+        },
+        {
+          "value": 0.725,
+          "cer": 19.932,
+          "error": null
+        }
+      ],
+      "chosen": 0.65
+    },
+    "segment.min_piece_x_heights": {
+      "walk": [
+        {
+          "value": 0.28,
+          "cer": 19.941
+        },
+        {
+          "value": 0.32,
+          "cer": 19.941,
+          "error": null
+        }
+      ],
+      "chosen": 0.28
+    },
+    "layout.slant_margin": {
+      "walk": [
+        {
+          "value": 1.08,
+          "cer": 19.941
+        },
+        {
+          "value": 1.045,
+          "cer": 19.941,
+          "error": null
+        }
+      ],
+      "chosen": 1.08
+    }
+  },
+  "phase1_changed": {
+    "decode.w_seg": 0.55,
+    "segment.max_merge_x_heights": 1.05
+  },
+  "phase1_confirm": {
+    "baseline": {
+      "cer": 20.978,
+      "line_matched_cer": 23.226,
+      "wer": 41.348,
+      "recall": 73.555,
+      "precision": 68.119,
+      "f1": 70.733,
+      "wall": 1255.795846939087,
+      "error": null
+    },
+    "tentative": {
+      "cer": 19.631,
+      "line_matched_cer": 21.916,
+      "wer": 34.303,
+      "recall": 81.033,
+      "precision": 75.044,
+      "f1": 77.923,
+      "wall": 1000.1247429847717,
+      "error": null
+    },
+    "accepted": true
+  },
+  "A_vector": {
+    "decode.w_lex": 0.6,
+    "decode.w_seg": 0.55,
+    "decode.lex_bonus_tier1": 1.0,
+    "decode.lex_bonus_tier2": 0.85,
+    "decode.lex_bonus_tier3": 0.7,
+    "decode.lex_bonus_tier4": 0.55,
+    "decode.lex_bonus_tier5": 0.4,
+    "decode.seg_ideal_aspect": 0.45,
+    "decode.seg_aspect_tolerance": 0.35,
+    "decode.seg_merge_penalty": 0.7,
+    "decode.seg_split_penalty": 0.75,
+    "decode.char_bonus_slanted": 3.44,
+    "lines.descender_fraction": 0.17,
+    "lines.descender_reach_fraction": 0.55,
+    "lines.inherit_x_height_below": 0.5,
+    "lines.baseline_split_sep": 0.6,
+    "lines.baseline_split_support": 0.25,
+    "lines.thin_debris_heights": 3.4288,
+    "words.pitch_min_glyphs": 6,
+    "words.pitch_agreement": 0.8,
+    "words.pitch_tolerance": 0.22,
+    "segment.max_merge_x_heights": 1.05,
+    "segment.valley_fraction": 0.65,
+    "segment.min_piece_x_heights": 0.28,
+    "layout.slant_min_deg": 6,
+    "layout.slant_margin": 1.08,
+    "match.top_k": 3,
+    "decode.beam_width": 14
+  },
+  "phase2": {
+    "A_final": {
+      "cer": 21.418,
+      "line_matched_cer": 24.119,
+      "wer": 35.514,
+      "recall": 80.213,
+      "precision": 75.35,
+      "f1": 77.705,
+      "wall": 3173.856319665909,
+      "error": null
+    },
+    "B_tier2_reverted": {
+      "cer": 21.441,
+      "line_matched_cer": 24.029,
+      "wer": 35.336,
+      "recall": 80.166,
+      "precision": 75.471,
+      "f1": 77.747,
+      "wall": 3014.493193626404,
+      "error": null
+    },
+    "C_wlex_035": {
+      "cer": 21.45,
+      "line_matched_cer": 24.138,
+      "wer": 35.627,
+      "recall": 80.086,
+      "precision": 75.23,
+      "f1": 77.582,
+      "wall": 3690.8937413692474,
+      "error": null
+    },
+    "D_control": {
+      "cer": 23.809,
+      "line_matched_cer": 26.227,
+      "wer": 45.94,
+      "recall": 69.593,
+      "precision": 64.769,
+      "f1": 67.094,
+      "wall": 4092.257027864456,
+      "error": null
+    }
+  }
+}

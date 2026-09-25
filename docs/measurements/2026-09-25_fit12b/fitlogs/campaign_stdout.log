@@ -1,0 +1,135 @@
+[inner:decode.w_lex=0.35] CER 22.616%  LM 21.717  F1 68.505%  (194s, stride 35)
+[inner:decode.w_lex=0.6] CER 22.616%  LM 21.717  F1 68.523%  (189s, stride 35)
+[inner:decode.w_lex=0.9] CER 22.616%  LM 21.717  F1 68.505%  (190s, stride 35)
+[inner:decode.w_seg=0.12] CER 22.637%  LM 21.634  F1 68.432%  (190s, stride 35)
+[inner:decode.w_seg=0.25] CER 22.616%  LM 21.717  F1 68.505%  (192s, stride 35)
+[inner:decode.w_seg=0.4] CER 22.581%  LM 21.796  F1 68.667%  (190s, stride 35)
+[inner:__lex_bonus_scale__=0.7] CER 22.601%  LM 21.82  F1 68.649%  (190s, stride 35)
+[inner:__lex_bonus_scale__=1.0] CER 22.581%  LM 21.796  F1 68.667%  (189s, stride 35)
+[inner:__lex_bonus_scale__=1.3] CER 22.593%  LM 21.784  F1 68.649%  (190s, stride 35)
+[inner:decode.seg_ideal_aspect=0.45] CER 22.542%  LM 21.717  F1 68.811%  (189s, stride 35)
+[inner:decode.seg_ideal_aspect=0.6] CER 22.581%  LM 21.796  F1 68.667%  (189s, stride 35)
+[inner:decode.seg_ideal_aspect=0.75] CER 22.610%  LM 21.837  F1 68.523%  (189s, stride 35)
+[inner:decode.seg_aspect_tolerance=0.35] CER 22.401%  LM 21.377  F1 69.333%  (188s, stride 35)
+[inner:decode.seg_aspect_tolerance=0.55] CER 22.542%  LM 21.717  F1 68.811%  (191s, stride 35)
+[inner:decode.seg_aspect_tolerance=0.75] CER 22.604%  LM 21.823  F1 68.523%  (188s, stride 35)
+[inner:decode.seg_merge_penalty=0.3] CER 22.454%  LM 21.478  F1 69.171%  (188s, stride 35)
+[inner:decode.seg_merge_penalty=0.5] CER 22.401%  LM 21.377  F1 69.333%  (191s, stride 35)
+[inner:decode.seg_merge_penalty=0.7] CER 22.318%  LM 21.259  F1 69.712%  (188s, stride 35)
+[inner:decode.seg_split_penalty=0.5] CER 22.318%  LM 21.259  F1 69.730%  (189s, stride 35)
+[inner:decode.seg_split_penalty=0.75] CER 22.318%  LM 21.259  F1 69.712%  (194s, stride 35)
+[inner:decode.seg_split_penalty=1.0] CER 22.368%  LM 21.315  F1 69.495%  (190s, stride 35)
+[inner:decode.char_bonus_slanted=2.8] CER 22.324%  LM 21.265  F1 69.730%  (192s, stride 35)
+[inner:decode.char_bonus_slanted=3.44] CER 22.318%  LM 21.259  F1 69.730%  (190s, stride 35)
+[inner:decode.char_bonus_slanted=4.2] CER 22.318%  LM 21.259  F1 69.730%  (190s, stride 35)
+[confirm:tier1_decode:baseline] CER 22.091%  LM 23.939  F1 67.579%  (1326s, stride 6)
+[confirm:tier1_decode:tentative] CER 21.823%  LM 23.75  F1 68.411%  (1449s, stride 6)
+=== tier tier1_decode: accepted=True :: tentative CER 21.823 beats baseline 22.091 on 6-stride confirm ===
+[inner:deskew.min_corrected_slope=0.0007] CER 22.318%  LM 21.259  F1 69.730%  (204s, stride 35)
+[inner:deskew.min_corrected_slope=0.0015] CER 22.318%  LM 21.259  F1 69.730%  (259s, stride 35)
+[inner:deskew.min_corrected_slope=0.003] CER 22.318%  LM 21.259  F1 69.730%  (282s, stride 35)
+[inner:lines.min_area=1] CER 22.315%  LM 21.256  F1 69.723%  (333s, stride 35)
+[inner:lines.min_area=2] CER 22.318%  LM 21.259  F1 69.730%  (367s, stride 35)
+[inner:lines.min_area=3] CER 22.318%  LM 21.259  F1 69.730%  (288s, stride 35)
+[inner:lines.furniture_fraction=0.13] CER 22.321%  LM 21.192  F1 69.661%  (302s, stride 35)
+[inner:lines.furniture_fraction=0.2] CER 22.315%  LM 21.256  F1 69.723%  (307s, stride 35)
+[inner:lines.furniture_fraction=0.3] CER 22.315%  LM 21.256  F1 69.723%  (319s, stride 35)
+[inner:lines.mark_height_fraction=0.25] CER 22.315%  LM 21.256  F1 69.723%  (439s, stride 35)
+[inner:lines.mark_height_fraction=0.35] CER 22.315%  LM 21.256  F1 69.723%  (370s, stride 35)
+[inner:lines.mark_height_fraction=0.45] CER 22.309%  LM 21.147  F1 69.700%  (310s, stride 35)
+[inner:lines.mark_reach_fraction=0.45] CER 22.309%  LM 21.147  F1 69.700%  (488s, stride 35)
+[inner:lines.mark_reach_fraction=0.6] CER 22.309%  LM 21.147  F1 69.700%  (346s, stride 35)
+=== RESUME Thu Sep 24 13:26:17 EDT 2026 ===
+[inner:lines.descender_fraction=0.08] CER 22.365%  LM 21.31  F1 69.688%  (284s, stride 35)
+[inner:lines.descender_fraction=0.12] CER 22.348%  LM 21.289  F1 69.676%  (294s, stride 35)
+[inner:lines.descender_fraction=0.17] CER 22.315%  LM 21.256  F1 69.741%  (281s, stride 35)
+[inner:lines.descender_reach_fraction=0.28] CER 22.315%  LM 21.256  F1 69.741%  (258s, stride 35)
+[inner:lines.descender_reach_fraction=0.4] CER 22.315%  LM 21.256  F1 69.741%  (256s, stride 35)
+[inner:lines.descender_reach_fraction=0.55] CER 22.129%  LM 21.251  F1 70.080%  (279s, stride 35)
+[inner:lines.inherit_x_height_below=0.4] CER 22.129%  LM 21.248  F1 70.087%  (276s, stride 35)
+=== RESUME2 Thu Sep 24 15:07:10 EDT 2026 ===
+[inner:lines.inherit_x_height_below=0.4] CER 22.129%  LM 21.248  F1 70.087%  (276s, stride 35)
+[inner:lines.inherit_x_height_below=0.5] CER 22.129%  LM 21.251  F1 70.080%  (260s, stride 35)
+[inner:lines.inherit_x_height_below=0.62] CER 22.129%  LM 21.251  F1 70.080%  (261s, stride 35)
+[inner:lines.baseline_split_sep=0.45] CER 22.301%  LM 21.13  F1 69.604%  (264s, stride 35)
+[inner:lines.baseline_split_sep=0.6] CER 22.129%  LM 21.251  F1 70.080%  (261s, stride 35)
+[inner:lines.baseline_split_sep=0.78] CER 22.121%  LM 21.286  F1 70.112%  (262s, stride 35)
+[inner:lines.baseline_split_support=0.17] CER 22.112%  LM 21.327  F1 70.112%  (258s, stride 35)
+[inner:lines.baseline_split_support=0.25] CER 22.129%  LM 21.251  F1 70.080%  (263s, stride 35)
+[inner:lines.baseline_split_support=0.35] CER 22.132%  LM 21.189  F1 70.080%  (254s, stride 35)
+[inner:lines.thin_debris_heights=2.8] CER 22.129%  LM 21.251  F1 70.080%  (255s, stride 35)
+=== RESUME3 Thu Sep 24 17:31:41 EDT 2026 ===
+=== RESUME4 (detached) 09/24/2026 22:09:40 ===
+[inner:lines.thin_debris_heights=2.8] CER 22.129%  LM 21.251  F1 70.080%  (260s, stride 35)
+[inner:lines.thin_debris_heights=3.4288] CER 22.129%  LM 21.251  F1 70.080%  (260s, stride 35)
+[inner:lines.thin_debris_heights=4.2] CER 22.129%  LM 21.251  F1 70.080%  (255s, stride 35)
+[confirm:tier2_lines:baseline] CER 21.802%  LM 23.724  F1 68.467%  (1415s, stride 6)
+[confirm:tier2_lines:tentative] CER 21.740%  LM 23.846  F1 68.338%  (1410s, stride 6)
+=== tier tier2_lines: accepted=True base=21.802 tent=21.74 ===
+[inner:words.pitch_min_glyphs=4] CER 22.109%  LM 21.233  F1 70.173%  (281s, stride 35)
+[inner:words.pitch_min_glyphs=6] CER 22.129%  LM 21.251  F1 70.080%  (277s, stride 35)
+[inner:words.pitch_min_glyphs=9] CER 22.180%  LM 21.487  F1 69.960%  (280s, stride 35)
+[inner:words.pitch_agreement=0.65] CER 22.180%  LM 21.218  F1 69.831%  (279s, stride 35)
+[inner:words.pitch_agreement=0.8] CER 22.129%  LM 21.251  F1 70.080%  (269s, stride 35)
+[inner:words.pitch_agreement=0.92] CER 22.144%  LM 21.245  F1 70.159%  (278s, stride 35)
+[inner:words.pitch_tolerance=0.1] CER 22.171%  LM 21.478  F1 69.995%  (272s, stride 35)
+[inner:words.pitch_tolerance=0.15] CER 22.129%  LM 21.251  F1 70.080%  (275s, stride 35)
+[inner:words.pitch_tolerance=0.22] CER 22.047%  LM 20.793  F1 70.925%  (235s, stride 35)
+[inner:segment.max_merge_x_heights=1.5] CER 21.590%  LM 20.18  F1 73.403%  (223s, stride 35)
+[inner:segment.max_merge_x_heights=1.8] CER 22.047%  LM 20.793  F1 70.925%  (248s, stride 35)
+[inner:segment.max_merge_x_heights=2.15] CER 22.103%  LM 20.752  F1 70.688%  (242s, stride 35)
+[inner:segment.valley_fraction=0.35] CER 22.144%  LM 20.684  F1 71.927%  (174s, stride 35)
+[inner:segment.valley_fraction=0.5] CER 21.590%  LM 20.18  F1 73.403%  (196s, stride 35)
+[inner:segment.valley_fraction=0.65] CER 21.463%  LM 20.044  F1 73.677%  (222s, stride 35)
+[inner:segment.min_piece_x_heights=0.12] CER 21.808%  LM 20.339  F1 72.401%  (230s, stride 35)
+[inner:segment.min_piece_x_heights=0.2] CER 21.463%  LM 20.044  F1 73.677%  (214s, stride 35)
+[inner:segment.min_piece_x_heights=0.28] CER 21.395%  LM 19.959  F1 73.986%  (201s, stride 35)
+[confirm:tier3_words_segment:baseline] CER 21.740%  LM 23.846  F1 68.338%  (1290s, stride 6)
+[confirm:tier3_words_segment:tentative] CER 21.099%  LM 23.314  F1 70.686%  (1210s, stride 6)
+=== tier tier3_words_segment: accepted=True :: tentative CER 21.099 beats baseline 21.740 on 6-stride confirm ===
+[inner:layout.slant_min_deg=4] CER 21.395%  LM 19.959  F1 73.986%  (210s, stride 35)
+[inner:layout.slant_min_deg=6] CER 21.395%  LM 19.959  F1 73.986%  (207s, stride 35)
+[inner:layout.slant_min_deg=8.5] CER 21.395%  LM 19.959  F1 73.986%  (211s, stride 35)
+[inner:layout.slant_margin=1.08] CER 21.371%  LM 19.935  F1 73.932%  (237s, stride 35)
+[inner:layout.slant_margin=1.15] CER 21.395%  LM 19.959  F1 73.986%  (306s, stride 35)
+[inner:layout.slant_margin=1.3] CER 21.386%  LM 19.95  F1 73.968%  (295s, stride 35)
+[confirm:tier4_slant:baseline] CER 21.099%  LM 23.314  F1 70.686%  (1461s, stride 6)
+[confirm:tier4_slant:tentative] CER 21.010%  LM 23.211  F1 70.797%  (1551s, stride 6)
+=== tier tier4_slant: accepted=True :: tentative CER 21.010 beats baseline 21.099 on 6-stride confirm ===
+[cost:match.top_k=3] CER 20.963%  LM 23.209  F1 70.786%  (1549s, stride 6)
+[cost:match.top_k=5] CER 21.010%  LM 23.211  F1 70.797%  (1538s, stride 6)
+[cost:match.top_k=8] CER 21.170%  LM 23.44  F1 70.558%  (1554s, stride 6)
+[cost:decode.beam_width=14] CER 20.966%  LM 23.211  F1 70.782%  (1524s, stride 6)
+[cost:decode.beam_width=24] CER 20.963%  LM 23.209  F1 70.786%  (1339s, stride 6)
+[cost:decode.beam_width=36] CER 20.963%  LM 23.209  F1 70.786%  (1176s, stride 6)
+=== CAMPAIGN DONE ===
+{
+  "decode.w_lex": 0.6,
+  "decode.w_seg": 0.4,
+  "decode.lex_bonus_tier1": 1.0,
+  "decode.lex_bonus_tier2": 0.85,
+  "decode.lex_bonus_tier3": 0.7,
+  "decode.lex_bonus_tier4": 0.55,
+  "decode.lex_bonus_tier5": 0.4,
+  "decode.seg_ideal_aspect": 0.45,
+  "decode.seg_aspect_tolerance": 0.35,
+  "decode.seg_merge_penalty": 0.7,
+  "decode.seg_split_penalty": 0.5,
+  "decode.char_bonus_slanted": 3.44,
+  "lines.descender_fraction": 0.17,
+  "lines.descender_reach_fraction": 0.55,
+  "lines.inherit_x_height_below": 0.5,
+  "lines.baseline_split_sep": 0.6,
+  "lines.baseline_split_support": 0.25,
+  "lines.thin_debris_heights": 3.4288,
+  "words.pitch_min_glyphs": 6,
+  "words.pitch_agreement": 0.8,
+  "words.pitch_tolerance": 0.22,
+  "segment.max_merge_x_heights": 1.5,
+  "segment.valley_fraction": 0.65,
+  "segment.min_piece_x_heights": 0.28,
+  "layout.slant_min_deg": 6,
+  "layout.slant_margin": 1.08,
+  "match.top_k": 3,
+  "decode.beam_width": 14
+}
