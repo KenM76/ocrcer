@@ -3,7 +3,8 @@
 //! ```text
 //! ident generate <out-dir> <sizes-csv> [--local]
 //! ident score <model.ocrw> <pages-dir> [--set <name>=<value>]...
-//!              [--threshold N] [--lexicon-threshold N] [--offenders-out <path>]
+//!              [--threshold N] [--lexicon-threshold N]
+//!              [--confident-threshold N] [--offenders-out <path>]
 //! ```
 //!
 //! `CLAUDE.md` rule 6 and `PLAN.md` chunk 8 require a test that fails loudly
@@ -25,23 +26,29 @@
 //! `score` runs every page twice — once at the model's own `decode.w_lex`
 //! (after any `--set` overrides), once with `decode.w_lex` forced to `0` and
 //! every other parameter unchanged — to separate REWRITTEN cases the lexicon
-//! bonus actually caused from ones that only coincidentally read back as a
+//! bonus actually changed from ones that only coincidentally read back as a
 //! dictionary word (`src/ident.rs`'s "Causation, not just coincidence"
 //! section explains why the plain output check undercounted this).
 //!
-//! Two independent, hard gates, both default 0 (rule 6 says "never"; a
-//! nonzero default would itself be setting the gate to whatever passes,
-//! which is the one thing this binary must not do):
+//! Three independent gates (rule 6 says "never"; a nonzero default on the
+//! hard gate would itself be setting the gate to whatever passes, which is
+//! the one thing this binary must not do):
 //!
-//! - `--threshold` — REWRITTEN count (a different identifier, or a lexicon
-//!   word, whether or not the lexicon caused it). A ratchet: lower it as
-//!   fixes land, never raise it to make a build pass.
-//! - `--lexicon-threshold` — LEXICON-CAUSED count (`ocrcer_bench::ident::
-//!   Report::lexicon_caused`). Measured on the fitted config at introduction
-//!   and left at 0; not required to pass yet (`docs/measurements/
-//!   2026-09-25_ident_corpus.md`).
+//! - `--threshold` (default 0, ratchet) — REWRITTEN count (a different
+//!   identifier, or a lexicon word). Lower it as fixes land, never raise it
+//!   to make a build pass.
+//! - `--lexicon-threshold` (default 0, hard) — LEXICON-HARM count
+//!   (`ocrcer_bench::ident::LexCase::harm`), the architect's narrower
+//!   condition (`ARCHITECTURE.md` §11, 2026-09-25, "Identifier gates"):
+//!   among LEXICON-CHANGED cases, the ones where the lexicon-off run would
+//!   have been correct or the lexicon-on word is itself a lexicon entry.
+//!   The broader LEXICON-CHANGED count is always printed but never gated —
+//!   see `src/ident.rs`'s "LEXICON-CHANGED vs. LEXICON-HARM" section.
+//! - `--confident-threshold` (unset by default, report-only) — REWRITTEN
+//!   count at word confidence >= 0.9, the population rule 5 calls the harm:
+//!   a wrong identifier reported with a reviewer-trusted score.
 //!
-//! `--offenders-out <path>` writes the full REWRITTEN and LEXICON-CAUSED
+//! `--offenders-out <path>` writes the full REWRITTEN and LEXICON-CHANGED
 //! case lists to `path` (one text file; overwritten each run) instead of
 //! stdout, so a report can cite a regenerable file under the gitignored
 //! `bench/ident/` rather than pasting thousands of lines into committed
@@ -66,7 +73,8 @@ fn usage(why: &str) -> ExitCode {
     eprintln!(
         "usage: ident generate <out-dir> <sizes-csv> [--local]
        ident score <model.ocrw> <pages-dir> [--set <name>=<value>]...
-                    [--threshold N] [--lexicon-threshold N] [--offenders-out <path>]"
+                    [--threshold N] [--lexicon-threshold N]
+                    [--confident-threshold N] [--offenders-out <path>]"
     );
     ExitCode::FAILURE
 }
@@ -123,6 +131,7 @@ fn run_score(args: &[String]) -> ExitCode {
     let mut set: Vec<(String, f32)> = Vec::new();
     let mut threshold = 0usize;
     let mut lexicon_threshold = 0usize;
+    let mut confident_threshold: Option<usize> = None;
     let mut offenders_out: Option<String> = None;
     let mut i = 0usize;
     while i < args.len() {
@@ -148,6 +157,13 @@ fn run_score(args: &[String]) -> ExitCode {
                 match args.get(i).and_then(|v| v.parse().ok()) {
                     Some(n) => lexicon_threshold = n,
                     None => return usage("--lexicon-threshold needs a count"),
+                }
+            }
+            "--confident-threshold" => {
+                i += 1;
+                match args.get(i).and_then(|v| v.parse().ok()) {
+                    Some(n) => confident_threshold = Some(n),
+                    None => return usage("--confident-threshold needs a count"),
                 }
             }
             "--offenders-out" => {
@@ -214,7 +230,9 @@ fn run_score(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let ident::Report { tally, offenders, confidence, lexicon_caused } = report;
+    let ident::Report { tally, offenders, confidence, lexicon_changed } = report;
+    let lexicon_harm: Vec<&ident::LexCase> = lexicon_changed.iter().filter(|c| c.harm).collect();
+    let rewritten_hi_conf = confidence.rewritten_at_least(0.9);
 
     println!(
         "identifiers  {} tested: {} exact, {} dropped-or-garbled, {} REWRITTEN \
@@ -255,16 +273,21 @@ fn run_score(args: &[String]) -> ExitCode {
         confidence.median_exact().map_or("n/a".to_string(), |m| format!("{m:.3}")),
     );
 
-    // Lexicon A/B (hard gate, `--lexicon-threshold`, default 0). See
-    // `src/ident.rs`'s `score_dir` doc for the LEXICON-CAUSED definition.
+    // Lexicon A/B. LEXICON-CHANGED is reported, never gated; LEXICON-HARM
+    // (the architect's narrower subset, `ARCHITECTURE.md` §11 2026-09-25
+    // "Identifier gates") is the hard gate, `--lexicon-threshold`, default
+    // 0. See `src/ident.rs`'s "LEXICON-CHANGED vs. LEXICON-HARM" section.
     println!();
     println!(
         "lexicon A/B  re-scored every identifier token at decode.w_lex=0; \
-         {} case(s) are LEXICON-CAUSED (on-run disagrees with off-run AND on-run is wrong)",
-        lexicon_caused.len()
+         {} case(s) are LEXICON-CHANGED (on-run disagrees with off-run AND on-run is wrong), \
+         {} of those are LEXICON-HARM (off-run would have been correct, or the on-run word is \
+         itself a lexicon entry)",
+        lexicon_changed.len(),
+        lexicon_harm.len(),
     );
 
-    let case_text = format_cases(&offenders, &lexicon_caused);
+    let case_text = format_cases(&offenders, &lexicon_changed);
     match &offenders_out {
         Some(path) => {
             if let Err(e) = std::fs::write(path, &case_text) {
@@ -272,9 +295,11 @@ fn run_score(args: &[String]) -> ExitCode {
                 return ExitCode::FAILURE;
             }
             println!(
-                "             {} REWRITTEN offender(s), {} LEXICON-CAUSED case(s) written to {path}",
+                "             {} REWRITTEN offender(s), {} LEXICON-CHANGED case(s) \
+                 ({} LEXICON-HARM) written to {path}",
                 offenders.len(),
-                lexicon_caused.len()
+                lexicon_changed.len(),
+                lexicon_harm.len(),
             );
         }
         None => {
@@ -284,7 +309,8 @@ fn run_score(args: &[String]) -> ExitCode {
 
     println!();
     let rewritten_fail = tally.rewritten() > threshold;
-    let lexicon_fail = lexicon_caused.len() > lexicon_threshold;
+    let lexicon_fail = lexicon_harm.len() > lexicon_threshold;
+    let confident_fail = confident_threshold.is_some_and(|n| rewritten_hi_conf > n);
     println!(
         "{}         REWRITTEN {} {} threshold {threshold}",
         if rewritten_fail { "FAIL" } else { "PASS" },
@@ -292,12 +318,25 @@ fn run_score(args: &[String]) -> ExitCode {
         if rewritten_fail { ">" } else { "<=" },
     );
     println!(
-        "{}         LEXICON-CAUSED {} {} lexicon-threshold {lexicon_threshold}",
+        "{}         LEXICON-HARM {} {} lexicon-threshold {lexicon_threshold}  \
+         (LEXICON-CHANGED {}, report-only, ungated)",
         if lexicon_fail { "FAIL" } else { "PASS" },
-        lexicon_caused.len(),
+        lexicon_harm.len(),
         if lexicon_fail { ">" } else { "<=" },
+        lexicon_changed.len(),
     );
-    if rewritten_fail || lexicon_fail {
+    match confident_threshold {
+        Some(n) => println!(
+            "{}         REWRITTEN@>=0.9 {} {} confident-threshold {n}",
+            if confident_fail { "FAIL" } else { "PASS" },
+            rewritten_hi_conf,
+            if confident_fail { ">" } else { "<=" },
+        ),
+        None => println!(
+            "n/a          REWRITTEN@>=0.9 {rewritten_hi_conf}  (report-only; no --confident-threshold set)"
+        ),
+    }
+    if rewritten_fail || lexicon_fail || confident_fail {
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS
@@ -312,10 +351,11 @@ fn pct(n: usize, total: usize) -> f64 {
     }
 }
 
-/// The REWRITTEN offender list and the LEXICON-CAUSED case list, as text —
+/// The REWRITTEN offender list and the LEXICON-CHANGED case list, as text —
 /// shared by the stdout path and the `--offenders-out` file path so the two
-/// can never drift into different formats.
-fn format_cases(offenders: &[ident::IdentCase], lexicon_caused: &[ident::LexCase]) -> String {
+/// can never drift into different formats. Each LEXICON-CHANGED line is
+/// tagged `[HARM]` or `[benign]` per `LexCase::harm`.
+fn format_cases(offenders: &[ident::IdentCase], lexicon_changed: &[ident::LexCase]) -> String {
     let mut s = String::new();
     if !offenders.is_empty() {
         s.push_str("REWRITTEN offenders (truth -> read, page, line, kind, confidence):\n");
@@ -335,16 +375,17 @@ fn format_cases(offenders: &[ident::IdentCase], lexicon_caused: &[ident::LexCase
             ));
         }
     }
-    if !lexicon_caused.is_empty() {
-        s.push_str("\nLEXICON-CAUSED cases (truth -> on-read | off-read, page, line):\n");
-        for c in lexicon_caused {
+    if !lexicon_changed.is_empty() {
+        s.push_str("\nLEXICON-CHANGED cases (truth -> on-read | off-read, page, line, harm):\n");
+        for c in lexicon_changed {
             s.push_str(&format!(
-                "  {:?} -> {} | {}   {} line {}\n",
+                "  {:?} -> {} | {}   {} line {}   [{}]\n",
                 c.truth_word,
                 c.hyp_on.as_deref().unwrap_or("<none>"),
                 c.hyp_off.as_deref().unwrap_or("<none>"),
                 c.stem,
                 c.line,
+                if c.harm { "HARM" } else { "benign" },
             ));
         }
     }

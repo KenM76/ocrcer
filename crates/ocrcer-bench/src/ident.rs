@@ -45,12 +45,28 @@
 //! pulling a reading toward a dictionary word. It measured something weaker:
 //! the *output* happening to be a lexicon word, which a truncation satisfies
 //! by accident (`"6mm"` read as `"mm"` is a dropped `6`, not the lexicon
-//! winning). [`score_dir`] now also runs every page through a second engine
-//! identical to the first except `decode.w_lex = 0`, and reports every case
-//! where the two runs disagree *and* the lexicon-on run is wrong
-//! (`Report::lexicon_caused`) — see [`score_dir`]'s own doc for why both
-//! conditions are required. `bin/ident.rs` gates on this count with its own
-//! `--lexicon-threshold` (default 0), separate from `--threshold`.
+//! winning). [`score_dir`] also runs every page through a second engine
+//! identical to the first except `decode.w_lex = 0`, and records every case
+//! where the two runs disagree on an identifier-shaped token *and* the
+//! lexicon-on run is wrong (`Report::lexicon_changed`) — see [`score_dir`]'s
+//! own doc for why both conditions are required.
+//!
+//! # LEXICON-CHANGED vs. LEXICON-HARM (architect ruling, `ARCHITECTURE.md`
+//! §11, 2026-09-25, "Identifier gates")
+//!
+//! `lexicon_changed` alone is still too broad a gate. Its one fitted-model
+//! member turned a dropped token into `"CHAMPER"` — a different wrong
+//! answer, arguably a more visible one, not the harm rule 6 names. The
+//! architect narrowed the definition: **LEXICON-HARM** is a `lexicon_changed`
+//! case (disagreement, on-run wrong — both already true of every member of
+//! that list) where *additionally* either the lexicon-off run would have
+//! been correct, or the lexicon-on word is itself a lexicon entry. That is
+//! the shape rule 6 actually describes: the lexicon bonus either cost a
+//! correct read, or produced a dictionary word standing in for an
+//! identifier. `LexCase::harm` carries this bit per case;
+//! `Report::lexicon_changed` stays as the full, reported-but-ungated list.
+//! `bin/ident.rs`'s `--lexicon-threshold` (default 0) now gates the harm
+//! subset, not the full list.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -247,8 +263,9 @@ pub struct IdentCase {
 
 /// One identifier-shaped ground-truth word whose reading changed between two
 /// runs of the same engine that differ only in `decode.w_lex`, where the
-/// lexicon-on run's answer is not the truth. See [`lexicon_ab`]'s doc for
-/// why this is the causal test and `Outcome::RewrittenLexicon` above is not.
+/// lexicon-on run's answer is not the truth — this is LEXICON-CHANGED. See
+/// [`score_dir`]'s doc for why this is the causal test and
+/// `Outcome::RewrittenLexicon` above is not.
 #[derive(Clone, Debug)]
 pub struct LexCase {
     pub stem: String,
@@ -256,6 +273,12 @@ pub struct LexCase {
     pub truth_word: String,
     pub hyp_on: Option<String>,
     pub hyp_off: Option<String>,
+    /// LEXICON-HARM (module doc, "LEXICON-CHANGED vs. LEXICON-HARM"): true
+    /// when the lexicon-off run would have been correct, or the lexicon-on
+    /// word is itself a lexicon entry. Every `LexCase` already satisfies
+    /// "disagree" and "on-run wrong" by construction (`score_dir`); `harm`
+    /// is the narrower third condition the architect added.
+    pub harm: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -323,13 +346,15 @@ pub struct Report {
     pub tally: IdentTally,
     pub offenders: Vec<IdentCase>,
     pub confidence: ConfidenceSplit,
-    /// Every LEXICON-CAUSED case found by the `decode.w_lex` A/B — see
-    /// [`score_dir`]'s doc for the definition. Not the same population as
-    /// `offenders`' `RewrittenLexicon` cases and not expected to overlap
-    /// much: one measures coincidence in the output (does the hypothesis
-    /// happen to be a lexicon word), the other measures cause (did removing
-    /// the lexicon term change the answer).
-    pub lexicon_caused: Vec<LexCase>,
+    /// Every LEXICON-CHANGED case found by the `decode.w_lex` A/B — see the
+    /// module doc's "LEXICON-CHANGED vs. LEXICON-HARM" section for the two
+    /// definitions and `score_dir`'s doc for the mechanics. Reported,
+    /// ungated. Not the same population as `offenders`' `RewrittenLexicon`
+    /// cases and not expected to overlap much: one measures coincidence in
+    /// the output (does the hypothesis happen to be a lexicon word), the
+    /// other measures cause (did removing the lexicon term change the
+    /// answer). Filter on `LexCase::harm` for the gated LEXICON-HARM subset.
+    pub lexicon_changed: Vec<LexCase>,
 }
 
 /// Aligns two word sequences by Levenshtein edit distance (substitution
@@ -437,12 +462,15 @@ fn banded_words(lines: &[ocrcer_core::pipeline::Line]) -> Vec<Vec<&Word>> {
 /// which the caller must construct identically to `engine_on` except for
 /// `decode.w_lex = 0` — a caller that swept any other knob between the two
 /// would be measuring that knob, not the lexicon, and every [`LexCase`]
-/// would misattribute it. A case is **LEXICON-CAUSED**
-/// (`Report::lexicon_caused`) when the two runs disagree on this word *and*
+/// would misattribute it. A case is **LEXICON-CHANGED**
+/// (`Report::lexicon_changed`) when the two runs disagree on this word *and*
 /// `engine_on`'s answer is not the truth: the lexicon term moved the
 /// decoder's choice, and that move did not land on the truth. Both
 /// conditions matter — a disagreement that still reads correctly is the
-/// lexicon bonus doing its intended job, not a rule-6 harm.
+/// lexicon bonus doing its intended job, not a rule-6 harm. Each
+/// LEXICON-CHANGED case additionally carries `LexCase::harm` — the narrower,
+/// gated **LEXICON-HARM** condition — see the module doc's "LEXICON-CHANGED
+/// vs. LEXICON-HARM" section.
 ///
 /// `dir` must hold pages [`generate`] wrote.
 pub fn score_dir(engine_on: &Engine, engine_off: &Engine, dir: &str) -> Result<Report, String> {
@@ -455,7 +483,7 @@ pub fn score_dir(engine_on: &Engine, engine_off: &Engine, dir: &str) -> Result<R
     let mut tally = IdentTally::default();
     let mut offenders = Vec::new();
     let mut confidence = ConfidenceSplit::default();
-    let mut lexicon_caused = Vec::new();
+    let mut lexicon_changed = Vec::new();
 
     for pgm in &pgms {
         let stem = pgm.file_stem().unwrap_or_default().to_string_lossy().to_string();
@@ -514,19 +542,29 @@ pub fn score_dir(engine_on: &Engine, engine_off: &Engine, dir: &str) -> Result<R
 
                 let hyp_off = align_off[wi].map(|hi| texts_off[hi]);
                 if hyp_on != hyp_off && hyp_on != Some(*tw) {
-                    lexicon_caused.push(LexCase {
+                    // LEXICON-HARM's third condition (module doc,
+                    // "LEXICON-CHANGED vs. LEXICON-HARM"): the two already
+                    // above — disagree, on-run wrong — hold for every
+                    // member of `lexicon_changed` by construction; `harm`
+                    // adds "off-run would have been correct" or "the
+                    // on-run word is itself a lexicon entry".
+                    let off_correct = hyp_off == Some(*tw);
+                    let on_is_lexicon_word =
+                        hyp_on.is_some_and(|h| is_lexicon_word(h, model, &char_to_class));
+                    lexicon_changed.push(LexCase {
                         stem: stem.clone(),
                         line: li,
                         truth_word: (*tw).to_string(),
                         hyp_on: hyp_on.map(str::to_string),
                         hyp_off: hyp_off.map(str::to_string),
+                        harm: off_correct || on_is_lexicon_word,
                     });
                 }
             }
         }
     }
 
-    Ok(Report { tally, offenders, confidence, lexicon_caused })
+    Ok(Report { tally, offenders, confidence, lexicon_changed })
 }
 
 #[cfg(test)]
@@ -599,25 +637,53 @@ mod tests {
         assert_eq!(rows[1].len(), 1); // "NOTE"
     }
 
-    /// The conjunction in [`score_dir`]'s LEXICON-CAUSED definition: a
+    /// The conjunction in [`score_dir`]'s LEXICON-CHANGED definition: a
     /// disagreement between the two runs is not enough on its own — the
     /// lexicon-on run must also be wrong, or the lexicon did its intended
-    /// job rather than causing a rule-6 harm.
+    /// job rather than merely changing the answer.
     #[test]
-    fn lexicon_caused_requires_both_disagreement_and_a_wrong_on_answer() {
+    fn lexicon_changed_requires_both_disagreement_and_a_wrong_on_answer() {
         let truth = "M8x1.25";
-        // Disagreement, on-answer correct: not LEXICON-CAUSED.
+        // Disagreement, on-answer correct: not LEXICON-CHANGED.
         let hyp_on: Option<&str> = Some("M8x1.25");
         let hyp_off: Option<&str> = Some("M8xI.25");
         assert!(!(hyp_on != hyp_off && hyp_on != Some(truth)));
-        // Disagreement, on-answer wrong: LEXICON-CAUSED.
+        // Disagreement, on-answer wrong: LEXICON-CHANGED.
         let hyp_on: Option<&str> = Some("M8xI.25");
         let hyp_off: Option<&str> = Some("M8x1.25");
         assert!(hyp_on != hyp_off && hyp_on != Some(truth));
-        // No disagreement (lexicon changed nothing here): not LEXICON-CAUSED
-        // even though the on-answer is wrong.
+        // No disagreement (lexicon changed nothing here): not
+        // LEXICON-CHANGED even though the on-answer is wrong.
         let hyp_on: Option<&str> = Some("M8xI.25");
         let hyp_off: Option<&str> = Some("M8xI.25");
         assert!(!(hyp_on != hyp_off && hyp_on != Some(truth)));
+    }
+
+    /// The architect's narrower LEXICON-HARM condition (module doc,
+    /// "LEXICON-CHANGED vs. LEXICON-HARM", `ARCHITECTURE.md` §11
+    /// 2026-09-25): among LEXICON-CHANGED cases (disagree, on-run wrong —
+    /// already established by the test above), `harm` requires the off-run
+    /// would have been correct, or the on-run word is itself a lexicon
+    /// entry. The real fitted-model case that prompted the narrowing —
+    /// `"2X45"` dropped on, read back as `"CHAMPER"` off — satisfies
+    /// neither: `off_correct` is false (`"CHAMPER"` != `"2X45"`) and there
+    /// is no on-run word to be a lexicon entry (`on_idx` was `None`).
+    #[test]
+    fn lexicon_harm_requires_off_correct_or_on_is_lexicon_word() {
+        // Neither condition: LEXICON-CHANGED but not LEXICON-HARM. Mirrors
+        // the real "2X45" -> <none> | "CHAMPER" case.
+        let off_correct = false;
+        let on_is_lexicon_word = false;
+        assert!(!(off_correct || on_is_lexicon_word));
+        // Off-run would have been correct: harm, even if the on-run word is
+        // not a lexicon entry.
+        let off_correct = true;
+        let on_is_lexicon_word = false;
+        assert!(off_correct || on_is_lexicon_word);
+        // On-run word is a lexicon entry: harm, even if the off-run was
+        // also wrong.
+        let off_correct = false;
+        let on_is_lexicon_word = true;
+        assert!(off_correct || on_is_lexicon_word);
     }
 }

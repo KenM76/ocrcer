@@ -3,15 +3,19 @@
 Closes the gap flagged in `2026-09-25_score_12b.md` §4: chunk 8 promised a
 corpus-level "OCR an image, assert the exact identifier string" harness, and
 only two unit tests existed (shape predicate, "lexicon holds nothing the gate
-would suppress"). This is that harness's first run, updated after architect
-review to test lexicon *causation* rather than coincidence and to report
-confidence.
+would suppress"). This is that harness, updated twice after architect
+review: first to test lexicon *causation* rather than coincidence and report
+confidence, then to narrow "causation" to **LEXICON-HARM**
+(`ARCHITECTURE.md` §11, 2026-09-25, "Identifier gates") after the one fitted
+causal case turned out to be a drop reading back as a different wrong word,
+not the rule-6 harm.
 
 Everything below is **measured**, from a real end-to-end pipeline run
 (`Engine::recognize_lines` — real binarization/segmentation/decode, not the
 oracle reader `pages::read_with_bank` uses elsewhere). Nothing here is fitted
-or authored; the corpus content and the threshold proposal are **authored by
-me** for this report and are explicitly not yet a gate.
+or authored; the corpus content is **authored by me**. The gates themselves
+are the architect's ruling, not a proposal from this report (see "Gates"
+below).
 
 Build under test: `model/out/ocrcer.ocrw`, `build_id d2997ef3` (same build as
 `score_12b.md`; not rebuilt this round).
@@ -25,14 +29,14 @@ Build under test: `model/out/ocrcer.ocrw`, `build_id d2997ef3` (same build as
   `ocrcer_core::params::identifier_shape` /
   `ocrcer_core::decode::lexicon::lookup` directly, no reimplementation.
   `score_dir` runs every page through **two** engines — configured, and an
-  identical one with `decode.w_lex` forced to `0` — to test whether the
-  lexicon term actually *caused* a wrong answer, not just whether the wrong
-  answer happened to be a dictionary word.
+  identical one with `decode.w_lex` forced to `0` — and tags every
+  disagreement `LexCase::harm` per the architect's LEXICON-HARM definition.
 - `crates/ocrcer-bench/src/bin/ident.rs` — `ident generate <dir> <sizes>`,
   `ident score <model> <dir> [--set k=v]... [--threshold N]
-  [--lexicon-threshold N] [--offenders-out <path>]`. Two independent hard
-  gates, both default 0: REWRITTEN count and LEXICON-CAUSED count.
-  `--offenders-out` writes the case lists to a file instead of stdout.
+  [--lexicon-threshold N] [--confident-threshold N] [--offenders-out
+  <path>]`. Three gates: REWRITTEN count (ratchet, default 0), LEXICON-HARM
+  count (hard, default 0), REWRITTEN-at-confidence->=0.9 count
+  (report-only unless `--confident-threshold` is set).
 - `bench/ident/` — generated corpus + regenerated offender-list files,
   gitignored; `offenders_{fitted,control}.txt` are written by `ident score
   --offenders-out`, not hand-maintained (regenerate with the commands below).
@@ -40,8 +44,7 @@ Build under test: `model/out/ocrcer.ocrw`, `build_id d2997ef3` (same build as
 Corpus: 53 licence-cleared faces x 5 sizes (14-40 px/em) x 7 content blocks =
 1855 pages, **6360 identifier-shaped tokens**, identical between fitted and
 control configs. Deliberately identifier-dense — far denser than a real
-drawing/invoice page, to exercise the predicate rather than estimate its
-real-corpus frequency; read the counts as "how the engine handles a lot of
+drawing/invoice page — read the counts as "how the engine handles a lot of
 identifier-shaped text," not a share of pdfcer's corpus. Known predicate
 limitation, not a harness gap: `identifier_shape` requires `letters > 0`, so
 a purely-numeric code is never identifier-shaped under it — not exercised
@@ -54,84 +57,67 @@ here.
 | **Fitted** (master defaults) | 6360 | 3912 (61.509%) | 1177 (18.506%) | **1271** | 19.984% |
 | **Control** (pre-fold 11-param `--set`) | 6360 | 3684 (57.925%) | 1207 (18.978%) | **1469** | 23.097% |
 
-REWRITTEN split by kind (descriptive — see "Lexicon causation" below for the
-causal test): Fitted 1268 different-identifier / 3 lexicon-word; Control 1459
-/ 10. Fitted beats control on REWRITTEN, same direction as `score_12b.md`'s
-CER/WER win — the fold did not trade identifier safety for prose accuracy.
+REWRITTEN split by kind: Fitted 1268 different-identifier / 3 lexicon-word;
+Control 1459 / 10 — descriptive (coincidental dictionary-word landings
+included), not the causal test below. Fitted beats control here, same
+direction as `score_12b.md`'s CER/WER win.
 
-## Lexicon causation: the old sub-class measured the wrong thing
+## Lexicon A/B: LEXICON-CHANGED vs. LEXICON-HARM
 
-Architect review, 2026-09-25: the "lexicon word" sub-class above counts
-whenever the *output* happens to be a lexicon word, and its 3 (fitted) / 10
-(control) members are almost entirely truncations landing on a short
-dictionary entry by coincidence, not by the lexicon bonus winning —
-`"6mm"` -> `"mm"`, `"R2.1"` -> `"I"`, `"INV-2026-0042"` -> `"WE"` are drops,
-not pulls. That table is descriptive, not evidence of cause.
+Every identifier-shaped token is read twice: at the engine's configured
+`decode.w_lex`, and with it forced to 0. **LEXICON-CHANGED** = the two runs
+disagree and the lexicon-on run is wrong — reported, never gated. Architect
+review, 2026-09-25: LEXICON-CHANGED alone is too broad for rule 6. Its one
+fitted member turned a dropped token into `"CHAMPER"` — a different wrong
+answer, arguably more visible, not the silent-and-confident harm rule 6
+names. **LEXICON-HARM** narrows it to LEXICON-CHANGED cases where,
+additionally, the lexicon-off run would have been correct, or the lexicon-on
+word is itself a lexicon entry — the shape rule 6 actually describes.
 
-**The causal test**: every token is read twice per page — once at the
-engine's configured `decode.w_lex`, once with `decode.w_lex = 0`. A case is
-**LEXICON-CAUSED** when the two runs disagree *and* the lexicon-on run is
-wrong. Now a hard gate (`--lexicon-threshold`, default 0, per rule 6) —
-measured here, not made to pass.
+| Config | LEXICON-CHANGED | LEXICON-HARM |
+|---|---:|---:|
+| Fitted | **1** | **0** |
+| Control | **5** | **3** |
 
-| Config | LEXICON-CAUSED |
-|---|---:|
-| Fitted | **1** |
-| Control | **5** |
-
-Fitted's one case:
+Fitted's one case (not harm — no on-run word, off-run also wrong):
 
 ```
 "2X45" -> <none> | CHAMPER   ident__liberation-serif__bolditalic__dims-ext__28px line 2
 ```
 
-Control's five cases:
+Control's five cases (3 of 5 are harm — the on-run word is itself a lexicon
+entry in each: `"WE"`, `"Am"`, `"I"`):
 
 ```
-"INV-2026-0042" -> WE | /Nv-2020-0042   ident__inter__italic__accounts__14px line 0
-"NG-4471" -> <none> | COOE             ident__noto-sans__italic__accounts__14px line 3
-"A36" -> Am | Aæ                       ident__noto-serif__bold__parts__14px line 1
-"8X" -> æ | <none>                     ident__noto-serif__bolditalic__threads__18px line 2
-"R2.1" -> I | t                        ident__roboto__bolditalic__revisions__14px line 1
+"INV-2026-0042" -> WE | /Nv-2020-0042   [HARM: on-word is a lexicon entry]
+"NG-4471" -> <none> | COOE             [benign: no on-run word]
+"A36" -> Am | Aæ                       [HARM: on-word is a lexicon entry]
+"8X" -> æ | <none>                     [benign: off-run also wrong, "æ" not a lexicon word]
+"R2.1" -> I | t                        [HARM: on-word is a lexicon entry]
 ```
 
-The fitted case: `"2X45"` was dropped entirely at the configured
-`decode.w_lex`; with the term removed it read as `"CHAMPER"` — also wrong,
-but a *different* wrong answer, satisfying "disagree AND on-run wrong." Not
-in the REWRITTEN offender list at all (a drop is `DroppedOrGarbled`, not
-"lexicon word") — direct evidence the two measurements track different
-things, as designed. The control cases are the same shape; none of the five
-is a clean "rewritten into a real dictionary word" case either.
-
-**Reading this**: against a corpus built dense in identifier-shaped text, the
-lexicon bonus caused a small minority of REWRITTEN failures — 1 of 6360
-(fitted), 5 of 6360 (control), against 1271/1469 total REWRITTEN. The
-REWRITTEN problem is overwhelmingly confusion/segmentation, not
-lexicon-suppression; see the failure-mode breakdown below.
+**Reading this**: LEXICON-HARM is 0 on the fitted (shipped) config, and 3 of
+6360 on the pre-fold control — neither is the dominant driver of REWRITTEN
+(1271/1469). REWRITTEN is overwhelmingly confusion/segmentation, per the
+failure-mode breakdown below, not lexicon suppression.
 
 ## Confidence split (rule 5's harm: confident and wrong)
-
-Measured only — no gate reads this yet.
 
 | Config | REWRITTEN n | REWRITTEN median | >=0.5 | >=0.8 | >=0.9 | exact n | exact median |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Fitted | 1271 | 0.576 | 817 (64.3%) | 193 (15.2%) | 67 (5.3%) | 3912 | 0.800 |
 | Control | 1469 | 0.517 | 777 (52.9%) | 146 (9.9%) | 45 (3.1%) | 3684 | 0.773 |
 
-**Reading this**: in both configs REWRITTEN's median confidence sits well
-below exact's — calibration is doing *something*. But fitted still reports
->=0.8 on 193 cases (15.2%) and >=0.9 on 67 (5.3%); control's smaller *share*
-at each threshold (9.9%, 3.1%) is its larger, noisier pool pulling median and
-tail down together, not better calibration — its raw high-confidence counts
-(146, 45) are comparable to fitted's. A reviewer trusting a high-confidence
-identifier read is misled by roughly 1 in 19 of the confident fitted cases.
-That tail, not the median, is rule 5's harm, and it does not vanish on the
-winning config.
+REWRITTEN's median confidence sits well below exact's in both configs, but
+fitted still reports >=0.9 on 67 cases (5.3%). A reviewer trusting a
+high-confidence identifier read is misled by roughly 1 in 19 of the
+confident fitted cases — the tail, not the median, is rule 5's harm, and it
+does not vanish on the winning config. This is the population
+`--confident-threshold` gates.
 
 ## Failure-mode breakdown (fitted config; control is the same shape, slightly worse)
 
-Four clusters (pattern matches against the offender list, not a strict
-partition) cover ~60% of the 1271 fitted REWRITTEN cases (756/1271); the
+Four clusters cover ~60% of the 1271 fitted REWRITTEN cases (756/1271); the
 remainder is a long tail of one-off substitutions. None traces to the
 lexicon — all four are confusion-pair or segmentation problems.
 
@@ -156,35 +142,30 @@ lexicon — all four are confusion-pair or segmentation problems.
   morphological repair before decoder weights, per `PLAN.md`'s ladder.
 - `ocrcer-glyphs` — no cluster points at missing font coverage; all four
   spread across nearly the whole face list, arguing against a font-bank fix.
-- `ocrcer-architect` — sets `--threshold` / `--lexicon-threshold`; see below.
 
-## Proposed threshold — NOT a decision, `ocrcer-architect` sets the gate
+## Gates (architect ruling, `ARCHITECTURE.md` §11, 2026-09-25, "Identifier gates")
 
-Measured baseline: **1271 REWRITTEN / 1 LEXICON-CAUSED (fitted)**, **1469
-REWRITTEN / 5 LEXICON-CAUSED (control)**, of 6360 tokens each. Threshold 0 —
-the binary's conservative default — fails all four numbers today, as
-designed; it has never passed.
+1. **LEXICON-HARM = 0.** Hard, rule 6. Measured fitted: 0. `--lexicon-threshold`
+   default 0 now gates this narrower count, not LEXICON-CHANGED.
+2. **REWRITTEN <= 1271.** A ratchet at the fitted baseline above. Lowering
+   it resets the baseline in `ARCHITECTURE.md` §11; raising it to pass a
+   build is not permitted.
+3. **REWRITTEN at confidence >= 0.9 <= 67.** Also a ratchet at the fitted
+   baseline. `--confident-threshold 67` enforces it; unset, `ident score`
+   only reports the count.
 
-Two honest options for `--threshold` (REWRITTEN): (1) a **baseline-relative
-regression gate now** (e.g. ~1300 fitted / ~1500 control) — catches
-regressions immediately, doesn't block chunk 8 on a pre-existing gap, but
-leaves ~20% of identifier-shaped tokens unprotected relative to rule 6's
-stated bar; or (2) a **rate-based ratchet tied to the failure-mode
-clusters** — hold today's count while linguist/runtime close clusters 1-4,
-ratchet down per closure, more honest about direction, costs more process.
+Chunk 15 is the first chunk these gates apply to. The clusters above route
+to their owners in "Routing"; `0`/`O` also goes to chunk 15, whose probe
+read the digit `0` at about 98%.
 
-`--lexicon-threshold` is different: at 1/6360 (fitted) and 5/6360 (control)
-the lexicon is not currently the main driver of REWRITTEN, so 0 is close to
-already achievable and the architect may choose to hold it there.
+## Regenerating the offender and LEXICON-CHANGED lists
 
-## Regenerating the offender and LEXICON-CAUSED lists
-
-Full per-case lists are not committed (2920 lines in the prior version of
-this file); regenerate them with:
+Full per-case lists are not committed; regenerate with:
 
 ```
 cargo build --release -p ocrcer-bench --bin ident
 target/release/ident score model/out/ocrcer.ocrw bench/ident \
+  --threshold 1271 --lexicon-threshold 0 --confident-threshold 67 \
   --offenders-out bench/ident/offenders_fitted.txt
 
 target/release/ident score model/out/ocrcer.ocrw bench/ident \
@@ -197,4 +178,9 @@ target/release/ident score model/out/ocrcer.ocrw bench/ident \
 ```
 
 Both files land in the gitignored `bench/ident/`. Each run took ~35 minutes
-wall clock (two full engine passes x 1855 pages).
+wall clock (two full engine passes x 1855 pages). This round, control's
+LEXICON-HARM count (3) was computed from the already-generated offender text
+(a lexicon-membership check on the 5 on-run words, not a second full
+rescore) since neither the tested tokens nor the two engines' outputs change
+under the unchanged LEXICON-CHANGED definition — a full `ident score` rerun
+with the command above would reproduce the same 5/3.
