@@ -3556,3 +3556,138 @@ licence. Nothing is downloaded without the operator.
   finfilings-train and the fire rate on the dot arms, before any join is
   built.
 - A licence check of dot-grid faces, for `ocrcer-glyphs`.
+
+## Addendum 2026-09-25: faded ink — text lighter than about grey 175 is not misread but lost, with nothing returned (engine measured on synthetic lines; Leptonica source read; a train count)
+
+Thermal receipts fade, and expense receipts are routine accounting input.
+§3 above recommended "Sauvola with a fallback to Wolf-Jolion-style
+contrast normalization on flagged low-contrast pages" without measuring
+where Sauvola fails. This entry measures it.
+
+**Measured on synthetic lines.**
+- Setup:
+  - the four lines of the dot-matrix entry above, drawn by
+    `tools/faded_lines.py` in Liberation Sans at 10 pt and 300 dpi, 166
+    characters with line breaks;
+  - ink at luma 0 to 215 on white paper (255) and on off-white paper (235,
+    a guess for thermal stock);
+  - `_mix` pages add one black heading line above the faded lines. The
+    heading is not scored;
+  - pre-steps written by the tool: a global stretch, Wolf-Jolion, and a
+    local stretch (the tool's docstring gives each);
+  - `k0.2` and `k0.1` are the raw page read with `binarize.k` set through
+    `Engine::set_param` (the shipped value is 0.34);
+  - read by `Engine::recognize_lines` at master with the master model,
+    through a scratch harness (not committed).
+- The pages are noise-free. Every pre-step and every lower `k` below keeps
+  more faint grey as ink, and what that costs on paper texture and scanner
+  noise is not measured here.
+
+CER in percent on the four faded lines (100 means nothing came back):
+
+| page | engine | k 0.2 | k 0.1 | stretch | wolf | lstretch |
+|---|---|---|---|---|---|---|
+| white, ink 160 | 0.0 | 0.0 | 0.0 | 0.6 | 0.6 | 0.6 |
+| white, ink 170 | 13.9 | 0.0 | 0.0 | 0.6 | 0.6 | 0.6 |
+| white, ink 180 | 100 | 0.0 | 0.0 | 0.6 | 0.6 | 0.6 |
+| white, ink 190 | 100 | 0.0 | 0.6 | 0.6 | 1.8 | 0.6 |
+| white, ink 200 | 100 | 64.5 | 0.0 | 0.6 | 0.6 | 0.6 |
+| white, ink 215 | 100 | 100 | 0.0 | 1.8 | 2.4 | 1.8 |
+| off-white, ink 160 | 76.5 | 0.0 | 0.0 | 0.6 | 0.6 | 0.6 |
+| off-white, ink 170 | 100 | 0.0 | 0.0 | 0.6 | 1.8 | 0.6 |
+| off-white, ink 180 | 100 | 13.9 | 0.6 | 0.6 | 0.6 | 0.6 |
+| off-white, ink 190 | 100 | 100 | 0.0 | 0.6 | 0.6 | 0.6 |
+| off-white, ink 215 | 100 | 100 | 100 | 1.2 | 1.2 | 100 |
+| white + black heading, ink 170 | 13.9 | 0.0 | 0.0 | 13.9 | 100 | 0.6 |
+| white + black heading, ink 180 | 100 | 0.0 | 0.0 | 100 | 100 | 0.6 |
+| white + black heading, ink 200 | 100 | 64.5 | 0.0 | 100 | 100 | 0.6 |
+| off-white + black heading, ink 140 | 0.0 | 0.6 | 0.0 | 0.0 | 45.2 | 0.6 |
+| off-white + black heading, ink 160 | 76.5 | 0.0 | 0.0 | 68.7 | 100 | 0.6 |
+| off-white + black heading, ink 170 | 100 | 0.0 | 0.0 | 100 | 100 | 0.6 |
+| off-white + black heading, ink 215 | 100 | 100 | 100 | 100 | 100 | 100 |
+
+Ink from 0 to 140 reads at 0 to 1.2 under the engine on every page. The
+lower `k` values cost a few characters there: black ink on white reads 2.4
+at both, against 0.6.
+
+**What the table says.**
+- The engine's onset is about luma 175 on white paper, and on off-white
+  paper it is already failing at 160. That matches the Sauvola formula in
+  §3, worked by hand for 20% ink coverage in the window: on white, T is
+  about 178 at ink 175 and about 177 at ink 180; on off-white, about 163
+  at ink 160 and 162 at ink 170.
+- The loss is silent. Above the onset the engine returns zero words: no
+  low-confidence line, nothing for the LLM mode or a reviewer to catch.
+  From the output alone, a faded receipt and a blank page look the same.
+- A global pre-step fixes a uniformly faded page. The global stretch
+  reads every uniform page at 1.8 or better, and Wolf-Jolion at 2.4 or
+  better.
+- Neither survives one black line on the same page.
+  - The heading pins the global minimum at 0, so the stretch does
+    nothing.
+  - Wolf-Jolion takes its global minimum and maximum deviation from the
+    heading and does worse than the engine. Nothing comes back from ink
+    160 on either paper, and ink 140 on off-white already reads 45.2.
+  - §3's proposed fallback is Wolf-Jolion on flagged pages, so it would
+    miss exactly this page.
+- Lowering `k` extends the onset without any new code. `k` 0.2 reads
+  through ink 190 on white and 170 on off-white. `k` 0.1 reads through 215
+  on white and 200 on off-white. That is the cheapest lever
+  and the one whose cost these pages cannot show: a lower `k` lowers the
+  bar for paper texture as well as for faint ink.
+- The local stretch reads every page, mixed or not, at 1.8 or better. The
+  exception is ink 215 on paper 235, a range of 20, which is under the
+  stretch's floor of 24, so it comes back blank.
+  That floor is a guess well below Leptonica's advice (below).
+
+**Read, not run: Leptonica `adaptmap.c`.**
+- `pixContrastNorm` "adaptively attempts to expand the contrast to the
+  full dynamic range in each tile". Tiles are "typically at least 20"
+  pixels. A tile whose contrast is under `mindiff` borrows its minimum and
+  maximum from neighbouring tiles. The minimum and maximum maps can be
+  smoothed.
+- On `mindiff`: it "is used to eliminate results for tiles where it is
+  likely that either fg or bg is missing. A value around 50 or more is
+  reasonable."
+- By arithmetic, not run: a floor of 50 keeps ink 200 on white (a range of
+  55) but drops off-white pages with ink above 185. The floor trades faint-ink recovery against
+  amplified texture, and choosing it needs noisy pages.
+- The file's overview names the two-step pattern: background
+  normalisation, then a global threshold.
+
+**Train count (finfilings-train, every 7th page, 61 pages; pixels counted,
+nothing tuned).**
+- Paper is 255 on all 61.
+- The darkest 5% of non-white pixels is 0 on the median page and 194 on
+  one page, which was not inspected.
+- Apart from that page, nothing in these counts suggests faded text. So,
+  as with shading, the scoring gates would not see this failure.
+
+**Candidate designs, none chosen.**
+1. Lower `binarize.k`. It is a parameter change with no code. It is
+   likely to move binarized fixture hashes wherever anti-aliased edges
+   shift, so it needs an all-stage re-bless and a §11 decision. Its cost on noisy scans can
+   only be priced on scans, and the scanned sets are scoring-only. It
+   needs a noisy train source (a synthetic noise model, labelled so)
+   before any value is chosen.
+2. Retry on empty: keep the binarizer, and where a region comes back with
+   almost no ink but its grey range clears a floor, binarize that region
+   again after a local contrast stretch.
+   - Output is byte-identical wherever ink was found, so the fixtures stay
+     put unless one holds faded text.
+   - It gates the same way as the dot-census join in the entry above.
+   - It is a new §8.1 step and needs a §11 decision. Its floor starts as a
+     labelled guess.
+3. Local contrast normalisation on every page before Sauvola, in the
+   manner of `pixContrastNorm`. This is the general form of design 2. It
+   changes the binarization stage everywhere and carries design 1's
+   re-bless and noise-pricing costs.
+Separately, and whatever is chosen: a page that yields no words over a non-blank grey
+image is worth a diagnostic of its own. The failure is silent, and nothing
+downstream can recover words the binarizer never returned.
+
+**Queued, behind the 12b fold and the merge train.**
+- Add the faded ladder to the binarization probe bin, next to the
+  highlighter and dot arms.
+- A synthetic noise arm: paper texture plus scanner noise over the ladder,
+  so that `k` and the stretch floor get a price before a spec.
