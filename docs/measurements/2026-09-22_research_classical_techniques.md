@@ -1043,3 +1043,48 @@ letter-sized shapes. It does not test each component alone. Candidate
 only. It is worth specifying if the whole-train error census shows
 insertions from speckled words (scan noise, halftone, dotted rules) as a
 real bucket. Not specced.
+
+## Addendum 2026-09-25: the error census should use the ISRI accuracy report's shape
+
+**Source.** The UNLV-ISRI OCR Evaluation Tools, used in the annual OCR
+accuracy tests of the 1990s. They are maintained as `ocreval` (Apache-2.0,
+Unicode support added). The user guide was read on 2026-09-25. We adopt
+the report's shape, not its code. Our scorer stays in `ocrcer-bench`.
+
+**What one `accuracy` report contains**, from the guide's worked example:
+1. Truth characters, errors, and accuracy. Errors are the edit operations
+   needed to correct the output: insertions, substitutions and deletions.
+2. Reject characters (`~`), suspect markers (`^`) and false marks. Then
+   **marked character efficiency**: the share of characters marked, and
+   the "Accuracy After Correction" when a reviewer fixes the marked errors.
+   The example gives 1.72% marked and 94.84% → 96.96%.
+3. Insertions, substitutions and deletions, split into marked, unmarked
+   and total.
+4. Accuracy by class: spacing, special symbols, digits, uppercase and
+   lowercase. Missed truth characters always equal insertions plus
+   substitutions in the guide's accounting.
+5. Confusions as `{correct}-{generated}`, sorted by the errors charged.
+   One confusion charges its edit count each time it occurs; `fl`→`n`
+   costs 2.
+6. Per-character counts for every truth character.
+
+`wordacc` adds word accuracy, split into stopword and non-stopword
+accuracy, and distinct non-stopword accuracy. `accsum` and `wordaccsum`
+aggregate across pages.
+
+**How this maps onto OCRcer.**
+- Item 2 is the reviewer figure in the 2026-09-25 confidence decision
+  (§11), under its industry name. Once the confidence curves are fitted,
+  a threshold marks characters, and the report gives both the marked share
+  and the accuracy after correction.
+- Items 3 to 5 are the whole-train error census, already queued. Digit
+  accuracy is the headline for financial filings, where one wrong digit
+  is one wrong amount.
+- The pipeline needs one dump that serves both the census and the
+  calibration fitter. Per output character it records: page, line, the
+  alignment operation, the truth character, the output character, the
+  ratio, the agreed flag and the confidence. Deletions are recorded as
+  rows with no output character.
+- The ISRI report has no layout buckets. OCRcer's census adds them from
+  the gap between the end-to-end and line-matched CER: missing lines,
+  merged lines, and reading order.
