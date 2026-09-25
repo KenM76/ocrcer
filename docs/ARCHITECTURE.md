@@ -9064,3 +9064,110 @@ the `is_identifier` predicate. No corpus-level test exists.
    is not a tuning set.
 3. Any parameter a diagnosis moves is re-decided on train, then val,
    under the chunk 12b procedure. It is not re-decided from this score.
+
+### 2026-09-25 — The neural probe's result: chunk 15 goes ahead of chunk 13, and chunk 13 must beat naive append
+
+**Measured.** Source: `docs/measurements/2026-09-25_nn_probe.md`, rounds 1–3,
+branch `nn-probe`. Per-glyph top-1 was scored on real finfilings-train
+crops, in cluster-disjoint folds that keep near-duplicate pages on one
+side, with fold means reported.
+
+| matcher | top-1 |
+|---|---:|
+| Network (contract shape): renders + real-A crops | **97.65%** |
+| Shipped prototype matcher | 92.37% |
+| Prototypes plus real-A crops appended raw, k=1 | 89.61% |
+| Network on renders only (round 1) | 91.13% |
+
+- **The network fixes most of the matcher's errors and adds few of its
+  own.** It is right on 5.6–6.3% of crops where the matcher is wrong, and
+  wrong on only 0.6–1.0% where the matcher is right.
+- **The digit `0` is the matcher's worst class, at 53%.** The network
+  reads it at about 98%. That fits the leading-zero finding and the
+  identifier test's `R0.5` → `RO.5` errors.
+- **The matcher is fragile under scan damage.** It scores 99.83% on clean
+  renders of its own faces and 47% on damaged ones.
+- **Appending raw real crops hurts the matcher.** Digit `0` recovers, but
+  lowercase `o` falls from 94% to 61%, because noisy rows win a hard k=1
+  vote. Quantisation was measured and ruled out as the cause.
+- **The one fusion tried is a loss.** A linear −log p → distance fit came
+  out with the wrong sign, and the result tracked the matcher.
+- **There was a leak, and it did not matter.** Three near-duplicate page
+  pairs straddled the round-2 split. Removing them moved the result by
+  less than 0.3 pp.
+
+**What this does not measure.**
+- End-to-end CER. The crops are biased toward words that segmented to the
+  truth length, which covers 83.7% of words.
+- Lattice candidates that are not glyphs. A softmax is overconfident on
+  wrong cuts, so the contract's junk unit is the chunk's main risk.
+- Anything outside MultiFinBen. Real drawing crops were not used; drawings
+  get renders only.
+- Wilson-edited or Hart-condensed crops. Chunk 13's spec does that editing,
+  and round 3 did not.
+
+**Decision.**
+1. **Chunk 15 is built before chunk 13.** It follows the 2026-09-24
+   contract as amended by the Python-trainer entry above, with these
+   training inputs:
+   - bank renders, damaged in Rust;
+   - real crops from the training split through the probe's dump path.
+   The dump path's count-matched labelling may be replaced by chunk 13's
+   forced alignment when that exists.
+   - Gates are unchanged, plus the identifier test: end-to-end finfilings,
+     pages-cov + drawing, identifier, wall time and size.
+2. **Chunk 13 stays, with a floor to beat.** Its Wilson and Hart editing
+   must measurably beat naive append on the same folds. It must also be
+   compared with the network before it earns a build.
+3. **The probe branch merges.** The one core change is
+   `feature::extract_with_grid`. It is additive: `extract` returns the same
+   vector, and core tests pass (194/194, as the agent reported). The
+   probe's Python scripts are evidence, not the chunk-15 trainer. That
+   trainer is written fresh in `tools/nn/` under the parity-fixture
+   conditions.
+
+### 2026-09-25 — Identifier gates: lexicon harm is zero, and two ratchets at the fitted baseline
+
+**Measured.** Source: `docs/measurements/2026-09-25_ident_corpus.md`,
+branch `ident-test`. The corpus is 1,855 synthetic pages: 53 faces × 5
+sizes × 7 blocks. It holds 6,360 identifier-shaped tokens and is
+scoring-only. Fitted model:
+- 61.5% of tokens are read exactly.
+- 1,271 (20.0%) are REWRITTEN to a different identifier-shaped string.
+- 67 REWRITTEN tokens carry word confidence ≥ 0.9, and 193 carry ≥ 0.8.
+- The median confidence of a REWRITTEN token is 0.576. The median for an
+  exact read is 0.800.
+- Under the pre-fold control, 1,469 tokens are REWRITTEN.
+- Four clusters make up about 60% of REWRITTEN:
+  - `-` read as a rare dash or math glyph;
+  - `NX` read as `Nx`;
+  - `0` read as `O` after `R`;
+  - a leading digit dropped at 14 px.
+
+**Lexicon harm.** The causal test reads every page twice: at the
+configured `decode.w_lex` and at 0.
+- **The bonus changes one fitted read and five control reads.** The
+  fitted case turned a wrong read into a drop; none of the six turned a
+  correct read into a dictionary word.
+- **LEXICON-HARM** is defined as all three of the following:
+  - the two reads differ;
+  - the lexicon-on read is wrong;
+  - either the lexicon-off read was right, or the lexicon-on read is a
+    lexicon word.
+- On the fitted model, by the architect's reading of the one case,
+  LEXICON-HARM is 0. The harness re-measures it under this definition.
+
+**Gates, for every chunk from now on.** Chunk 15 is the first.
+1. **LEXICON-HARM = 0.** This is hard: rule 6.
+2. **REWRITTEN ≤ 1,271.** A ratchet: a chunk that lowers it resets the
+   baseline in this log.
+3. **REWRITTEN at confidence ≥ 0.9 ≤ 67.** Also a ratchet. A confident,
+   wrong identifier is rule 5's harm. It is the number a reviewer is
+   misled by.
+
+**Why the ratchets are not zero.** The engine misreads identifiers at
+about its CER. Pretending otherwise would put a gate in place that is
+always overridden. The clusters go to their owners:
+- the hyphen, `X`/`x` and `0`/`O` clusters to `ocrcer-linguist`;
+- the leading-digit drop to `ocrcer-runtime`;
+- `0`/`O` also to chunk 15, whose probe read the digit `0` at about 98%.
