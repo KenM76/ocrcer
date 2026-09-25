@@ -350,6 +350,14 @@ against the error count.** Any candidate weight set is therefore reported with
 its per-confusion-pair effect beside its aggregate, and a set that improves
 the aggregate while worsening an identifier-critical pair is a regression.
 
+**Speed steps must not change the answer.** Step 3 abandons a prototype's
+sum once it passes the tighter of its class's best so far and the current
+m-th best across classes (m = max(k, 2)). Both are exact: a partial sum of
+non-negative terms never exceeds the full one
+(`docs/measurements/2026-09-24_dense_page_speed.md`). Any further speed step
+is held to the same bar: the same `Match`, bit for bit, for every query.
+Section 11's 2026-09-25 pivot-bound entry is the next one.
+
 Projected: comfortably under a second per page single-threaded, which is
 *faster* than the neural design it replaces rather than slower.
 
@@ -8087,3 +8095,77 @@ existing rule that a reader skips row names it does not know.
 and never writes the file. Copying them into `params.tsv` and
 `Params::DEFAULT` is a reviewed act, adjudicated here, in the same way as
 blessing a fixture.
+
+### 2026-09-25 — Candidate spec: exact pivot bounds in the matcher (dense-page speed, step 2)
+
+**Why.** Dense real pages are still slow after the early-abandon change:
+6.3, 10.3 and 25.6 s on three finfilings pages, with `match()` taking
+95–98% of the wall time (measured,
+`docs/measurements/2026-09-24_dense_page_speed.md`). Each `nearest()` call
+visits 23–26k of the bank's 50,095 prototypes, and every visit sums at
+least 16 dimensions before its first abandon check. The remaining cost is
+the number of visits, not the dimensions per visit. It is also what makes
+a stride-6 train pass take about 25 minutes.
+
+**Method.** Classical exact nearest-neighbour elimination by the triangle
+inequality (Fukunaga & Narendra 1975; LAESA, Micó, Oncina & Vidal 1994).
+The weighted distance `sqrt(sum w_i (x_i - y_i)^2)` with every `w_i >= 0`
+is a (pseudo)metric, so for any point `c`:
+`d(q, p) >= |d(q, c) - d(p, c)|`.
+
+- **Index, built at load.** For each class, the pivot `c` is the mean of
+  its prototypes in standardised space. Each prototype stores
+  `r_p = d(p, c)` in f64. Within a class, prototypes are held in ascending
+  `r_p` order, ties by prototype index. The index is derived from the
+  prototypes table while the model loads. The `.ocrw` format and its
+  version are unchanged.
+- **Per query.**
+  1. For each class the hole gate allows, compute `dq = d(q, c)`. The
+     class's lower bound is `LB_c = (max(0, dq - r_max, r_min - dq))^2`.
+  2. Visit classes in ascending `LB_c`, ties by class index.
+  3. Skip the whole class when `LB_c` exceeds the global ceiling.
+  4. Within a class, start at the prototype whose `r_p` is nearest `dq` and
+     walk outward. Stop each direction once `(dq - r_p)^2` exceeds the
+     tighter of the class ceiling and the global ceiling.
+  5. Survivors go through the existing partial-sum scan, unchanged, in
+     canonical dimension order.
+- **Unchanged.** The italic skip and the hole gate act before any bound.
+
+**Exactness contract.** The result is the same `Match` as the current scan,
+bit for bit: `best` including each prototype index, `d1`, `d2` and `gated`.
+Two rules make that hold:
+- **Ties.** A tie in accumulated distance within a class goes to the lower
+  prototype index. That is the current scan's implicit file-order rule,
+  made explicit because the visit order changes.
+- **Slack.** A prune fires only when the bound exceeds
+  `ceiling * (1 + 1e-9) + 1e-12`. f64 rounding over 107 terms is about
+  1e-14 relative, so the slack only ever keeps extra candidates. It never
+  cuts a true one. The absolute term covers a ceiling of exactly zero.
+
+f64 `sqrt` is correctly rounded under IEEE 754, so x86 and wasm32 agree.
+The three `ocrcer-core` invariants hold: no unsafe code, no dependencies,
+wasm32-clean.
+
+**Cost metric: machine-independent.** Add a `dims_summed` profiling
+counter beside `prototypes_visited`. Report both per call, before and after
+the change, on the three densest finfilings-**train** pages. The first
+profile used score pages; this one does not. Counts do not depend on
+machine load, so they can be measured while the tuning campaign runs. Wall
+time is reported as indicative only.
+
+**Gates.**
+1. An oracle test: a plain full scan kept in `ocrcer-bench` only as a
+   checker, compared with `nearest()` on every query from those three
+   pages. There must be zero differences. Unit tests also cover engineered
+   ties: within a class, and across the class skip boundary.
+2. `ocr.exe` output byte-identical to master on those three pages.
+3. Byte-identical output on stride-6 finfilings-train, run by the
+   architect once the heavy slot is free.
+4. `dims_summed` falls by at least 25% on each of the three pages. Load
+   time is reported.
+
+**Projection, labelled.** How much this prunes in 107 dimensions is
+unknown. A class spans 54 faces and several sizes, and its ball may be
+wide. If the measured cut misses gate 4, the named next step is several
+pivots per class (k-means within a class). That step is not part of this
+spec.
