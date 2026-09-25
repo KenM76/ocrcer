@@ -8169,3 +8169,56 @@ unknown. A class spans 54 faces and several sizes, and its ball may be
 wide. If the measured cut misses gate 4, the named next step is several
 pivots per class (k-means within a class). That step is not part of this
 spec.
+
+### 2026-09-25 — How chunk 12b's vector is chosen, fixed before the ablations report
+
+**Why now.** The campaign's last cost knob (`decode.beam_width`) and the
+post chain (edge walks, then the stride-2 ablations A/B/C/D) are still
+running. The rule for turning their output into one vector is written down
+before any ablation number exists, so the choice cannot be fitted to the
+numbers afterwards.
+
+**Definitions.** Every comparison below is on finfilings-train, using the two
+metrics the campaign already reports: end-to-end CER and line-matched CER.
+`EPS` is the campaign's 0.02 CER points. **One vector *beats* another** when it
+is better than the other by more than `EPS` on at least one metric and worse
+by more than `EPS` on neither. Anything else is a tie. On a tie the vector
+with fewer changes from `Params::DEFAULT` is kept.
+
+**Steps.**
+1. **Start from A.** A is the post chain's vector: tiers 1–4, the cost
+   knobs, and any phase-1 edge move that passed its own stride-6 confirm.
+2. **Tier 2 (B, tier 2 reverted).** Tier 2 stays only if A beats B.
+   Otherwise B's values replace it. This is the ablation that tier 2's mixed
+   confirm (end-to-end CER better, line-matched worse) required.
+3. **`w_lex` (C, `w_lex` 0.35).** C's value replaces A's only if C beats A.
+4. **If steps 2 and 3 both change A**, the combination was never measured
+   together. One more stride-2 run of B+C must beat A before both changes are
+   adopted. If it does not, adopt only the one with the larger end-to-end
+   gain.
+5. **Control (D, no overrides).** The result of steps 1–4 must beat D. If it
+   does not, 12b closes with **no fold**: `Params::DEFAULT` stays and the
+   filing says so.
+6. **Val, once.** The chosen vector against `Params::DEFAULT` on the full
+   finfilings-val split. It must beat the default under the same rule. If it
+   fails, 12b does not fold, and the next step is diagnosis on train, not
+   another candidate tried on val.
+7. **Fold.** `params.tsv` and `Params::DEFAULT` change together. Every
+   moved row is labelled `fitted`, naming `campaign.py`/`campaign_post.py`,
+   the split manifest and "finfilings-train". `fit-12b` then merges.
+8. **Score once.** Only then, the scoring sets (finfilings, pages-cov) run
+   once and are reported. They choose nothing.
+
+**`match.top_k`.** The cost rule adopted 3 (CER 20.963 against 21.010 at
+5 and 21.170 at 8, stride 6). 12b folds 3: the default path, with no LLM
+add-on, gets its best measured 1-best accuracy.
+- If 16b's n-best ceiling measurement (runbook step 3, at `top_k` 3 and 5)
+  shows the add-on needs more candidates, that is a setting of the opt-in
+  LLM mode. It is not a reason to hold the default path back.
+- `top_k` is re-read at 5 with one stride-6 run after chunk 14's grid point
+  is picked, because a stronger language model may earn the extra
+  candidates back.
+
+**Not decided here:** the `xh-desc` gate (its own train, then val, run);
+`match.cand_pad` (gated on census bucket (m)); any wall-clock claim (the
+machine is shared, so no timing from this campaign is a speed reading).
