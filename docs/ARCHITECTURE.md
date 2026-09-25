@@ -8013,3 +8013,41 @@ branch also covers a one-band line with no descender whose height matches
 the page x-height, such as a short lowercase word. OCRcer reads that line
 as a cap band. On the same sample, 8 of 308 `FromCapHeight` lines fit,
 holding 19 components. That is too few to act on.
+
+
+### 2026-09-25 — Clarified: counted lexicon words keep the 3-letter floor, and "already covered" is case-folded
+
+This entry corrects the reconciled chunk 14 spec above. It came from
+reviewing the chunk 14 table build, which added 1,555 / 889 / 437 words
+under the three rules. The counting stage had reported 1,503 / 848 / 405
+not-covered candidates for the same rules.
+
+**Case folding.** `count-text` lowercases the expanded lexicon before it
+tests whether a word is already covered. The union step does not. 449
+authored entries contain a capital. So `december`, `inc`, `corp` and
+`title` counted as new beside `December`, `Inc`, `Corp` and `Title`:
+- 80 / 66 / 52 counted words, depending on the rule, match a capitalised
+  entry;
+- the gap between the two reports is 52 / 41 / 32.
+
+The union's test is corrected to lowercase the expanded lexicon, as
+`count-text` does. Both paths then have to agree exactly, and a test
+asserts that.
+
+**Length floor.** The reconciled entry withdrew "at least 3 characters, on
+at least 2 pages" as a unit. Only the page threshold was meant to go, since
+the (count, pages) grid replaced it. The length floor stays:
+- A counted word shorter than 3 letters does not enter.
+- Under rule (3, 2), 63 such strings clear the counts and are not in the
+  authored list. Among them are `o`, `l`, `x`, `s`, `ii`, `iv`, `vi`, `sh`,
+  `co` and `mo`.
+- Short strings like these compete with digits and symbols in lone cells
+  and codes: `0`, `1`, `×`, `5`, `11`. There a lexicon bonus is the
+  expensive failure CLAUDE.md rule 6 names.
+- The real short English words are already authored.
+- The union report gains a "too short" column.
+
+**The exclusions file does not mean a manual review.**
+`model/lexicon_exclusions.txt` is the committed list that the reconciled
+entry allows. It gains a row only when val shows a specific entry doing
+harm. Its header says so, and a build does not read it as a review step.
