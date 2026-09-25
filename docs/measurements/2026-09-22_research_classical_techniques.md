@@ -1244,3 +1244,57 @@ decision.
 - Full enumeration with lexicon credit comes only after that, if the
   residual justifies a decoder-stage change.
 - Any fuzzy-band threshold is fitted on train and confirmed on val.
+
+## Addendum 2026-09-25: a neural classifier on a segmentation lattice must learn to reject non-characters
+
+**Source.** LeCun, Bottou, Bengio & Haffner, *Gradient-Based Learning
+Applied to Document Recognition*, Proc. IEEE 86(11), 1998. Read 2026-09-25
+from the gwern.net copy of the PDF: §I-D (the segmentation problem), §II-B
+(RBF outputs and rejection), §III (Fig. 10, rejection), §V-A/B (Viterbi
+training and its collapse), §VI (normalisation), §IX (the check reader).
+
+**What the paper says.**
+- A recognizer that scores the candidates of heuristic over-segmentation
+  must give "low penalties for … correctly segmented characters, and high
+  penalties for all categories for poorly formed characters". Training
+  only on correct segments does not teach the second half.
+- Class-posterior normalisation (softmax) "may eliminate information that
+  is important for locally rejecting all the classes … when a piece of
+  image does not correspond to a valid character class". A junk piece
+  still gets p near 1 for *some* class.
+- The paper's remedies:
+  - train at the string level, discriminatively (GTN);
+  - train the recognizer to reject non-characters directly. The deployed
+    check reader "was also initially trained to reject noncharacters
+    that resulted from segmentation errors";
+  - use RBF output units, which fire only inside a bounded region.
+- The hard part was getting the non-character examples. Hand-labelling
+  segmenter output is "extremely tedious and costly" and inconsistent:
+  "should the right half of a cut-up four be labeled as a one or as a
+  noncharacter?"
+- Rejection used "the difference between the scores of the top two
+  classes". That is the same quantity as OCRcer's margin (§4.2).
+
+**What it means for chunk 15.**
+- As specified, the chunk-15 network scores every lattice candidate as
+  `-log p`, and trains only on correct glyphs (rendered glyphs plus
+  chunk 13's aligned crops). That is the setup the paper warns about.
+- Prototype distance has this problem less. It is absolute, so a piece
+  far from every prototype is expensive. It is not immune: half an `m`
+  sits close to `n`.
+- OCRcer can get labelled negatives cheaply, where the paper could not:
+  - Rendered lines have exact glyph boxes. Every candidate that
+    `ocrcer-core`'s own segmenter proposes on them, and that does not
+    coincide with a truth box, is a negative, labelled automatically and
+    consistently.
+  - Chunk 13's forced alignment marks the true path through each aligned
+    train word. The other candidates in that word are negatives.
+- The paper's ambiguity does not go away. A geometric negative can be a
+  real shape: half of `m` is `n`, and `rn` is `m`. How much this matters
+  is measured, not assumed.
+- Not adopted for v1: string-level discriminative training. It needs
+  gradients through the decoder, and chunk 15 keeps the decoder
+  unchanged.
+
+The contract change is `ARCHITECTURE.md` §11, 2026-09-25, "Chunk 15
+contract amended".

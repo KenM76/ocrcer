@@ -7821,3 +7821,46 @@ borders, and no text touching graphics. The category measures drawing
 threshold. That threshold is fitted against whatever confidence means at
 the time, so a later change here would force a refit. Order: 12b fold,
 then this, then 16b.
+
+### 2026-09-25 — Chunk 15 contract amended: the network learns to reject non-characters, and has a junk output
+
+**Amends** "Operator: do training steps (a)–(c) in order, and build a neural
+glyph classifier" (2026-09-24), items 3, 5 and 7. Nothing is built yet, so
+nothing is withdrawn.
+
+**Why.** The network scores every lattice candidate, including wrong cuts
+and merges. Trained on correct glyphs only, with a softmax over the
+charset, it has no way to reject all classes. A wrong cut still gets a
+confident `-log p` for some class, and the lattice would believe it.
+LeCun et al. (1998) name this failure and fix it by training on
+non-characters (research addendum of 2026-09-25).
+
+1. **A junk output.** The output layer is the charset plus one junk unit.
+   The junk index equals the charset length, and the layer spec in `meta`
+   records it, so the output layer and the class indices still cannot
+   disagree. Junk is never emitted. It takes probability mass, which
+   raises `-log p(c)` for every real class on a bad piece.
+2. **Negatives in the training data,** labelled junk. Both sources are
+   deterministic, and both come from `ocrcer-core`'s own segmenter (rule 4):
+   - lattice candidates on rendered lines whose x-extent matches no truth
+     glyph box to within 1 px at each edge;
+   - non-path candidates inside words that chunk 13 aligned, from
+     finfilings-train only.
+   The negative-to-positive ratio is a `guess`, recorded in `meta`, and
+   tuned on val.
+3. **Measured and reported, not assumed:**
+   - negative counts by source;
+   - the share of negatives that the prototype matcher reads as its top
+     class with a ratio under the positives' median for that class (real
+     shapes, such as half an `m` read as `n`).
+   Whether those negatives stay labelled junk is decided on val by
+   measurement. The result is recorded here.
+4. **Confidence** stays `log p₁ − log p₂` between the top two different
+   *charset* classes. Junk is not a rival class.
+5. **One gate added.** Insertions and deletions are reported separately
+   on val, network against prototypes, from the census char-dump. More
+   insertions means the network is accepting bad cuts.
+
+Not adopted: string-level discriminative training (GTN). It needs
+gradients through the decoder, which chunk 15 leaves unchanged. It can be
+revisited only if the junk output measurably fails.
