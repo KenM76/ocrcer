@@ -1175,3 +1175,72 @@ errors does OCRcer catch?
 **Also in the report, not adopted:** phrase accuracy, as a measure of
 error bunching. OCRcer's word accuracy split into identifier and numeric
 buckets already asks the question this domain cares about.
+
+## Addendum 2026-09-25: how Tesseract settles doubtful spaces after recognition (read from source)
+
+**Source.** `src/ccmain/fixspace.cpp` in tesseract-ocr/tesseract (main).
+Read 2026-09-25: `fix_fuzzy_spaces`, `fix_fuzzy_space_list`,
+`transform_to_next_perm`, `eval_word_spacing`, `fixspace_thinks_word_done`.
+This fills in the mechanism that the chunk-9 backlog item "Fuzzy-space
+decoder resolution" names only by reference.
+
+**Which gaps are reconsidered.** Layout marks a gap near its threshold as
+fuzzy (`W_FUZZY_SP` or `W_FUZZY_NON`). Only runs of words joined by fuzzy
+gaps are reopened after recognition. Every other gap keeps its layout
+decision.
+
+**Search: close the smallest gaps first.**
+- Start from layout's arrangement. Each step closes every gap of the
+  current minimum width, then recognises and scores the run again. It
+  stops when no gaps are left.
+- So there is one arrangement per distinct gap width, not 2^n.
+- A new arrangement replaces the best only on a **strict** improvement
+  (`current_score > best_score`). On a tie, layout's decision stands.
+- It stops early once every word is "done" (`PERFECT_WERDS`).
+
+**Score: characters in accepted words, not path cost.**
+- A word is "done" when it has no internal space, was accepted, and was
+  read by a dictionary or number permuter (`SYSTEM`/`FREQ`/`USER_DAWG`,
+  `NUMBER_PERM`). The score is the sum of the lengths of done words.
+- **Credit is voided across a digit|`1` split.** If the previous word ends
+  in `1` and this one starts with a digit, or the previous ends in a digit
+  and this one starts with `1`, the previous word's credit is not counted.
+  (For a word that is not done, "`1`" means any of `I`, `l`, `1`.) Splitting
+  `112` into `1 12` earns nothing, even though both halves are valid numbers.
+- **+1 for each adjacent `1` pair inside a word**, whether or not the word
+  is accepted. This biases the choice toward joining `1`s.
+- Counting accepted characters avoids comparing Viterbi costs across
+  arrangements, which have different numbers of words and word-boundary
+  terms.
+
+**What maps onto OCRcer.**
+- OCRcer's recorded failure is exactly the case this rule targets. `112.50`
+  becomes `1 12 . 50` in monospace, because the wide side bearings of `1`
+  and `.` make intra-word gaps look like spaces (`ARCHITECTURE.md` §11,
+  2026-09-22 band-pooled entry). The shipped fixed-pitch rule removed
+  some of these, not all.
+- Lexicon credit is compatible with CLAUDE.md §6. The choice is between two
+  spacings of the same ink, no character is rewritten, and a word not in
+  the lexicon earns 0 either way. Because a tie keeps layout's decision, an
+  out-of-lexicon run is never moved.
+- In identifier-shaped context the lexicon credit must be suppressed, as it
+  is in the decoder. That leaves only the number-shape credit and the
+  digit|`1` rule.
+- OCRcer has no "number permuter". The number-shape lexicon proposed in the
+  chartype addendum above would play that role. The rule can also stand
+  alone: a token is numeric-shaped when it is all digits and numeric
+  punctuation.
+- The fuzzy band would be a new `guess` parameter: gaps within a fraction of
+  the space rule's valley, or inside the pitch rule's tolerance. Setting it
+  to 0 must be byte-identical to the current build.
+
+**Proposal, not yet sized.**
+- The census (runbook step 8) should count **spurious spaces inside numeric
+  truth tokens**, split by whether a neighbour of the space is `1`/`I`/`l`
+  or `.`, and missing spaces between truth words, all on finfilings-train.
+- If the `1`-adjacent share is large, the cheap first cut is a post-decode
+  rejoin of adjacent numeric-shaped words across fuzzy gaps, scored with
+  the digit|`1` rule and the joined-`1` credit. It needs no re-recognition.
+- Full enumeration with lexicon credit comes only after that, if the
+  residual justifies a decoder-stage change.
+- Any fuzzy-band threshold is fitted on train and confirmed on val.
