@@ -1005,3 +1005,41 @@ word score of 0.95, but if errors were independent the word would be right
 about 60% of the time. So a calibrated character curve does not by itself
 make the word score calibrated. The word score needs its own measured
 curve over the geometric mean, fitted against whole-word correctness.
+
+## Addendum 2026-09-25: how Tesseract drops noise words (read from source)
+
+**The garbage "crunch" is off by default.** `docqual.cpp`'s `garbage_word`
+and `tilde_crunch` classify a decoded word as OK, dodgy or terrible from
+its character classes, its rating and its certainty. That path runs only
+when `unlv_tilde_crunching` is set, and it defaults to false
+(`tesseractclass.cpp`, read 2026-09-25). It is an output mode for the UNLV
+evaluation, not part of normal recognition. Do not copy it as "what
+Tesseract does".
+
+**The default path is a speck test before recognition.**
+`Textord::clean_noise_from_words` (`tordmain.cpp`) runs when
+`textord_noise_rejwords` is true, which is the default (`textord.cpp`).
+Per word, in units of the row's x-height:
+- *dot*: an outline whose longer side is under 0.5 (`textord_noise_sizelimit`).
+  A blob taller than 2.0 adds two dots, unless it is the row's first blob.
+- *normal*: an outline with a hole, height within ±20% of the x-height and
+  width within ±40% (`syfract` 0.2, `sxfract` 0.4). Also a blob of size
+  0.5 to 2.0 with fewer than 16 ink transitions (`translimit`), counted at
+  a threshold of size/10.
+- With more than two dots: `dots > 4 × normals` marks the word as noise.
+  `dots > 2 × normals` marks it as a suspect, which is acted on only when
+  noise words outnumber the good ones in the row (`normratio` 2.0).
+- Action: the small outlines are removed (`WERD::CleanNoise`), not the
+  whole word. The comment says the whole word used to be dropped. It now
+  hands the specks to a reject list and lets the classifier decide.
+- `clean_noise_from_row` applies the same counts to a whole row, with
+  ratio 6.0 (`rowratio`), and keeps the row if it has at least one
+  "super-normal" blob (`sncount` 1).
+
+**Relevance.** OCRcer already drops debris by height (the
+`lines.debris_heights` and `thin_debris_heights` params). This is
+different: it tests a word's make-up, meaning the ratio of specks to
+letter-sized shapes. It does not test each component alone. Candidate
+only. It is worth specifying if the whole-train error census shows
+insertions from speckled words (scan noise, halftone, dotted rules) as a
+real bucket. Not specced.
