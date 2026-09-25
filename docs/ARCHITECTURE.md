@@ -7743,3 +7743,30 @@ measure it on finfilings-train pages rendered native, ×1.5 nearest and ×2
 nearest, and on each of those, gate both finfilings metrics and the
 false-detection rate on unscaled pages. It queues behind the 12b fold and
 the 16b runs.
+
+### 2026-09-25 — pages-cov "drawing" pages are drawing vocabulary, not drawing layout; the chunk 13c census is dropped
+
+**Finding (read from source, `ocrcer-build` `main.rs` corpus render loop
+and `corpus.rs`).** The pages-cov `drawing` category is the nine authored
+lines of the `drawing` block, rendered horizontally, one face and one size
+per page. They contain no rotated strings, no dimension or leader lines, no
+borders, and no text touching graphics. The category measures drawing
+*vocabulary* on clean horizontal text (`4X M8x1.25 THRU`,
+`REV C`), not drawing *layout*.
+
+**Consequences.**
+- The chunk 13c pre-build census (the 13c spec's Data section) would count
+  zero rotated strings, by construction. It is dropped. For 13c, pages-cov
+  is only a no-regression gate (≤ control + 0.05, drawing Δ ≤ 0). The
+  words "reported against the census ceiling" no longer apply.
+- 13c's evidence of gain is its synthetic held-out half alone. That shows
+  the mechanism works on rendered layouts, not that real drawings improve.
+- The same holds for any layout-targeted drawing work, including the
+  touching-line retrieval researched on 2026-09-25 (Tombre, DAS 2002). It
+  needs its own synthetic layout set with disjoint fit and score halves.
+- A real-drawing score set is the only evidence that would transfer. Using
+  the operator's drawings, which are private, as a private and unpublished
+  score set is the operator's decision. It is asked when 13c is scheduled,
+  not before.
+- Nothing already decided on pages-cov changes. Every past drawing Δ gate
+  was a vocabulary gate, and that is what it was used for.
