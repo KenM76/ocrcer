@@ -2056,3 +2056,78 @@ table should be read next to that ceiling, not alone.
 
 **Not measured:** `cand_pad` at any value; per-rank override outcomes; any
 wall-clock effect of `top_k`.
+
+## Addendum 2026-09-25: fitting the matcher's feature weights (metric learning for nearest neighbour) — prior art, and why it waits for chunk 13
+
+**What OCRcer has.** Seven block weights in `model/feature_weights.tsv`, all
+1.0 except the four baseline-relative geometry dimensions at 6.0. That 6.0 is
+the argmax of a three-point sweep {1, 6, 12} on one block, on synthetic
+pages, with section 4.1's per-confusion-pair bar applied (12 was rejected
+because it takes `0`/`o` from 7 to 20). No other block has ever been swept.
+Fitted values are allowed since the operator's 2026-09-24 decision, so these
+weights no longer have to be hand-set.
+
+**Prior art.** Two standard methods fit the distance for nearest-neighbour
+classification directly:
+- Neighbourhood Components Analysis (Goldberger, Roweis, Hinton and
+  Salakhutdinov, NIPS 2004) maximises a smooth (stochastic) version of
+  leave-one-out kNN accuracy on the training set.
+- Large Margin Nearest Neighbour (Weinberger and Saul, JMLR 10, 2009) fixes
+  each point's same-class "target neighbours" in advance, then learns a
+  metric that pulls them in and pushes other classes out by a margin.
+  Table 1 of that paper has one data set close to OCRcer's case: UCI
+  letters, 26 classes and 16 hand-made features. kNN error goes from 4.68%
+  with plain Euclidean distance to 3.60% with the learned metric, and to
+  2.67% with its energy-based rule. On MNIST it goes from 2.12% to 1.72%.
+  The paper reduces dimensions with PCA before fitting "to reduce
+  computation time and avoid overfitting".
+
+Both papers fit a full matrix. Neither reports a diagonal-only (per-weight)
+fit, so no figure here says how much of the gain survives that restriction.
+
+**What maps onto OCRcer without a format change.** A diagonal fit is exactly
+the existing optional `feature_weights` table. The prototypes, the
+normalisation constants, the charset and the file version are all
+unchanged, so there is no bank rebuild. A full matrix would store the
+prototypes in a transformed space, which *is* a feature-vector change and
+takes the whole protocol (version bump, full rebuild, §11 entry). Only the
+diagonal form is a candidate.
+
+**Candidate (not specified): fitted block weights.** Fit the seven block
+weights (six free; zone density stays the 1.0 reference), plus the four
+named geometry dimensions, by an NCA-style leave-one-face-out objective.
+Target neighbours are same-class prototypes from other faces, which is
+where the style probe found the evidence lives. About ten numbers, so
+overfitting is a small risk. Two constraints come from section 4.1 and are
+not optional:
+1. The objective is the errors the decoder cannot repair, not the raw error
+   count. The identifier-critical groups are the ones in section 11's
+   2026-09-22 tuning table (`0`/`O`, `0`/`o`, `O`/`o`, `1`/`l`, `5`/`S`,
+   `8`/`B`), judged the way that entry judged them: it accepted `1`/`l`
+   21 -> 22 at weight 6 and rejected `0`/`o` 7 -> 20 at weight 12.
+2. The fitted set is reported with that per-pair table beside the aggregate.
+
+**Why it waits.**
+- **The distance scale feeds everything downstream.** The decoder scores
+  `w_match * (bonus - distance)`, so reweighting shifts the balance that
+  chunk 12b is fitting now. The calibration curve is fitted on `d1/d2`, and
+  reweighting changes that ratio non-uniformly.
+- **So a weight fit forces refits.** Changing the weights after 12b closes
+  and after the calibration fit (runbook step 7) means redoing both.
+- **The bank-condensing addendum also depends on them.** It requires
+  selection by the runtime's own weighted distance.
+- **Synthetic glyphs are the wrong training data.** Fitted on them, the
+  weights would learn to separate clean renders from other clean renders,
+  not scans. Chunk 13's forced-aligned glyph samples from finfilings-train
+  are the right data.
+
+So the candidate belongs after chunk 13 yields samples, followed by one
+refit of the 12b vector and the calibration curve, not three.
+
+**Pivot-index interaction:** exact pivot bounds hold under any fixed
+non-negative diagonal weights, provided the pivot distances are computed
+with the same weights. That holds automatically if pivots are built at load
+from the file's own table.
+
+**Not measured:** any fitted weight set; how much of the published
+full-matrix gain survives a diagonal restriction; any per-pair effect.
