@@ -1665,8 +1665,10 @@ No source was read. This is a measurement.
 - **Split.** Train was split into two halves by blocks of 100 consecutive
   record numbers within each shard. That gives 194 and 233 pages, and
   75,368 and 85,778 tokens. Adjacent pages of one filing fall in the same
-  half. An odd/even page split gave nearly identical numbers, within 0.13
-  bits/char and 0.1 points.
+  half. An odd/even page split was within 0.1 bits/char for bigram and
+  trigram and within 0.15 points on the preference test. Its 4-gram was up
+  to 0.27 bits/char better, which is boilerplate leaking between adjacent
+  pages, so the block split is the one reported.
 - **Model.** Fitted on one half, measured on the other, then swapped and
   averaged. It interpolates absolute discounting with a computed D per
   order, the same estimator as chunk 14, and puts boundary marks on each
