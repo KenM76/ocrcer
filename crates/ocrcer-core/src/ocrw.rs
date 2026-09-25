@@ -335,6 +335,15 @@ pub struct Model {
     pub bigrams: Option<crate::decode::bigram::Bigrams>,
     /// Context priors for look-alike pairs, when the file carries them.
     pub confusions: Option<crate::decode::confusion::Confusions>,
+    /// The optional neural classifier, dequantised, when the file carries
+    /// one this build's `nn_version` recognises. `None` for every file
+    /// written before chunk 15, and for one whose `nn` table this build
+    /// cannot or will not read -- see `nn_status` for which.
+    pub nn: Option<crate::nn::Nn>,
+    /// Why `nn` is `Some` or `None`. Reading this is how a caller (or
+    /// `ocrcer-build inspect`) reports the reason without the load itself
+    /// ever failing over it.
+    pub nn_status: crate::nn::NnStatus,
 }
 
 impl Model {
@@ -488,6 +497,11 @@ impl Model {
             })?),
         };
 
+        // Additive and never load-critical (`ARCHITECTURE.md` section 11,
+        // 2026-09-25 chunk 15 interfaces): an unknown `nn_version` or a
+        // malformed `nn` table degrades to no network, not a load failure.
+        let (nn, nn_status) = crate::nn::load(&c);
+
         if let Some(&worst) = prototype_class.iter().max() {
             if worst as usize >= classes.len() {
                 return Err(Error::BadTable {
@@ -520,6 +534,8 @@ impl Model {
             lexicon,
             bigrams,
             confusions,
+            nn,
+            nn_status,
         })
     }
 

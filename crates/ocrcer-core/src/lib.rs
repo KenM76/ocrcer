@@ -11,6 +11,7 @@ pub mod image;
 pub mod json;
 pub mod layout;
 pub mod r#match;
+pub mod nn;
 pub mod ocrw;
 pub mod params;
 pub mod pipeline;

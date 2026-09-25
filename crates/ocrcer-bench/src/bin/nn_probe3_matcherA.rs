@@ -310,6 +310,8 @@ fn build_augmented_model(
         lexicon: None,
         bigrams: None,
         confusions: None,
+        nn: None,
+        nn_status: ocrcer_core::nn::NnStatus::Absent,
     }
 }
 
