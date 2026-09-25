@@ -1263,3 +1263,72 @@ pick; `ROADMAP.md`'s now-current branch inventory and merge order; the
 `/usage` calibration, still outstanding.
 
 ---
+
+## 2026-09-25 — Batch 2 (03:08–03:37): merge-train branches accepted, style-probe verdict lands, campaign cost knobs, research addenda
+
+**Request.** File the architect's 03:08–03:37 findings into `ROADMAP.md`
+and this log: branch follow-ups accepted and awaiting merge, the
+style-probe verdict, campaign cost-knob progress, three research addenda,
+a clippy regression, and queued follow-up work for `ocrcer-bench` and
+`ocrcer-exporter`. No shell in this dispatch — nothing below is
+independently re-run or re-grepped; it is filed as reported.
+
+**Delivered, as bullets (full detail in `ROADMAP.md`'s Unmerged branches
+and Backlog sections, not restated here):**
+
+- `xh-desc` (`aab93b2`), `conf-tools` (`0ca2863`, `ce2a5f9`), and
+  `chunk14` (`62f3ee5`, `ae150d9`, `fce1e01`) follow-ups all **accepted in
+  review, awaiting merge**. `chunk14`'s grid point is still unpicked
+  (waits on chunk 12b, runbook step 8); `xh-desc`'s train gate waits for
+  the heavy slot (runbook step 2).
+- New branch `pivot-index` (worktree `wt-pivot`, exact pivot bounds per
+  §11 `9064842`) opened; agent still running. Merge order now ends
+  `... → rescore (rebased) → pivot-index`, all after chunk 12b closes.
+- **Style-probe verdict measured and merged** (`13fcca9`, `6342fc8`, merge
+  `79cc056`, verdict `b9f8920`): label-style classification loses to 1-NN
+  at every field length; leave-one-face-out at L=4, glyph error
+  **+21.8%** (18 faces) / **+38.8%** (40 faces). Moved from "parked with
+  trigger" to **parked, measured**.
+- CAD park trigger reworded: reverse-video and `--user-patterns` now
+  require **CAD dev set exists AND chunk 10 is active** — the dev set
+  alone (150 lines, 0 collisions) would have satisfied the old wording,
+  but chunk 10 stays deferred behind chunk 9.
+- Campaign cost knobs (train, measured): `top_k` 3/5/8 = CER
+  20.963/21.010/21.170 (`bab0a88`); campaign adopts `top_k=3`.
+  `beam_width` {14, 24, 36} launched ~03:37, ~25 min/run;
+  `campaign_post.py` queued next. **Chunk 12b stays open** pending vector
+  pick, val confirm, one scoring pass, params fold-in, `fit-12b` merge,
+  §11 close entry.
+- Three research addenda filed to
+  `docs/measurements/2026-09-22_research_classical_techniques.md`
+  (pointers only, not restated): OCR-B/OCR-A licence-clean and
+  charset-covered, MICR out of v1 (`950e1bd`); boxed slips anchor on the
+  printed box number, not a form template (`e33f4a7`); Tesseract cuts
+  candidates by distance, not count, feeding the `top_k` reading above
+  (`bab0a88`).
+- Clippy regressed from warnings-only to failing:
+  `cargo clippy -p ocrcer-core --all-targets -- -D warnings` fails on
+  master (~10 lib errors + test-target errors); pdfcer excludes vendored
+  `ocrcer-core` from its own lint, so this project is the only linter.
+  Queued: an `ocrcer-runtime` clippy-clean pass after the merge train,
+  then a clippy gate in `ARCHITECTURE.md`.
+- Queued for `ocrcer-bench` (after `conf-margin`+`conf-tools` merge):
+  census buckets (m) rank/`d_c`/`d1`, (n) lexicon-word output-length
+  errors, (o) spurious numeric-token spaces, (p) missing inter-word
+  spaces.
+- Queued for `ocrcer-exporter` (after the merge train): a no-flag
+  `relanguage` run is content-identical but not byte-identical to its
+  base (rebuilt tables appended rather than kept in place) — fix and add
+  a base-sha256 reproduction test.
+
+**Not independently verified by this filing** — no shell in this
+dispatch; every commit hash, branch state, and measured figure above is
+filed as reported by the architect's 03:08–03:37 findings.
+
+**Open, carried forward, none duplicated here:** everything already in
+`ROADMAP.md`'s Open questions section (stray `target-case` dir, merged
+worktrees `wt-speed`/`wt-pdfcer`/`wt-dpi`, per-push approval, SROIE
+licence, `fit-12b` resume) — all pre-existing items, checked against and
+left as-is rather than restated.
+
+---

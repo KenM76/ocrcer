@@ -753,6 +753,14 @@ decision log and no others.
   `top_k=5` — not walked into the post-chain, it would cut headroom chunk
   14/16b still need. **Not yet merged to master.** See *Unmerged branches*
   below for full branch state.
+  **Cost-knob sweep, continued 03:37 (train, measured):** `top_k` reading
+  above adopted — the campaign runs the beam sweep at `top_k=3`.
+  `beam_width` {14, 24, 36} launched ~03:37, ~25 min per run;
+  `campaign_post.py`'s edge-parameter walks and stride-2 A/B/C/D ablation
+  queued to follow. **Chunk 12b stays open** until the architect picks
+  the final vector, confirms it on val, scores once, folds the result
+  into `model/params.tsv`/`Params::DEFAULT`, merges `fit-12b`, and writes
+  the closing §11 entry.
 - **Chunk 12c — width-weighted decoder.** Built and reviewed on branch
   `width-weight` (off `case-geom`), ACCEPTED (a `Params::get` probe bug
   found and fixed in review). Verified against Tesseract's
@@ -882,42 +890,55 @@ rerun is the outstanding step. `cargo test --workspace --release` green;
 Not shipped, not on master. Table **measured just now by the architect
 with `git rev-list`** (ahead/behind master); replaces the 2026-09-24
 inventory in full so the two snapshots cannot be read as both current.
+**Update, 03:37 (this filing):** branch status text (acceptances, new
+branches, merge order) reflects the architect's 03:08–03:37 report;
+ahead/behind counts are carried from the earlier `git rev-list` run and
+not independently re-measured here — no shell in this dispatch.
 
 | Branch | Ahead/behind | State |
 |---|---|---|
-| `conf-tools` | +9/−0 | char-dump, census and fit-calibration; review follow-up running (manifest-based split check) |
-| `xh-desc` | +2/−0 | descender cap check, first spec; follow-up running (amended reference) |
-| `chunk14` | +7/−4 | count-mixture tables; follow-up running |
+| `conf-tools` | +9/−0 (prior inventory, not re-measured) | char-dump, census, fit-calibration; follow-up (`0ca2863`, `ce2a5f9`) **accepted in review, awaiting merge** |
+| `xh-desc` | +2/−0 (prior inventory, not re-measured) | descender cap check; follow-up (`aab93b2`) **accepted in review, awaiting merge** |
+| `chunk14` | +7/−4 (prior inventory, not re-measured) | count-mixture tables; follow-up (`62f3ee5`, `ae150d9`, `fce1e01`) **accepted in review, awaiting merge** — no grid point picked yet |
 | `rescore` | +16/−39 | 16b, reviewed |
 | `width-weight` | +5/−41 | 12c mode, reviewed |
 | `conf-margin` | +5/−41 | reviewed |
 | `case-geom` | +3/−41 | reviewed |
 | `nbest` | +1/−41 | reviewed |
 | `llm-speed` | +3/−44 | reviewed; awaits oracle tests |
-| `style-probe` | +0/−2 | a probe is running |
-| `fit-12b` | +0/−62 | campaign worktree; uncommitted fold pending |
+| `pivot-index` | new, not yet measured | worktree `wt-pivot`; agent running |
+| `style-probe` | +0/−2 | **verdict landed, merged (`79cc056`) — parked, measured** |
+| `fit-12b` | +0/−62 | campaign worktree; `beam_width` sweep running, uncommitted fold pending |
 | `dpi-diag` | +1/−30 | note cherry-picked; removable |
 | `speed`, `pdfcer-binding` | +0 | merged; worktrees removable |
 
 **Per-branch detail, beyond the table:**
 
-- **`conf-tools`** (char-dump, census, fit-calibration) — **blocking bug
-  found in review**: `fit_calibration`'s name-fragment refusal
-  (`name.contains("finfilings")`, meant to keep the train/score firewall)
-  also refuses `finfilings-val`, the tool's own intended fit input, since
-  a split name built by suffixing the base corpus name is always a
-  superset string of it. Follow-up dispatched for a manifest-based
-  per-stem split check (`filing__s{shard}__r{record}` →
-  `train-0000{shard}-of-00008.parquet#{record}`), running as of this
-  filing.
-- **`xh-desc`** — first spec (`f631a10`) done; follow-up running for the
-  amended cap reference (unflagged `Observed ∪ FromCapHeight`, measured
-  caps only, x-fallback via cap×xhpc, a 3-step order, vote excludes
-  still-flagged lines, 3 new tests). This branch carries the corrected
-  13.9%-of-components descender-defect fix (see SESSION_LOG 2026-09-25).
+- **`conf-tools`** (char-dump, census, fit-calibration) — the blocking bug
+  found in review (`fit_calibration`'s name-fragment refusal also
+  refusing `finfilings-val`, its own intended fit input) is fixed:
+  follow-up (`0ca2863`, `ce2a5f9`) **accepted in review, awaiting merge**
+  — the manifest check now fails closed on unmapped/mismatched stems, and
+  the census gains buckets j/k/l. Merges after `conf-margin`; a
+  `count_text.rs` conflict with `chunk14` is resolved at merge time.
+- **`xh-desc`** — first spec (`f631a10`) done; follow-up (`aab93b2`)
+  **accepted in review, awaiting merge**: re-read before the vote, cap
+  reference restricted to unflagged measured caps only, still-flagged
+  lines excluded from the vote. 905 flagged / 893 re-read / 13.7%
+  reproduced; byte-identical to the pre-follow-up output when off, on the
+  sample. Clarification, not a bug: `r000385` lands on 10.0, not an
+  illustrative 10.4, because the existing vote rounds each line to whole
+  pixels. This branch carries the corrected 13.9%-of-components
+  descender-defect fix (see SESSION_LOG 2026-09-25). Train gate waits for
+  the heavy slot (runbook step 2).
 - **`chunk14`** — 6 commits, ACCEPTED with a fix (§11 `f775399`, the
-  case-folding bug above); follow-up running. Val-split pick waits for
-  chunk 12b to close (runbook step 8, below).
+  case-folding bug above); follow-up (`62f3ee5`, `ae150d9`, `fce1e01`)
+  **accepted in review, awaiting merge**: shared covered-forms filter,
+  3-letter floor, too-short counted after already-covered so
+  added+too-short = 1503/848/405 matches count-text; 18-file grid
+  manifest with 18 distinct sha256 (one spot-checked); CAD dev set built,
+  150 lines, 0 collisions against 1004 truth files. Grid point not yet
+  picked (runbook step 8, below). Merge position 6.
 - **`rescore`** (16b) — reviewed and accepted with 4 fixes (see the chunk
   16 entry above); gated behind chunk 12b closing per the runbook.
 - **`width-weight`** (12c) — reviewed and accepted (`Params::get` probe
@@ -936,14 +957,28 @@ inventory in full so the two snapshots cannot be read as both current.
   (`forward_token`/`forward_tokens_batch` unify in 16b). **Awaits the
   serial real-weights oracle run** (`--test-threads=1`, never concurrent
   with a fitting campaign) and pinned timings before merge.
-- **`style-probe`** — a Sarkar & Nagy PAMI 2005-style field-classification
-  probe (`ocrcer-build style`, held-out sizes, fields L=1/2/4/8, in-bank +
-  leave-one-face-out) is running. Decision rule pre-set: L=4 relative
-  glyph-error cut ≥10% → write a candidate spec; <5% → park; 5-10% → park
-  as weak.
+- **`pivot-index`** (new, worktree `wt-pivot`) — exact pivot bounds in the
+  matcher per the §11 candidate spec `9064842`; agent still running as of
+  this filing. Gate 3 (stride-6 train byte-identity) is the architect's
+  own, run after the campaign closes. Merge position 8, after `rescore`.
+- **`style-probe`** — **verdict landed and merged** (`13fcca9`, `6342fc8`,
+  merge `79cc056`, verdict `b9f8920`): a Sarkar & Nagy PAMI 2005-style
+  label-style classifier loses to plain nearest-neighbour at every field
+  length. Leave-one-face-out at L=4 *raises* glyph error **+21.8%** (18
+  held-out faces) and **+38.8%** (40 held-out faces); it names the true
+  face correctly 94.5% of the time in-bank and is still worse than 1-NN.
+  Reading: other faces' prototypes are filling in for sizes the size
+  ladder lacks — evidence against restricting the bank, not against
+  per-page adaptive prototypes (chunk 13b). **Moved from "parked with
+  trigger" to parked, measured** — decided, not contingent on a future
+  reading. Worktree/branch merged, removable.
 - **`fit-12b`** — the coordinate-descent campaign; see the chunk 12 entry
-  above for all four tiers' verdicts. An uncommitted fold from the
-  post-campaign chain is pending.
+  above for all four tiers' verdicts. Cost-knob sweep continuing: `top_k`
+  done (train CER 3/5/8 = 20.963/21.010/21.170, `top_k=3` adopted for the
+  beam runs); `beam_width` {14, 24, 36} launched ~03:37, ~25 min per run;
+  `campaign_post.py`'s edge-parameter walks and stride-2 A/B/C/D ablation
+  queued next. An uncommitted fold from the post-campaign chain is
+  pending.
 - **`dpi-diag`** — the DPI finding (200dpi-native + nearest-neighbour
   aliasing, not blur) is already cherry-picked to master (`91d9cdf`, §11
   `91005e2`); this worktree/branch is removable.
@@ -951,8 +986,9 @@ inventory in full so the two snapshots cannot be read as both current.
   removable.
 
 **Merge order:** `llm-speed` → `nbest` → `case-geom` → `conf-margin`
-(+`conf-tools`) → `width-weight` → `chunk14` → `rescore` (rebased). The
-`xh-desc` train gate runs right after chunk 12b closes.
+(+`conf-tools`) → `width-weight` → `chunk14` → `rescore` (rebased) →
+`pivot-index`. Merges happen after chunk 12b closes. The `xh-desc` train
+gate runs right after chunk 12b closes (runbook step 2).
 
 **Standing rule, still in force:** run LLM oracle tests with
 `--test-threads=1` and never alongside a fitting campaign — the
@@ -978,25 +1014,31 @@ notices it stopped.
    fit-calibration once `conf-margin` has landed.
 7. Fit the confidence calibration curves (PAV, per §11 `0467ac5`) against
    `finfilings-val`.
-8. Pick chunk 14's val split.
+8. Pick chunk 14's grid point (μ × lexicon rule, 18 files) on
+   `finfilings-val`.
 9. Re-run the full scoring-corpus gates (`finfilings`, `pages-cov`) and
    file the chunk-closing measured numbers.
 
-**Amendments to the runbook, this filing:** the style-probe and
-reverse-video (`invert_threshold`-style) candidates are **parked with
-explicit triggers** rather than queued into the runbook — style-probe on
-its own ≥10%/5-10%/<5% decision rule above, reverse-video on the CAD dev
-set existing, a pdfcer report naming it, or a census turning up a
-counter-fragment insertion. `--user-patterns` (a Tesseract-style CAD
-callout bonus, e.g. `M8x1.25`) is parked until the CAD dev set exists.
+**Amendments to the runbook, this filing:** style-probe's decision rule
+has now resolved — see its verdict above (parked, measured); it is no
+longer a runbook trigger. Reverse-video (`invert_threshold`-style) and
+`--user-patterns` (a Tesseract-style CAD callout bonus, e.g. `M8x1.25`)
+remain **parked with an explicit trigger, reworded this filing**: the CAD
+dev set now exists (150 lines, 0 collisions, built on `chunk14`) and on
+its own would have satisfied the old wording, but chunk 10 (CAD drawings)
+is still deferred behind chunk 9 by operator priority. The trigger now
+reads **CAD dev set exists AND chunk 10 is active** — both stay parked
+until chunk 10 is actually underway.
 
 ---
 
 ## Next up
 
-Whichever of chunk 2 or the remainder of chunk 3 the operator prioritises
-next. Scope for both lives in `PLAN.md` section 2 and the Backlog section
-below; not restated here so the two documents cannot drift.
+The post-campaign runbook above (see "Post-campaign runbook"), then the
+branch merge train in the order given under "Unmerged branches," then
+chunk 9's continuation. Scope lives in `PLAN.md` sections 2 and 2a and the
+Backlog section below; not restated here so the two documents cannot
+drift.
 
 ---
 
@@ -1080,6 +1122,53 @@ not commitments; none scheduled as a chunk by this filing:**
   measured gain comes in under its own gates — already named in
   `ARCHITECTURE.md`'s 16b spec entry as the fallback, not a new idea, but
   not started, per that entry's own condition.
+
+**Research addenda landed 2026-09-25**, filed to
+`docs/measurements/2026-09-22_research_classical_techniques.md` (pointers
+only, full text not restated here):
+
+- **OCR-B / OCR-A faces** (`950e1bd`): both licence-clean and already
+  covered by the existing charset — one font row each, added only on a
+  trigger, not scheduled. MICR needs a charset change and has no clean
+  face — out of v1 unless the operator asks.
+- **Boxed slips** (`e33f4a7`): anchor extraction on the printed box
+  number, not a form template (Casey et al. form libraries vs. IC97-2R20's
+  customised slips) — issuers may omit boxes but keep numeric order; box
+  numbers can carry letters (16A); "Other information" codes are data;
+  SIN and account number are identifier fields. Input to chunk 9's slip
+  spec, not yet acted on.
+- **Candidate shortlist width** (`bab0a88`): Tesseract cuts its candidate
+  shortlist by distance (`RemoveBadMatches`, pad 0.15), not by a fixed
+  count. Train reading, finfilings-train stride 6: `top_k` 3/5/8 = CER
+  20.963/21.010/21.170, line-matched 23.209/23.211/23.44 — the campaign
+  adopts `top_k=3` for the beam runs (see the chunk 12 cost-knob update
+  above). Candidate `match.cand_pad` (default off) is gated on census
+  bucket (m). Final `top_k` is settled together with the n-best ceiling
+  figures (a shorter list is what LLM rescoring works from).
+
+**Queued after the merge train, added 2026-09-25** (from the architect's
+03:08–03:37 report; none of this independently verified — no shell this
+dispatch):
+
+- **Clippy-clean pass.** `cargo clippy -p ocrcer-core --all-targets --
+  -D warnings` fails on master (about 10 lib errors plus test-target
+  errors, reported not re-run here). Dispatch `ocrcer-runtime` for a
+  clippy-clean pass once the branch merge train lands, no behaviour
+  change expected (byte-identical fixtures); the architect then adds a
+  clippy gate to `ARCHITECTURE.md`. See *Open questions* item 10, which
+  this supersedes in severity (warnings-only → failing).
+- **Census dispatch** (after `conf-margin` + `conf-tools` merge): buckets
+  (m) override outcome by matcher rank and by `d_c`/`d1` (needs `rank`,
+  `top1_char`, `dist_ratio` columns appended to the char-dump header),
+  (n) lexicon-word output errors by output length split by truth-in-
+  lexicon, (o) spurious spaces inside numeric truth tokens by neighbour,
+  (p) missing spaces between truth words by token shapes.
+- **`ocrcer-exporter` byte-identity fix** (after the merge train): a
+  no-flag `relanguage` run is content-identical to its base but not
+  byte-identical — rebuilt lexicon/bigram tables are appended at the end
+  rather than kept in place (table order, 64-byte padding, blob CRC
+  move). Fix: keep the original table order; add a test asserting the
+  base sha256 reproduces.
 
 ---
 
@@ -1285,6 +1374,14 @@ this entry decides by adding a line to `charset.tsv`.
     requested.** Top single lint `needless_range_loop`, 13 occurrences.
     Recorded so the count has a place to be checked against later; not a
     question requiring an answer, filed here rather than silently dropped.
+    **Update, 2026-09-25 (architect):** `cargo clippy -p ocrcer-core
+    --all-targets -- -D warnings` now **fails** on master (about 10 lib
+    errors plus test-target errors) — a regression from warnings-only.
+    pdfcer excludes vendored `ocrcer-core` from its own workspace lint
+    ("linted and tested there, not here"), so this project is the only
+    place this code is linted. Queued (Backlog): an `ocrcer-runtime`
+    clippy-clean pass after the merge train, then a clippy gate added to
+    `ARCHITECTURE.md`.
 
 **Decided 2026-09-22: declined**, and not on cost. Measured across the 19
 shippable faces, three of them draw U+2212 and U+002D as the same outline and a
