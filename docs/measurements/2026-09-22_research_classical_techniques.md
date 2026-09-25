@@ -3753,8 +3753,7 @@ brackets where they are not 4:
   reads worse than any other column (241.6 at 215).
 - The local stretch reads the show-through-only half as text wherever the
   local range clears its floor of 24, that is at B 230 and darker. The
-  mirrored letters come back as whole garbage words, and the stretch also
-  damages the front near them (`00417` read as `o0417`). Leptonica's
+  mirrored letters come back as whole garbage words. Leptonica's
   `mindiff` of 50 would drop show-through lighter than 205, and would drop
   faded ink lighter than 205 on white with it (by arithmetic, not run).
 
@@ -3792,3 +3791,187 @@ brackets where they are not 4:
   the cue is trusted: are front strokes on finfilings-train sharp in this
   measure? The corpus has no show-through that we know of, so this prices
   one side only.
+
+## Addendum 2026-09-25: pen marks — a hand underline or circle glues the figure it marks into one glyph, and the word around it still reports up to 0.84 (engine measured on synthetic lines; segmentation source read; two papers read in summary)
+
+Accountants tick, circle and underline figures on the documents they are
+sent, and initial them. The circled or underlined figure is usually the one
+that matters. Nothing in `docs/` measured what the engine does with such a
+mark. §8.2 names tick marks and signature strokes among the non-text that
+the 1-NN matcher turns into characters, and asks for a negative corpus
+family before any reject is authored. That is the part of
+the problem where the mark stands apart from the text. This entry finds a
+second part, where the mark is next to the text.
+
+**Measured on synthetic lines.**
+- Setup, drawn by `tools/pen_marks_lines.py`:
+  - the four lines of the faded-ink entry, in black, Liberation Sans at
+    10 pt and 300 dpi, 166 characters;
+  - one kind of mark per page, drawn in black with a 4 px pen. The pen
+    width and every mark's size are guesses; the tool's docstring gives
+    each mark;
+  - read at master with the master model through the scratch harness of
+    the entries above, which also printed each character's box and
+    confidence.
+- One face, one size, marks in the same black as the print, no scanner.
+- "Figures kept" counts seven figure tokens read exactly (`1,234.56`,
+  `2026-09-30`, `(4,812.07)`, `13%`, `00417-229`, `Q3-8841`, `004417`).
+  The control keeps 6: `00417-229` reads `o0417-229` on every page, which
+  is covered below.
+
+| page | CER | lines | figures kept | what came back |
+|---|---|---|---|---|
+| clean (control) | 0.6 | 4 | 6 | |
+| tick 60 px after three lines | 6.6 | 7 | 6 | each tick a line of its own (`√`, 0.71 to 0.73); `Invoice` read `l nvoice`, `Northfield Supply` read `N orthfield Su pply` |
+| tick 25 or 12 px after | 4.2 | 4 | 6 | a `√` word at the end of the line, 0.62 to 0.71 |
+| tick touching the last glyph | 2.4 | 4 | 4 | `2026-09-3@` (0.67), `Q3-8841√` (0.88), `Supplw` (0.73) |
+| tick in the left margin | 1.8 | 4 | 6 | a `√` word, 0.62 |
+| circle clipping the figure's end glyphs | 11.4 | 4 | 4 | `due 1,234.56 on` read `dueæon` (0.64); `Cheque 004417 payable` read `Cheque‰payable` (0.84) |
+| circle clear of the figure | 11.4 | 6 | 5 | `1,234.56` kept on a line of its own, its neighbours broken (`I nvoice`, `d`, `on` lost); `004417` still lost (`Chequ‰ayable`, 0.83) |
+| wavy underline, about 4 px clear | 7.8 | 4 | 5 | `forward (4,812.07) GST` read `forward‰GST` (0.60) |
+| wavy underline through the bracket tails | 7.8 | 4 | 5 | the same (0.63) |
+| wavy underline, clear, not past the figure's ends | 6.6 | 4 | 5 | `(4,812.07)` read `æ` alone (0.06); neighbours kept |
+| straight underline, clear | 0.6 | 4 | 6 | same as the control |
+| initials after a line | 1.8 | 5 | 6 | a line `æ` (0.15) |
+
+**What the table says.**
+- A mark standing apart from the text becomes one extra glyph (`√`, `æ`).
+  The figures survive. This is the case the non-text negative family in
+  §8.2 already names.
+- A mark whose column range covers a figure deletes the figure. It does
+  not matter whether the mark touches the figure: the clear underline and
+  the clear circle on `004417` lose it too. What comes back is one glyph,
+  159 to 211 px wide, read `‰` or `æ`.
+- The cause, read from `layout/segment.rs` and not traced with a debug
+  print: `atoms()` merges a component into the running atom whenever one
+  lies "fully inside the other's column range". That rule is for an `i`
+  and its dot, `:` and `=`. An underline's range holds every glyph of the
+  figure, so the figure and the mark become one atom. Inside an atom the
+  lattice offers at most `segment.max_splits` interior cuts (3, a guess),
+  at the valleys of its ink-column profile, and a ten-glyph figure needs
+  nine. `segment.max_merge_x_heights` bounds merged candidates, not a
+  single atom. The decoder chose the whole atom as one glyph every time;
+  why it preferred that to the cut pieces is not traced.
+- The straight underline is kept out by the underline strip, which erases
+  straight bands only (§11, 2026-09-23). Rows qualify when their run ends
+  agree within 2 px, so a 2 px wave may fail that. Which step of the strip
+  rejected it is not traced.
+- Where the mark runs past the figure's ends into the word gaps, word
+  grouping joins the neighbouring words through it. Compare the two clear
+  wavy underlines. The loss then sits inside a long word that reports
+  0.60 to 0.84.
+- A touching tick glues onto the last glyph. `Q3-8841√` reports 0.88, and
+  its `√` is 0.71 on its own.
+
+**The word score hides it, and a character floor does not find it.**
+- The glued glyph's own confidence is 0.06 to 0.31. The word around it
+  reports 0.60 to 0.84, because word confidence is the geometric mean of
+  its characters (rule 5).
+- Tesseract's word score is the minimum over its characters (the
+  confidence entry above). A minimum would drop these words below 0.31.
+- A character floor cannot tell the blob from ordinary ambiguity, though.
+  On the control page, 4 of the 23 correctly read words hold a character
+  under 0.3: `l` in `total` (0.12), `S` in `GST` (0.13), `0` in
+  `2026-09-30` (0.22), `I` in `Invoice` (0.23). Rule 5 asks for exactly
+  that: `l` against `I` should report low.
+- Size separates the blob on these pages:
+  - every such glyph, the initials included, is 106 to 211 px wide and 44
+    to 56 px tall;
+  - the widest ordinary glyph on the control page is 32 px (`w`), and the
+    tallest is 37 px;
+  - a tick is 39 by 50 px: an ordinary width, but taller than any
+    ordinary glyph.
+  That is one face at one size, so it prices nothing. A bound would come
+  from train pages.
+
+**Also measured: a leading zero read as `o`.**
+- `00417-229` reads `o0417-229` on every page of this entry, the control
+  included. It also reads that way on every black page of the faded-ink
+  and show-through generators.
+- Per character: the first glyph decodes as `o` at 0.75 while its box is
+  the digits' 29 px height. The second `0` reports 0.09.
+- `004417` on the fourth line reads correctly, but its two zeros report
+  only 0.39 and 0.42.
+- `decode.case_geom_penalty` on the unmerged `case-geom` branch, at 1.5 and
+  3.0, does not change it.
+- A diagnosis is with `ocrcer-runtime` on branch `diag-zero`; it will be
+  its own entry.
+- The show-through entry above blamed `o0417` on the local stretch. It is
+  the engine's reading with no show-through at all, and that sentence has
+  been corrected.
+
+**Read, not run.**
+- Belaïd, Santosh and Poulain d'Andecy, "Handwritten and Printed Text
+  Separation in Real Document" (arXiv 1303.4614, 2013). Read through a
+  summarising fetch.
+  - Pseudo-words are formed by run-length smoothing and classified by an
+    SVM over shape, projection and run-length features, with k-NN context.
+  - On 300 administrative test documents they report 99.3% handwritten and
+    99.0% printed at pixel level, and 27.9% on noise.
+  - They name handwriting mixed with printed text as a case that needs
+    more context.
+  - Their unit is the pseudo-word. For a glued figure, that is the unit
+    the atom rule has already fused.
+- Elboushaki, Hannane, Nagabhushan and Javed, "Automatic Removal of
+  Marginal Annotations in Printed Text Document" (ERCICA-14, arXiv
+  1408.2015), abstract page only.
+  - Projection profiles find the margins, and connected components
+    recover printed text cut off with them.
+  - On 50 documents: 89.01% of annotations removed, 97.74% of printed text
+    retrieved.
+- Found in search, not read:
+  - Nagabhushan, Hannane, Elboushaki and Javed, "Automatic Removal of
+    Handwritten Annotations from Between-text-lines and Inside-text-line
+    Regions of a Printed Text Document" (Procedia Computer Science 45,
+    2015, pp. 205–214);
+  - Zheng, Li and Doermann, "Machine printed text and handwriting
+    identification in noisy document images" (IEEE PAMI, 2004);
+  - "Handwritten and Machine Printed Text Separation in Document Images
+    Using the Bag of Visual Words Paradigm";
+  - "Extracting Handwritten Annotations from Printed Documents Via
+    Infrared Scanning" (CHI EA 2022). The fetch was refused, so the
+    method is not known here beyond its title.
+
+**Candidate designs, none chosen.**
+1. Bound the always-merge rule in `atoms()`.
+   - A component much wider than a glyph does not absorb the components
+     inside its column range. It stays an atom of its own, the figure is
+     cut and read as usual, and the mark becomes one extra glyph.
+   - The bound would be a multiple of the line's x-height, a labelled
+     guess.
+   - This recovers the clear underline and the clear circle. A mark
+     touching the figure still takes the glyphs it touches (the two end
+     digits of the tight circle).
+   - It is a segmentation change and needs a §11 decision. Its gate: every
+     fixture unchanged (a fixture where a wide component spans others
+     would move; none has been searched), and a count on finfilings-train
+     of atoms formed this way (counting only).
+2. Separate a mark that touches text, stroke by stroke. This is the
+   drawing-line problem of the Tombre entry above, met on accounting
+   pages. It is the general form of design 1 and much more work.
+3. Extend the underline strip to thin waves. A component that is long,
+   no taller than a fraction of the x-height and touching no glyph is
+   erased whole.
+   - That covers every underline loss in the table except the one through
+     the bracket tails.
+   - It revisits the 2026-09-23 "straight bands only" rule and needs its
+     own §11 entry.
+4. A size flag in the output, separate from confidence. A glyph far wider
+   or taller than the ordinary glyphs of its line marks its word as
+   damaged, so that the LLM mode's low-confidence selection and a reviewer
+   see it.
+   - It recovers nothing.
+   - It is kept apart from the confidence number because rule 5 defines
+     confidence as the calibrated margin.
+5. Colour dropout, as in the stamp entry above, helps only where the pen
+   colour differs from the print. A black pen over black toner cannot be
+   dropped.
+
+**Queued, behind the 12b fold and the merge train.**
+- Pen marks go into the non-text negative family's spec, including marks
+  whose column range covers text. A reject threshold cannot recover those,
+  because the figure is inside the rejected glyph.
+- The count for design 1 on finfilings-train (counting only; no bound
+  chosen from it).
+- The pen-marks pages go into the binarization probe bin with the other
+  ladders.
