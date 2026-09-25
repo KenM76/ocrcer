@@ -1135,3 +1135,43 @@ punctuation-in-number substitutions inside numeric tokens that the
 specified first: fitted from train counts in chunk 14's machinery, and
 gated by the identifier test and a CAD dev set, where `Ø12`, `R3` and
 `M8x1.25` must be unchanged.
+
+## Addendum 2026-09-25: a reference bar for flagging, and how ISRI priced layout errors
+
+**Source.** Rice, Jenkins & Nartker, *The Fourth Annual Test of OCR
+Accuracy*, ISRI TR-95-03 (1995), §4 and §5. Read 2026-09-25 from the PDF on
+stephenvrice.com.
+
+**Marking bar.** In the best 1995 page readers, "marked characters make it
+possible for an editor to inspect only one-half of one percent of the
+OCR-generated text yet correct 20 to 45% of the errors in the text". Past
+that point the curves flatten, because false marks dominate. That is a
+reading of 1995 commercial engines, not a gate. It gives the
+marked-efficiency table from `fit-calibration` one external comparison
+point: at the threshold that flags 0.5% of characters, what share of
+errors does OCRcer catch?
+
+**The default flag threshold is a cost choice, not a fit.**
+- The fit makes confidence mean accuracy. Where to draw the review line
+  depends on how much a checked character costs against a missed error,
+  and only the user knows that.
+- Proposal for when the curves are fitted: pdfcer exposes the threshold,
+  and its default is the one that flags about 0.5% of characters on
+  finfilings-val. That is ISRI's operating point, so it can be compared
+  directly.
+- The rescore "low confidence only" mode is different. Its threshold is
+  fitted on CER (16b), not chosen by this rule.
+
+**Layout errors as cost of correction (§5; Kanai et al., IEEE PAMI 1995).**
+- A missed region costs its characters as insertions.
+- An out-of-order block costs one move, converted to insertions by a
+  factor. The cost is plotted over a range of factors, normalised by
+  sample length.
+- The census's layout bucket (missing lines, extra lines, a residual) is
+  the first half of that. Counting block moves would split the residual
+  into reading order and merges. Named as a census follow-up only if the
+  residual turns out to be large.
+
+**Also in the report, not adopted:** phrase accuracy, as a measure of
+error bunching. OCRcer's word accuracy split into identifier and numeric
+buckets already asks the question this domain cares about.
