@@ -1298,3 +1298,45 @@ training and its collapse), §VI (normalisation), §IX (the check reader).
 
 The contract change is `ARCHITECTURE.md` §11, 2026-09-25, "Chunk 15
 contract amended".
+
+## Addendum 2026-09-25: the n-best list caps what LLM rescoring can gain — measure the ceiling at two sizes
+
+**Source.** X. Liu, Y. Wang, X. Chen, M. J. F. Gales & P. C. Woodland,
+*Efficient Lattice Rescoring Using Recurrent Neural Network Language
+Models*, ICASSP 2014 (Cambridge; PDF from mi.eng.cam.ac.uk). Read
+2026-09-25: abstract, §1, §3, Table 1.
+
+**What it says.**
+- Neural LMs carry the whole history, so they are "normally used to rescore
+  N-best lists", and "this practical constraint limits the possible
+  improvements".
+- Lattice rescoring that merges paths sharing their last n−1 words
+  "produced 1-best performance comparable with a 10k-best rescoring
+  baseline", with over 70% smaller lattices.
+- That is ASR, and the baseline was 10,000 candidates. Chunk 16b rescores
+  **8 per line**.
+
+**Why it matters here.** The LLM can only pick from the candidates it is
+given (rule 6, by construction). If the correct reading of a line is not
+among the 8, no λ or β recovers it.
+- A line with k independent doubtful characters has 2^k readings. At k ≥ 4,
+  8 candidates cannot cover them, and Viterbi n-best tends to spend its
+  slots on variants of the single most doubtful position.
+- The `nbest` branch's pending check is already "oracle best-of-8 CER, on
+  finfilings-val" (RESUME item 3). That gives the ceiling, but not whether
+  8 is too small.
+
+**Proposal: measure before fitting λ and β.**
+- On finfilings-train (design data, not val), take the lines that
+  `LowConfidence` would select at a few candidate thresholds. Report CER
+  for top-1, best-of-8 and best-of-32.
+  - A small top-1 → best-of-8 gap: rescoring has little to gain, and 16b's
+    fallback (a small correction model) moves up.
+  - A large best-of-8 → best-of-32 gap: the cap, not the scorer, is the
+    limit. The cheap lever is a larger N, since the prefix is scored once
+    and candidates are batched. Lattice rescoring with history merging is
+    the heavier lever, and is named only if a larger N costs too much time.
+- Best-of-8 on val stays as RESUME specifies, as the confirmation.
+- Also report the share of selected lines whose best-of-32 candidate
+  changes an identifier-shaped word. It should be 0 by construction; a
+  non-zero share is a bug.
