@@ -7448,3 +7448,85 @@ gates pass.
   metric. This is the false-alarm guard.
 - The identifier test, the wasm build, workspace tests, and wall time on
   both corpora.
+
+
+### 2026-09-25 — Chunk 14 spec: bigrams and lexicon counted from training text
+
+This fixes how PLAN.md chunk 14 is built. It starts after chunk 12's fit is
+merged, and it is measured apart from chunk 13 so each gain stays
+attributable.
+
+**Why.** The `bigrams` table today is built from two sources:
+- counts over `lexicon.txt`, a word list weighted by authored tiers;
+- pseudo-counts from `bigram_priors.tsv`.
+
+Neither source is running text. So the statistics of amounts, dates and
+codes, the strings this corpus is made of, are authored guesses. Finance
+text from the train split supplies them as real token counts.
+
+**Source.** The ground-truth text of the finfilings-train rows in the
+manifest, and nothing else. This is MultiFinBen EnglishOCR, Apache-2.0,
+and the attribution goes in `meta` and `NOTICE`. The counting script refuses
+any page whose manifest label is not `train`, and a test asserts it.
+
+**Bigrams: absolute discounting into the existing layout.** The layout
+stays as it is: sparse pairs, a per-row backoff, and a category-pair table.
+1. Count character pairs over tokens, with `^` at word boundaries. A pair
+   that touches a character outside the charset is skipped.
+2. Add μ times the existing authored evidence (the lexicon-tier counts plus
+   the priors) to those counts. The finance split has no drawing text. The
+   authored priors are what know that `M8x1.25` is ordinary.
+3. Discount every observed pair by D = n1 / (n1 + 2·n2), where n1 and n2
+   are the numbers of pairs seen exactly once and twice. This is the
+   estimate of Ney, Essen and Kneser (1994), as used by Chen and Goodman
+   (1998). D is `computed`.
+4. Each row's freed mass becomes its backoff weight, renormalised over the
+   characters that row never saw. This replaces the authored guess
+   `BACKOFF_MASS = 0.15` with a computed quantity.
+5. The category table holds log(P(next category | previous category) /
+   size of next category): uniform within a category. The lookup then
+   stays one add, as now.
+
+The arithmetic is f64 with deterministic iteration, so the same inputs give
+the same bytes.
+
+μ cannot be fitted on finance text alone, because finance text will always
+prefer μ → 0 and the drawings would pay. μ is chosen on finfilings-val,
+subject to not worsening a rendered CAD-string dev set written for this
+purpose. That set is disjoint from `corpus.rs`, from fixtures, and from
+every scoring page.
+
+**Lexicon: add only what recurs.** Words enter from train text when all of
+these hold:
+- after stripping edge punctuation, the token is letters only;
+- it is at least 3 characters long;
+- it is not identifier-shaped, by core's own `identifier_shape` predicate,
+  called and not copied (rule 4);
+- it occurs on at least 2 distinct train pages. This keeps out one-off
+  typos and ground-truth noise.
+
+Words are case-folded as the lexicon already is, and the result is a union
+with the authored list. The number added is reported.
+
+Rule 6 is unchanged. Entry only earns the bonus.
+
+This has a cost to 13b: a larger lexicon gives more words a Hamming-1
+neighbour, so fewer words qualify as clean. 13b's measurement states which
+lexicon it ran with.
+
+**Open for the operator.** Should the derived count files (pair counts and
+added words) be committed so the build reproduces from the repo alone, or
+generated into the private data directory from the manifest? They are
+derived from Apache-2.0 text, not the text itself. Rule 2 sends an unclear
+case like this to the operator. Until an answer arrives, they are generated
+and not committed.
+
+**Gates.**
+- finfilings-val beats control on both metrics.
+- pages-cov ≤ control + 0.05, with drawing Δ ≤ 0. This is the check that
+  finance statistics did not leak into drawing reads.
+- The identifier-preservation test passes. The counted bigram applies
+  inside identifier-shaped words, where the lexicon and case terms do not.
+- `w_bigram` and `w_lex` are re-fitted on train with the new tables and
+  reported beside the old values.
+- The table's size in bytes is reported.
