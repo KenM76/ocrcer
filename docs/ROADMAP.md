@@ -689,6 +689,65 @@ three digits then an optional capital letter, kept exactly as printed (T4
 10-56 plus 16A/17A; T4A 014-211); a leading zero is part of the key, never
 normalised.
 
+**Spec amended twice, 2026-09-25 — cell enumeration and the rule detector
+(`5530430`, `43e18dc`).** Both amend "Candidate chunk 9 spec, part 1"
+above; nothing else in that spec changed.
+
+- **Cells.** Enumerated in Tabula's `findCells` order (crossing taken as
+  top-left corner, nearest closing rectangle below-then-right); a rule
+  stub ending inside a rectangle does not split it, so a spanning cell is
+  one cell and no word ever moves between cells; `Cell` gains `rows`/`cols`
+  grid-span fields, computed and fixture-asserted by 9a, read only by 9c's
+  `GriTS_Top`. No joint minimum (Camelot drops a ruled area at ≤4 joints;
+  OCRcer does not — a single closed box is a cell, gated only by 9b's
+  `form.min_boxes`). Four new `structure` fixtures: a stub, a T junction,
+  a two-column-spanning cell, a rule falling short of `join_tol_h`.
+- **The rule detector (9a-ii).** `structure.rule_min_h` takes
+  `lines.rule_run_heights`, **5.4209, measured** (twice the longest
+  straight ink run any bank glyph makes), and must never exceed it, so
+  every band the underline strip erases is detected as a rule by
+  construction. A short run (a one-line text box's sides, ~3 h) still
+  counts as a rule when both ends sit within `join_tol_h` of a
+  floor-passing rule of the other orientation — a lone glyph can never
+  qualify, since it would need rules touching both its ends. 1-px breaks
+  join with no new parameter (a scan dropout is a pixel or two; a dot
+  leader's gaps are wider than its own dots and stay unjoined).
+  `structure.rule_max_thick_h` starts at **0.8, a guess** (Tesseract's
+  1/20-inch line width converted at 10pt). Tesseract's own text-density
+  test (reject a <2-crossing line when adjacent ink exceeds 25% of its
+  box) is counted, not adopted — it would disagree with the strip, which
+  erases on the same floor OCRcer uses for detection; 9a-ii instead
+  reports the count of detected rules with <2 crossings against that test
+  on **finfilings-train stride 6**, train-only, never tuned. Five new
+  `rules` fixtures: a text-box side, a lone unrelated vertical run, a
+  1-px-broken rule, a dashed rule, a lone em dash.
+- **9c waits for these readings** before its own spec is written, per the
+  original staging.
+
+**Unruled-column research addendum landed the same day (`03ffb68`),
+train-truth-counted, for 9c.** Camelot's stream mode (descended from
+Nurminen's text-edge method) assigns one text-alignment per page, which is
+wrong for a statement (labels left-aligned, numbers right-aligned) — 9c
+should decide alignment per edge instead. Excel's accounting number format
+reserves a parenthesis-width space after positives, so on the page a
+negative's `)` hangs about one parenthesis-width right of the positives'
+last digit — ink edges and typeset edges are not the same thing, and
+aligning on the ink of the last digit needs recognised text (structure may
+read it, never writes it). A lone dash in a number column is a value,
+read as zero by 9d's footing. **Train count, finfilings-train truth text,
+all 427 pages (a count of the truth, not a recognition reading): 104
+pages carry at least one line with 2+ number tokens (295 such lines); 47
+parenthesised negatives on 13 pages; 7 lone dashes on 6 pages.**
+Table-shaped text is a minority of finfilings-train — 9c's benchmark
+cannot come from finfilings alone, consistent with 9a's own dev-set
+staging.
+
+**9a-i dispatched, in progress — no result yet.** `ocrcer-runtime`,
+worktree `wt-struct`, branch `structure-9a`: pure `structure::build` on
+authored input only, hand-derived fixtures, no pipeline change. 9a-ii (the
+detector above, wired into the pipeline, plus its params-table rows)
+waits for both the 12b fold and the branch merge train.
+
 ---
 
 ### Chunk 7 — pdfcer binding: merged; published; vendored by pdfcer (2026-09-24)
@@ -794,6 +853,31 @@ decision log and no others.
   {14, 24, 36} sweep at `top_k=3` in progress; `campaign_post.py`'s post
   chain queued behind it. No wall-clock figure here is a speed reading —
   the machine is shared.
+  **`beam_width` results in (train, stride 6, measured):** 14 = CER
+  20.966 / LM-metric 23.211 / F1 70.782; 24 = CER 20.963 / LM-metric
+  23.209 / F1 70.786 — the same vector as the `top_k=3` run, so the two
+  runs landing on identical metrics is read as a determinism check
+  passing, not a new finding. 36 still running as of this filing; the
+  post chain (edge-parameter walks, then the stride-2 A/B/C/D ablation)
+  follows it.
+  **Tier 1's `decode.seg_split_penalty` move reverted before the
+  ablations (§11 2026-09-25, "a move made on a tie is reverted").** The
+  campaign's tie rule changed mid-run on the 2026-09-24 resume: a
+  candidate now replaces the current value only by beating it by more
+  than `EPS`, not on a first-found tie. `seg_split_penalty` was the one
+  other tier-1 move made under the old rule (0.75→0.5, train stride 35,
+  inner CER 22.318 identical both sides). **A now starts at 0.75, the
+  default** — decided before any post-chain number exists, so this is the
+  rule the rest of the campaign already ran under, not a new choice.
+  Tiers 2-4 and the cost knobs stand as train readings at 0.5 in the base;
+  phase 2 and val are what test them. **The fold's merge also commits the
+  fitting scripts and logs:** `tools/fit12b/` (the two campaign drivers,
+  two resume scripts, `decide_12b.py`, machine paths turned into
+  arguments) and `docs/measurements/2026-09-25_fit12b/` (the campaign log,
+  status files, `post_status.json`, `decision_12b.json` — argv and train
+  metrics only, no page text). Every later fit commits its script before
+  it runs; a rule change mid-run gets its own §11 entry before the next
+  number.
 - **Chunk 12c — width-weighted decoder.** Built and reviewed on branch
   `width-weight` (off `case-geom`), ACCEPTED (a `Params::get` probe bug
   found and fixed in review). Verified against Tesseract's
@@ -927,6 +1011,11 @@ inventory in full so the two snapshots cannot be read as both current.
 branches, merge order) reflects the architect's 03:08–03:37 report;
 ahead/behind counts are carried from the earlier `git rev-list` run and
 not independently re-measured here — no shell in this dispatch.
+**Further update, this filing (batch 4):** the `pivot-index` row and its
+per-branch detail below now reflect measured pivot-index results and the
+architect's review verdict, reported in the dispatch brief; not
+independently re-run — no shell in this dispatch. All other rows are
+unchanged from the 03:08–03:37 report above.
 
 | Branch | Ahead/behind | State |
 |---|---|---|
@@ -939,7 +1028,7 @@ not independently re-measured here — no shell in this dispatch.
 | `case-geom` | +3/−41 | reviewed |
 | `nbest` | +1/−41 | reviewed |
 | `llm-speed` | +3/−44 | reviewed; awaits oracle tests |
-| `pivot-index` | new, not yet measured | worktree `wt-pivot`; agent running |
+| `pivot-index` | not re-measured this filing | exact per-class pivot bounds; **measured, reviewed, ACCEPTED pending gate 3** |
 | `style-probe` | +0/−2 | **verdict landed, merged (`79cc056`) — parked, measured** |
 | `fit-12b` | +0/−62 | campaign worktree; `beam_width` sweep running, uncommitted fold pending |
 | `dpi-diag` | +1/−30 | note cherry-picked; removable |
@@ -990,10 +1079,20 @@ not independently re-measured here — no shell in this dispatch.
   (`forward_token`/`forward_tokens_batch` unify in 16b). **Awaits the
   serial real-weights oracle run** (`--test-threads=1`, never concurrent
   with a fitting campaign) and pinned timings before merge.
-- **`pivot-index`** (new, worktree `wt-pivot`) — exact pivot bounds in the
-  matcher per the §11 candidate spec `9064842`; agent still running as of
-  this filing. Gate 3 (stride-6 train byte-identity) is the architect's
-  own, run after the campaign closes. Merge position 8, after `rescore`.
+- **`pivot-index`** (worktree `wt-pivot`, commits `ce32a96`, `3c03111`,
+  `05e1f76`, architect edit `73eb957`) — exact LAESA-style per-class pivot
+  bounds in the matcher (Fukunaga & Narendra 1975; Micó, Oncina & Vidal
+  1994), per the §11 candidate spec `9064842`. **Measured:** 29,989
+  captured queries, 0 mismatches, byte-identical output on 3 pages; dims
+  summed per query down ~29%, prototypes visited down ~40%; model load
+  time 38.6→51.3 ms; wall time down 3–7% (indicative, shared machine).
+  **Architect review: ACCEPTED, pending gate 3** (stride-6 train byte
+  identity, the architect's own, run after the campaign closes). The
+  report's own explanation for the wall-time shortfall (dims cut ~29% but
+  wall time only 3–7%) was relabelled **not measured** in the same review
+  (`73eb957`) — see the reordered-early-abandon research addendum below
+  for the candidate follow-up this opened. Merge position 8, after
+  `rescore`.
 - **`style-probe`** — **verdict landed and merged** (`13fcca9`, `6342fc8`,
   merge `79cc056`, verdict `b9f8920`): a Sarkar & Nagy PAMI 2005-style
   label-style classifier loses to plain nearest-neighbour at every field
@@ -1184,6 +1283,21 @@ only, full text not restated here):
   1-best accuracy; an LLM mode needing more candidates carries its own
   `top_k` as an opt-in setting; `top_k` is re-read at 5, one stride-6 run,
   after chunk 14's grid point is picked.
+- **Reordering early abandonment** (`e657d2b`, `52e2edb`): the matcher's
+  last early-abandon checkpoint lands at dimension 95 of 107, so the hole
+  count, six crossings and four geometry dimensions (geometry weighted
+  6.0, the only block that separates case pairs) are summed after
+  abandonment is already decided and never help it. Reading (pivot-index's
+  own counters, arithmetic not measurement): dims per visited prototype
+  rose ~50→59 and `match()` ns per dim ~2.8→3.8 under the pivot branch —
+  the per-query pivot pass itself is only ~20,000 dimension operations
+  against ~0.93 M dims summed per query (dims over captured query count,
+  corrected from an earlier ~1.5 M estimate), so it does not explain the
+  rise; cause not measured. **Candidate, not measured, queued after the
+  merge train, on top of pivot-index:** reorder summation (a fixed
+  heaviest-first order, or a per-query UCR-Suite-style order), with any
+  candidate surviving reordered abandonment re-summed in file order before
+  being recorded, so output stays byte-identical by construction.
 
 **Queued after the merge train, added 2026-09-25** (from the architect's
 03:08–03:37 report; none of this independently verified — no shell this

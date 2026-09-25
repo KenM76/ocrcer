@@ -1416,3 +1416,102 @@ unmerged-branch inventory, unchanged by this filing except the
 `top_k`/vector-order corrections and the new FinTabNet/ReMine item.
 
 ---
+
+## 2026-09-25 — Batch 4: chunk 9a's two spec amendments plus a 9c addendum, campaign cost-knob results and a tie revert, pivot-index measured and accepted pending gate 3, reordered early-abandon research
+
+**Request.** File six more items into `ROADMAP.md`: two chunk 9a spec
+amendments (cell enumeration, the rule detector) plus a 9c research
+addendum and the 9a-i dispatch status; the campaign's `beam_width`
+cost-knob results and its `seg_split_penalty` tie-revert decision; the
+measured pivot-index branch with the architect's review verdict; and a
+research addendum on reordering early abandonment. No shell available in
+this dispatch — commit content was verified by reading `ARCHITECTURE.md`
+§11 and `docs/measurements/2026-09-22_research_classical_techniques.md`
+directly, not by `git show`.
+
+**Delivered:**
+
+- **Chunk 9a spec amended twice (`5530430`, `43e18dc`).** Cells are now
+  enumerated in Tabula's `findCells` order with a defined grid span
+  (`rows`/`cols`) for 9c's `GriTS_Top`; stubs never split a cell; there is
+  no joint-count minimum (a single closed box is a valid cell, gated only
+  by 9b's `form.min_boxes`). The rule detector's length floor is fixed to
+  `lines.rule_run_heights`, **5.4209, measured** — twice the longest
+  straight ink run any bank glyph makes — and can never exceed it, so
+  every band the underline strip erases is a detected rule by
+  construction; a short run still counts as a rule when both ends touch a
+  floor-passing rule of the other orientation, closing a one-line text
+  box's sides without ever letting a lone glyph qualify; 1-px breaks join
+  with no new parameter. Thickness cap `structure.rule_max_thick_h` starts
+  at **0.8, a guess**. Tesseract's own text-density rejection test is
+  counted on finfilings-train stride 6, not adopted, because adopting it
+  in the detector alone would disagree with the strip. Nine new fixtures
+  total across `structure` and `rules`.
+- **9c research addendum (`03ffb68`), train-truth counted.** Camelot's
+  stream/Nurminen text-edge method picks one text alignment per page,
+  wrong for a statement's left-aligned labels and right-aligned numbers;
+  Excel's accounting number format reserves a parenthesis-width space
+  after positives, so ink edges and typeset edges disagree and alignment
+  needs recognised text; a lone dash reads as zero. **Train count,
+  finfilings-train, all 427 pages: 104 pages/295 lines carry 2+ number
+  tokens; 47 parenthesised negatives on 13 pages; 7 lone dashes on 6
+  pages** — table-shaped text is a minority of the corpus, so 9c's
+  benchmark cannot come from finfilings alone. 9c's own spec still waits
+  on these 9a readings.
+- **9a-i dispatched, in progress, no result yet.** `ocrcer-runtime`,
+  worktree `wt-struct`, branch `structure-9a`, pure `structure::build` on
+  authored input. 9a-ii (the detector, wired into the pipeline, plus its
+  params rows) waits for the 12b fold and the merge train.
+- **Campaign `beam_width` results in (train, stride 6, measured):** 14 =
+  CER 20.966 / LM-metric 23.211 / F1 70.782; 24 = CER 20.963 / LM-metric
+  23.209 / F1 70.786 — identical to the `top_k=3` run, read as a
+  determinism check, not a new finding. 36 still running as of this
+  filing.
+- **Tier 1's `seg_split_penalty` tie-move reverted before the ablations
+  (§11, "a move made on a tie is reverted").** The campaign's tie rule
+  changed mid-run on the 2026-09-24 resume (beat by more than `EPS`, not
+  first found); `seg_split_penalty` (0.75→0.5, inner CER 22.318 identical
+  both sides) was the one other tier-1 move made under the old rule. **A
+  now starts at 0.75** — decided before any post-chain number exists, so
+  this is the rule the campaign already ran under, not a new choice;
+  tiers 2-4 and the cost knobs stand as train readings with 0.5 in the
+  base. The fold's merge will also commit the fitting scripts
+  (`tools/fit12b/`) and campaign logs
+  (`docs/measurements/2026-09-25_fit12b/`) — every later fit commits its
+  script before running.
+- **Pivot-index branch measured and reviewed, ACCEPTED pending gate 3**
+  (worktree `wt-pivot`, commits `ce32a96`/`3c03111`/`05e1f76`, architect
+  edit `73eb957`). Exact LAESA-style per-class pivot bounds in the
+  matcher. **Measured:** 29,989 captured queries, 0 mismatches,
+  byte-identical output on 3 pages; dims summed per query down ~29%,
+  prototypes visited down ~40%; model load 38.6→51.3 ms; wall time down
+  3–7% (indicative, shared machine). The report's own explanation for the
+  wall-time shortfall was relabelled **not measured** in the same review.
+  Gate 3 (stride-6 train byte identity) is the architect's own, run after
+  the campaign closes.
+- **Research addendum: reordering early abandonment (`e657d2b`,
+  `52e2edb`).** The matcher's last early-abandon checkpoint lands at
+  dimension 95 of 107, so the hole count, six crossings and four geometry
+  dimensions (geometry weighted 6.0, the only block separating case pairs)
+  never help abandon a candidate. Reading (pivot counters, arithmetic not
+  measurement): dims per visited prototype ~50→59 and `match()` ns/dim
+  ~2.8→3.8 under the pivot branch; the per-query pivot pass itself
+  (~20,000 dimension ops) is small against ~0.93 M dims summed per query
+  (dims over captured query count — corrected from an earlier ~1.5 M
+  estimate), so it doesn't explain the rise; cause not measured. Candidate
+  follow-up, not measured, queued after the merge train on top of
+  pivot-index: reorder summation, with any surviving candidate re-summed
+  in file order so output stays byte-identical by construction.
+
+**Not independently verified by this filing.** No shell in this dispatch;
+every commit hash and measured figure above is filed as reported in the
+dispatch brief, cross-checked only against the current text of
+`ARCHITECTURE.md` §11 and the research-addenda file, not against `git
+show` output.
+
+**Open, carried forward, none duplicated here:** everything already in
+`ROADMAP.md`'s Open questions section and the post-campaign runbook /
+unmerged-branch inventory, unchanged by this filing except the chunk 9
+amendments, the campaign status, and the pivot-index verdict above.
+
+---
