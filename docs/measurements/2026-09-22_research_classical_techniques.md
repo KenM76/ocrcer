@@ -1992,3 +1992,67 @@ decisions.
 
 **Not measured.** No boxed-form page exists in any corpus or dev set yet,
 so none of this has a reading.
+
+## Addendum 2026-09-25: how many candidates reach the decoder — Tesseract cuts by distance, not by count (read from source, and a train reading)
+
+**What OCRcer does.** `match.top_k` (5, a guess) is a fixed count: every
+glyph hypothesis hands its five best classes to the lattice, and the decoder
+may pick any of them when the bigram, lexicon or confusion terms outweigh the
+distance gap. A clean glyph and a doubtful one get the same five.
+
+**Train reading (campaign cost tier; finfilings-train, stride 6; tier-4
+vector otherwise unchanged).** Machine contended, so the wall times are not a
+speed reading.
+
+| `match.top_k` | CER | line-matched CER | F1 |
+|---|---|---|---|
+| 3 | 20.963% | 23.209 | 70.786% |
+| 5 | 21.010% | 23.211 | 70.797% |
+| 8 | 21.170% | 23.44 | 70.558% |
+
+Error rises with every candidate added: CER 20.963 -> 21.010 -> 21.170, and
+line-matched CER moves the same way. The campaign's cost rule takes the
+cheapest value within tolerance of the k=5 baseline, so the beam-width runs
+that follow use `top_k` 3. That is a reading, not a decision: extra
+candidates are, on balance, chosen wrongly more often than rightly. A
+distance cut targets exactly that, but override weights that are too strong
+would produce the same trend; census bucket (m) below separates the two.
+`top_k` 3 also shortens the n-best list that LLM rescoring works from, so
+the final value is settled with the n-best ceiling figures in hand, not by
+this table alone.
+
+**What Tesseract does** (`src/classify/adaptmatch.cpp`, `classify.cpp`, read
+from source on `main`). `RemoveBadMatches` runs on both classifier paths —
+after `DoAdaptiveMatch` in `AdaptiveClassifier`, and after
+`CharNormClassifier` in `GetAmbiguities` — with no condition. It keeps a
+class only if `rating >= best_rating - matcher_bad_match_pad`, where ratings
+are 0-1 (1 is perfect) and `matcher_bad_match_pad` is 0.15 ("Bad Match Pad
+(0-1)"). `MAX_MATCHES` (10) is only the cap. So the shortlist length depends
+on the glyph: a clean glyph passes one or two classes, a doubtful one passes
+many. In `classify_bln_numeric_mode` (off by default) the same function also
+drops alphabetic classes other than the roman-numeral letters, and turns `l`
+into `1` and `O` into `0` when the digit itself fell below the threshold.
+
+**The difference that matters here.** A fixed count lets a distant fourth or
+fifth class into the lattice on a clean glyph, where the language terms can
+then overturn a confident match. It also shuts out a close sixth on a
+doubtful glyph. A distance cut does neither.
+
+**Candidate (not specified, not built): `match.cand_pad`.** Keep candidate
+`c` only if `d_c <= d1 * (1 + pad)`. It is a ratio rather than Tesseract's
+absolute pad because OCRcer's distances are weighted L2 in standardised
+space, not 0-1 similarities, so a fixed absolute pad would mean different
+things at different `d1`. `top_k` stays as the cap, in the role of
+`MAX_MATCHES`. Default off (infinite pad), so the default path is
+byte-identical. Runtime-only, one `params` row, labelled a guess.
+
+**Gate.** Build it only if census bucket (m) — override outcome by matcher
+rank and by `d_c/d1` — shows breaks outnumbering fixes, concentrated at large
+`d_c/d1`. If breaks are spread evenly across the ratio buckets, the problem
+is the override weights (`w_bigram`, `w_lex`, confusion), and a distance cut
+would not fix it. A tighter shortlist also lowers the n-best ceiling that
+LLM rescoring can reach (see the n-best ceiling addendum above), so the (m)
+table should be read next to that ceiling, not alone.
+
+**Not measured:** `cand_pad` at any value; per-rank override outcomes; any
+wall-clock effect of `top_k`.
