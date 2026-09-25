@@ -55,6 +55,20 @@
 //! "the network is undertrained" from "this split is hard for every
 //! classifier, matcher included" (task item 1).
 //!
+//! Round 3 (`docs/measurements/2026-09-25_nn_probe.md` "Round 3", task item
+//! 3) adds a second bank-val matcher column, `bank_val_top1_italicfix.u16`:
+//! round 2's `bank_val_top1.u16` called `r#match::nearest(.., italic_ok:
+//! true)` unconditionally, which is not the call the engine itself makes
+//! (`pipeline.rs`'s `read_word` passes `italic_ok = p.layout.italic_gating
+//! == 0 || slanted`, so an upright render should see `italic_ok = false`
+//! once italic gating ships on, per `model/params.tsv`'s
+//! `layout.italic_gating = 1`). For a bank render the query's own style is
+//! known exactly (it is the face the row was rendered from), so
+//! `italic_ok = ocrcer_core::ocrw::is_italic_style(&faces[fi].style)` is an
+//! exact stand-in for the engine's per-word slant verdict, not an
+//! approximation of it. `NN_PROBE_BANK_ONLY=1` skips the (expensive)
+//! real-crop dump entirely when only the bank-side columns are needed.
+//!
 //! # Output
 //!
 //! Flat binary files under `<out-dir>` (never committed; see the module
@@ -90,7 +104,7 @@ use ocrcer_build::{bank, page, tables};
 use ocrcer_core::feature::{extract_with_grid, GlyphInput, FEATURE_DIMS};
 use ocrcer_core::image::{binarize, deskew};
 use ocrcer_core::layout::underline;
-use ocrcer_core::ocrw::Model;
+use ocrcer_core::ocrw::{is_italic_style, Model};
 use ocrcer_core::{r#match, Engine, Gray};
 
 use std::collections::BTreeMap;
@@ -167,11 +181,27 @@ fn main() -> ExitCode {
         Ok(s) => s,
         Err(e) => return fail(&e),
     };
-    let real_summary =
+    // Round 3: bank-only runs (italic-gating check, task item 3) don't need
+    // the ~25-minute real-crop dump -- Round 2's real_* dumps are reused
+    // as-is (same model, same extractor, same crops).
+    let bank_only = std::env::var("NN_PROBE_BANK_ONLY").as_deref() == Ok("1");
+    let real_summary = if bank_only {
+        RealSummary {
+            pages_read: 0,
+            lines_total: 0,
+            lines_qualifying: 0,
+            words_total: 0,
+            words_qualifying: 0,
+            chars_dumped: 0,
+            chars_out_of_charset: 0,
+            chars_bad_crop: 0,
+        }
+    } else {
         match dump_real(&engine, &model, &class_of_char, &pages_dir, &out_dir, stride) {
             Ok(s) => s,
             Err(e) => return fail(&e),
-        };
+        }
+    };
 
     let summary = format!(
         "{{\n  \"bank_train_rows\": {},\n  \"bank_val_rows\": {},\n  \"bank_faces\": {},\n  \
@@ -313,6 +343,13 @@ fn dump_bank(model: &Model, classes: &[tables::Class], out_dir: &Path) -> Result
         File::create(out_dir.join("bank_val_top1.u16"))
             .map_err(|e| format!("creating bank_val_top1.u16: {e}"))?,
     );
+    // Round 3 (task item 3): the same matcher call, but with `italic_ok`
+    // read from the rendering face's own style rather than hardcoded `true`
+    // -- see the module doc.
+    let mut val_top1_italicfix = BufWriter::new(
+        File::create(out_dir.join("bank_val_top1_italicfix.u16"))
+            .map_err(|e| format!("creating bank_val_top1_italicfix.u16: {e}"))?,
+    );
 
     for (fi, renderer) in renderers.iter().enumerate() {
         for class in classes {
@@ -342,6 +379,13 @@ fn dump_bank(model: &Model, classes: &[tables::Class], out_dir: &Path) -> Result
                         val_top1
                             .write_all(&m1.to_le_bytes())
                             .map_err(|e| format!("writing bank_val_top1.u16: {e}"))?;
+                        let row_italic_ok = is_italic_style(&faces[fi].style);
+                        let m1_fix = r#match::nearest(model, &raw, 1, row_italic_ok)
+                            .and_then(|m| m.top())
+                            .map_or(NONE_CLASS, |c| c.class);
+                        val_top1_italicfix
+                            .write_all(&m1_fix.to_le_bytes())
+                            .map_err(|e| format!("writing bank_val_top1_italicfix.u16: {e}"))?;
                         val_rows += 1;
                     } else {
                         train.write(&grid, &raw_or_std(&xv), class.index, &meta)?;
