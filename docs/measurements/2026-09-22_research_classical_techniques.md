@@ -3691,3 +3691,104 @@ downstream can recover words the binarizer never returned.
   highlighter and dot arms.
 - A synthetic noise arm: paper texture plus scanner noise over the ladder,
   so that `k` and the stretch floor get a price before a spec.
+
+## Addendum 2026-09-25: show-through — the shipped threshold ignores it, and every faded-ink fix above reads it as text (engine measured on synthetic lines; one patent read)
+
+On a page printed on both sides of thin paper, the back shows through,
+mirrored and soft. How often client documents do this is not known. This entry prices the faded-ink
+levers above against that. The shipped threshold is safe. Every lever that
+recovers faded ink also reads show-through somewhere.
+
+**Measured on synthetic lines.**
+- Setup, drawn by `tools/showthrough_lines.py`:
+  - the front is the same four lines, in black or at ink 160, on white
+    paper;
+  - the back is eight other lines, drawn black, mirrored, blurred (PIL
+    Gaussian radius 2, a guess) and multiplied into the page, so that the
+    darkest show-through pixel is luma B;
+  - the back starts half a line below the front and runs on below it, so
+    the lower half of the page holds show-through only;
+  - the B values from 245 (faint) to 185 (heavy) are guesses. How dark real
+    show-through gets on client paper is not known;
+  - read at master as in the faded-ink entry: `k` 0.34 (shipped), 0.2 and
+    0.1 through `set_param`; the global and local stretch are written by
+    the tool.
+- Noise-free, one face. The front is sharp and only the back is blurred,
+  which a real scanner would not do.
+
+CER in percent against the four front lines. Lines returned are in
+brackets where they are not 4:
+
+| front, back | engine | k 0.2 | k 0.1 | stretch | lstretch |
+|---|---|---|---|---|---|
+| black, none | 0.6 | 2.4 | 2.4 | 0.6 | 0.6 |
+| black, 245 | 0.6 | 1.8 | 2.4 | 0.6 | 0.6 |
+| black, 230 | 0.6 | 1.8 | 2.4 | 0.6 | 57.8 (21) |
+| black, 215 | 0.6 | 1.8 | 213.3 (145) | 0.6 | 120.5 (14) |
+| black, 200 | 0.6 | 3.0 | 199.4 (40) | 0.6 | 120.5 (14) |
+| black, 185 | 0.6 | 198.2 (132) | 150.6 (10) | 0.6 | 120.5 (14) |
+| ink 160, none | 0.0 | 0.0 | 0.0 | 0.6 | 0.6 |
+| ink 160, 230 | 0.0 | 0.0 | 0.0 | 0.6 | 58.4 (22) |
+| ink 160, 215 | 0.0 | 0.0 | 209.6 (149) | 241.6 (167) | 183.1 (32) |
+| ink 160, 200 | 0.0 | 0.0 | 185.5 (34) | 162.0 (12) | 134.9 (10) |
+| ink 160, 185 | 0.6 | 172.9 (113) | 162.0 (16) | 169.3 (17) | 138.0 (12) |
+
+**What the table says.**
+- The shipped engine ignores show-through down to 185 on both fronts.
+  The Sauvola bias that loses faded ink is the same bias that keeps the
+  back out.
+- `k` 0.1, which read faded ink through 215 in the entry above, reads
+  show-through at 215 and darker.
+  - A sample of the extra lines, read by eye, is mostly single dots and
+    commas: at low `k` the soft blobs break into fragments.
+  - The fragments are not all low-confidence. On black, 215, words at
+    confidence 0.8 or above rise from 15 to 34.
+- `k` 0.2 has a window on these pages. It reads faded ink through 190 and
+  keeps show-through out down to 200 (3.0 there, against 2.4 with no
+  back). Whether that window exists on real paper depends on two
+  unknowns: how dark real show-through gets, and how
+  much the scanner softens the front.
+- The global stretch is safe while the page has black ink, which pins the
+  minimum. On a faded front it stretches the show-through into ink, and
+  reads worse than any other column (241.6 at 215).
+- The local stretch reads the show-through-only half as text wherever the
+  local range clears its floor of 24, that is at B 230 and darker. The
+  mirrored letters come back as whole garbage words, and the stretch also
+  damages the front near them (`00417` read as `o0417`). Leptonica's
+  `mindiff` of 50 would drop show-through lighter than 205, and would drop
+  faded ink lighter than 205 on white with it (by arithmetic, not run).
+
+**Consequence for the faded-ink designs.**
+- A fixed threshold cannot tell faint front ink from equally faint
+  show-through. Designs 1 and 3 of the faded-ink entry therefore carry a
+  show-through gate as well as a noise gate.
+- Design 2 (retry on empty) fires exactly where show-through lives: a
+  region with no ink found and a grey range above a floor. It needs a cue
+  that tells the two apart before it can ship.
+- Edge sharpness is one candidate cue. Take the 99.9th-percentile one-pixel
+  grey step over the page's grey range:
+  - it is 0.25 on each of the four show-through-only regions tested (B 185
+    to 230) and 1.00 on each of four faded fronts (ink 160 to 215);
+  - but the generator blurs only the back, so on these pages the cue
+    separates by construction. The numbers say nothing about scans.
+- Mirroring is another candidate cue. It is not measured.
+
+**Read, not run.**
+- Seiko Epson, US8553944 (priority 2010), through a summarising fetch of
+  the patent page, not the full text. It removes show-through using the
+  scans of both sides and a leakage function calibrated per device. That
+  needs the back page paired with the front, which a single scanned page
+  does not give.
+- Single-sided ("blind") bleed-through removal exists for historical
+  documents, for example Sun et al., "Blind Bleed-Through Removal for
+  Scanned Historical Document Image With Conditional Random Fields". It was
+  found in a search and not read; both fetches returned no text.
+
+**Queued, behind the 12b fold and the merge train.**
+- Add the show-through ladder to the binarization probe bin, next to the
+  faded ladder, so that any faded-ink change is priced against both at
+  once.
+- An edge-sharpness reading on real train pages, counting only, before
+  the cue is trusted: are front strokes on finfilings-train sharp in this
+  measure? The corpus has no show-through that we know of, so this prices
+  one side only.
