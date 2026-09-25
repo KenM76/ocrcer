@@ -8996,3 +8996,71 @@ still pure safe Rust in `ocrcer-core`.
 5. **The trainer lives in `tools/nn/`,** like `tools/fit12b`. It never
    ships, and nothing in the Rust workspace depends on it. PyTorch is
    BSD-3-Clause.
+
+### 2026-09-25 — Chunk 12b closed: vector B folded, scored once; two new regressions and a missing identifier test
+
+**What was chosen.**
+- Vector B was chosen under the pre-registered rule (§11, "How chunk 12b's
+  vector is chosen"). B is the coordinate-descent vector with tier 2
+  reverted. `w_lex` stays at its default.
+- Ablations C (`w_lex` 0.35) and D (the control) were rerun after the
+  restart. They ran concurrently; runs are deterministic, so that changes
+  only wall time.
+- Val, run once: CER 24.325 → 22.082, line-matched 28.871 → 26.902.
+- The fold put 11 rows at `fitted`. Master `4533f79` holds the fold and
+  `tools/fit12b`.
+- Fixture ruling: `lattice_of` pins segment `max_merge_x_heights` to 1.5
+  (`a55b7a6`). The unit fixture is 3 px x-height, a scale the fitted
+  default was never fitted on. That is a fixture-scale pin, not a
+  re-bless.
+
+**Score, run once and measured.** Source:
+`docs/measurements/2026-09-25_score_12b.md`. Control is the pre-fold
+values via `--set` on the same rebuilt model. Only the params table
+changed; the bank is byte-identical.
+
+| corpus | measure | fitted | control |
+|---|---|---:|---:|
+| finfilings | CER | 11.429 | 12.167 |
+| finfilings | line-matched CER | 10.488 | 11.122 |
+| finfilings | WER | 26.013 | 28.237 |
+| pages-cov | CER | 5.422 | 5.900 |
+| pages-cov | WER | **26.338 (worse)** | 26.114 |
+| pages-cov | F1 | **77.866 (worse)** | 78.093 |
+
+- Both pre-registered expectations hold: pages-cov CER ≤ 5.950 and
+  drawing Δ ≤ 0 (−0.073, the smallest category gain).
+- The scoring run chooses nothing, and the fold stands.
+
+**The losses, which carry equal weight with the wins.**
+- Of 625 pages-cov pages, 110 regressed and 210 improved.
+- **Monospace `i` → `í`/`î`.** 154 occurrences under fitted; the
+  confusion is absent from control's top 12. It turned a perfect
+  control page imperfect (`roboto-mono` prose, 40 px).
+- **Word fusion on short-token lines.** "DO NOT SCALE DRAWING" is read
+  as `DONOTSCALEDRAWING`, and "1 OF 3" as `10F3`.
+  - Suspects, labelled as inference, not measurement:
+    - `words.pitch_tolerance` 0.15 → 0.22, since fixed-pitch detection
+      absorbs the gaps;
+    - the tighter segmentation moving the dot above the i.
+- **One identifier corruption.** `M8x1.25` is read as `IV18x1.25`: the
+  M is split into three glyphs, and a wrong identifier is returned where
+  control kept `M8x1`. It is one instance, not shown to be systematic.
+  It is the harm rule 6 names, arriving through segmentation rather than
+  the lexicon.
+
+**A gap, and it is a finding.** CLAUDE.md rule 6 and PLAN chunk 8
+describe a corpus-level identifier-preservation test that fails loudly.
+The score agent searched the workspace and found only two unit tests of
+the `is_identifier` predicate. No corpus-level test exists.
+- Until one does, no chunk may claim that identifier preservation passed.
+
+**Next, in order.**
+1. `ocrcer-bench` builds the corpus-level identifier test. It must be
+   seeded with `M8x1.25` on the Noto Sans drawing line. The test is a
+   gate for every later chunk.
+2. `ocrcer-runtime` diagnoses the i→î and word-fusion mechanisms. The
+   diagnosis uses finfilings-train and synthetic renders only; pages-cov
+   is not a tuning set.
+3. Any parameter a diagnosis moves is re-decided on train, then val,
+   under the chunk 12b procedure. It is not re-decided from this score.
