@@ -40,6 +40,17 @@
 //! than assumes.
 //!
 //! ```text
+//! ocrcer-build style <build-sizes> <eval-sizes> <field-lengths> [--local]
+//! ```
+//!
+//! Diagnostic, not a build step: measures whether Sarkar & Nagy's (IEEE PAMI
+//! 27(1) 2005) style-consistent classification beats plain 1-NN when a
+//! field's true face is not itself in the bank, simulated by leave-one-
+//! face-out. `field-lengths` is a comma-separated list of field sizes (e.g.
+//! `1,2,4,8`). See `crates/ocrcer-build/src/style.rs` for the classifiers and
+//! `docs/measurements/` for the write-up this command's output feeds.
+//!
+//! ```text
 //! ocrcer-build write <build-sizes> <eval-sizes> <out.ocrw> [--local]
 //! ```
 //!
@@ -54,7 +65,7 @@
 //! Exit status is `0` on success and `1` on any failure, with the reason on
 //! stderr.
 
-use ocrcer_build::{bank, corpus, emit, llm_pack, ocrw, page, tables, ttf_load};
+use ocrcer_build::{bank, corpus, emit, llm_pack, ocrw, page, style, tables, ttf_load};
 
 use std::process::ExitCode;
 
@@ -66,6 +77,8 @@ fn main() -> ExitCode {
         ["render", path, ch, px, index] => report(render(path, ch, px, index)),
         ["bank", build, eval, gate] => report(run_bank(build, eval, gate, false)),
         ["bank", build, eval, gate, "--local"] => report(run_bank(build, eval, gate, true)),
+        ["style", build, eval, fields] => report(run_style(build, eval, fields, false)),
+        ["style", build, eval, fields, "--local"] => report(run_style(build, eval, fields, true)),
         ["write", build, eval, out] => report(run_write(build, eval, out, false)),
         ["write", build, eval, out, "--local"] => report(run_write(build, eval, out, true)),
         ["inspect", path] => report(run_inspect(path)),
@@ -82,6 +95,9 @@ fn main() -> ExitCode {
             eprintln!("usage: ocrcer-build render <font-file> <char> <px-per-em> [face-index]");
             eprintln!(
                 "       ocrcer-build bank <build-sizes> <eval-sizes> <none|holes|measured> [--local]"
+            );
+            eprintln!(
+                "       ocrcer-build style <build-sizes> <eval-sizes> <field-lengths> [--local]"
             );
             eprintln!("       ocrcer-build write <build-sizes> <eval-sizes> <out.ocrw> [--local]");
             eprintln!("       ocrcer-build inspect <model.ocrw>");
@@ -392,6 +408,237 @@ fn run_bank(build_sizes: &str, eval_sizes: &str, gate: &str, local: bool) -> Res
     for ((want, got), n) in ranked.iter().take(20) {
         println!("  confusion {want:?} -> {got:?} x{n}");
     }
+    Ok(())
+}
+
+/// Per-condition, per-field-length running tally: `run_style`'s report is
+/// eight of these (2 conditions x 4 field lengths by default) plus the
+/// case-folded twin of each.
+#[derive(Default)]
+struct Tally {
+    total: usize,
+    singlet_wrong: usize,
+    ls_wrong: usize,
+    singlet_wrong_folded: usize,
+    ls_wrong_folded: usize,
+}
+
+/// Sarkar & Nagy 2005 style-field diagnostic (chunk `style-probe`). Builds
+/// the bank exactly as [`run_bank`] does, then asks whether their cheap
+/// label-style approximation beats plain 1-NN on fields of eval glyphs --
+/// especially when the field's own face is withheld from the bank
+/// (leave-one-face-out), which is the condition that decides anything.
+///
+/// Distance is `bank.rs`'s standardised, unweighted squared-L2 (see
+/// `style.rs`'s module doc for why), fixed to `Gate::Holes` -- the shipped
+/// runtime's only enabled pruning step -- rather than exposed as a
+/// parameter, since this command is asking about style, not about gates.
+fn run_style(build_sizes: &str, eval_sizes: &str, field_lengths: &str, local: bool) -> Result<(), String> {
+    use ocrcer_core::feature::{extract, GlyphInput};
+    use std::time::Instant;
+
+    let build_px = sizes(build_sizes)?;
+    let eval_px = sizes(eval_sizes)?;
+    for &e in &eval_px {
+        if build_px.iter().any(|&b| b == e) {
+            return Err(format!(
+                "eval size {e} is in the build ladder; give sizes the bank was not built at"
+            ));
+        }
+    }
+    let field_lens: Vec<usize> = field_lengths
+        .split(',')
+        .map(|s| {
+            s.trim()
+                .parse::<usize>()
+                .map_err(|_| format!("bad field length {s:?}"))
+                .and_then(|l| if l == 0 { Err("field length must be positive".to_string()) } else { Ok(l) })
+        })
+        .collect::<Result<_, _>>()?;
+
+    let dir = tables::model_dir();
+    let classes = tables::load_charset(&dir)?;
+    let entries = tables::load_fonts(&dir)?;
+    let fonts = bank::Fonts::load(&entries, local);
+    let (faces, renderers, failed) = fonts.renderers();
+    for line in &failed {
+        eprintln!("face failed to parse: {line}");
+    }
+    let n_faces = faces.len();
+    let gate = bank::Gate::Holes;
+
+    let started = Instant::now();
+    let b = bank::build(&classes, &faces, &renderers, &build_px);
+    println!(
+        "{} faces, {} classes, gate {gate:?}, build sizes {} ({:.1}s)",
+        n_faces,
+        classes.len(),
+        format_ladder(&build_px),
+        started.elapsed().as_secs_f64()
+    );
+    println!(
+        "eval sizes {} (held out of the build ladder), field lengths {field_lens:?}",
+        format_ladder(&eval_px)
+    );
+    println!(
+        "distance: bank.rs's standardised, UNWEIGHTED squared-L2 (matches run_bank/Bank::nearest) \
+         -- not the shipped runtime's ocrcer_core::r#match weighted matcher"
+    );
+
+    // Step 2/3: score every eval glyph against every face once, grouped by
+    // (face, eval size) so a field never crosses either boundary.
+    let score_started = Instant::now();
+    let mut groups: std::collections::BTreeMap<(u16, u32), Vec<style::Glyph>> = Default::default();
+    let mut scored = 0usize;
+    for &px in &eval_px {
+        for (fi, r) in renderers.iter().enumerate() {
+            for class in &classes {
+                let Some(g) = r.render(class.codepoint, px) else { continue };
+                let Some(x_height) = r.x_height_px(px).filter(|x| *x > 0.0) else { continue };
+                let f = extract(&GlyphInput {
+                    ink: &g.ink,
+                    width: g.width,
+                    height: g.height,
+                    baseline_dy: g.baseline_dy,
+                    x_height,
+                });
+                let per_face = style::per_face_best(&b, &f, gate);
+                groups.entry((fi as u16, px.to_bits())).or_default().push(style::Glyph {
+                    truth: class.index,
+                    per_face,
+                });
+                scored += 1;
+            }
+        }
+    }
+    println!("scored {scored} glyphs across {} (face, size) groups in {:.1}s", groups.len(), score_started.elapsed().as_secs_f64());
+
+    // Step 3: one deterministic order per group, reused at every field
+    // length, per `style.rs`'s shuffle contract.
+    for glyphs in groups.values_mut() {
+        style::shuffle(glyphs, style::SHUFFLE_SEED);
+    }
+
+    // Sanity check: at L=1 the two classifiers must agree, in both
+    // conditions, on every glyph. A violation stops the run rather than
+    // silently reporting numbers built on a broken classifier.
+    for (&(face, _), glyphs) in &groups {
+        for g in glyphs {
+            let (s, l) = style::l1_agreement(&g.per_face, None);
+            if s != l {
+                return Err(format!(
+                    "L=1 sanity check failed (in-bank): class {} face {face}: singlet {s:?} != LS {l:?}",
+                    classes[usize::from(g.truth)].codepoint
+                ));
+            }
+            let (s, l) = style::l1_agreement(&g.per_face, Some(face));
+            if s != l {
+                return Err(format!(
+                    "L=1 sanity check failed (leave-one-out): class {} face {face}: singlet {s:?} != LS {l:?}",
+                    classes[usize::from(g.truth)].codepoint
+                ));
+            }
+        }
+    }
+    println!("L=1 sanity check passed: LS matches singlet on every glyph, both conditions");
+
+    let case_ok = |truth: u16, got: Option<u16>| {
+        got == Some(truth) || got.is_some_and(|c| classes[usize::from(truth)].case_twin == Some(c))
+    };
+
+    // Step 6/7: both conditions, every field length, from the same scored
+    // groups -- no further distance computation past this point.
+    let mut fixed: std::collections::BTreeMap<(char, char), usize> = Default::default();
+    let mut introduced: std::collections::BTreeMap<(char, char), usize> = Default::default();
+    println!("condition            L  glyphs  singlet_err%  ls_err%  rel_change%  singlet_err%(folded)  ls_err%(folded)");
+    for (cond_name, leave_out) in [("in-bank", false), ("leave-one-out", true)] {
+        for &l in &field_lens {
+            let mut t = Tally::default();
+            let mut k_star_hits = 0usize;
+            let mut k_star_total = 0usize;
+            for (&(face, _), glyphs) in &groups {
+                let excluded = if leave_out { Some(face) } else { None };
+                for field in glyphs.chunks(l) {
+                    if field.len() != l {
+                        continue; // drop the tail remainder, per the task spec
+                    }
+                    let (k_star, labels) = style::label_field(field, n_faces, excluded);
+                    if !leave_out {
+                        k_star_total += 1;
+                        if k_star == Some(usize::from(face)) {
+                            k_star_hits += 1;
+                        }
+                    }
+                    for (g, &label) in field.iter().zip(&labels) {
+                        let faces_iter = (0..n_faces).filter(|&k| Some(k as u16) != excluded);
+                        let single = style::singlet(&g.per_face, faces_iter);
+                        t.total += 1;
+                        let s_ok = single == Some(g.truth);
+                        let l_ok = label == Some(g.truth);
+                        if !s_ok {
+                            t.singlet_wrong += 1;
+                        }
+                        if !l_ok {
+                            t.ls_wrong += 1;
+                        }
+                        if !case_ok(g.truth, single) {
+                            t.singlet_wrong_folded += 1;
+                        }
+                        if !case_ok(g.truth, label) {
+                            t.ls_wrong_folded += 1;
+                        }
+                        if leave_out && l == 4 {
+                            let want = classes[usize::from(g.truth)].codepoint;
+                            // `single`/`label` are `None` only when no face
+                            // admits any class for this glyph at all -- too
+                            // rare to have a `(want, got)` pair, so it is
+                            // skipped rather than forced into one.
+                            if !s_ok && l_ok {
+                                if let Some(sc) = single {
+                                    let got = classes[usize::from(sc)].codepoint;
+                                    *fixed.entry((want, got)).or_default() += 1;
+                                }
+                            } else if s_ok && !l_ok {
+                                if let Some(lc) = label {
+                                    let got = classes[usize::from(lc)].codepoint;
+                                    *introduced.entry((want, got)).or_default() += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            let pct = |n: usize| if t.total == 0 { 0.0 } else { 100.0 * n as f64 / t.total as f64 };
+            let s_err = pct(t.singlet_wrong);
+            let l_err = pct(t.ls_wrong);
+            let rel = if s_err == 0.0 { 0.0 } else { 100.0 * (l_err - s_err) / s_err };
+            println!(
+                "{cond_name:<13} {l:>2}  {:>6}  {s_err:>11.2}  {l_err:>7.2}  {rel:>10.2}  {:>20.2}  {:>15.2}",
+                t.total,
+                pct(t.singlet_wrong_folded),
+                pct(t.ls_wrong_folded)
+            );
+            if !leave_out {
+                let hit_pct = if k_star_total == 0 { 0.0 } else { 100.0 * k_star_hits as f64 / k_star_total as f64 };
+                println!("  k* == true face at L={l}: {k_star_hits}/{k_star_total} = {hit_pct:.2}%");
+            }
+        }
+    }
+
+    let mut fixed_ranked: Vec<_> = fixed.into_iter().collect();
+    fixed_ranked.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    println!("top confusions LS fixed at L=4 (leave-one-out), want -> got x count:");
+    for ((want, got), n) in fixed_ranked.iter().take(10) {
+        println!("  {want:?} -> {got:?} x{n}");
+    }
+
+    let mut introduced_ranked: Vec<_> = introduced.into_iter().collect();
+    introduced_ranked.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    println!("top confusions LS introduced at L=4 (leave-one-out), want -> got x count:");
+    for ((want, got), n) in introduced_ranked.iter().take(10) {
+        println!("  {want:?} -> {got:?} x{n}");
+    }
+
     Ok(())
 }
 

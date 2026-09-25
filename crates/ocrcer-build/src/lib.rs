@@ -27,6 +27,7 @@ pub mod outline;
 pub mod params;
 pub mod page;
 pub mod safetensors;
+pub mod style;
 pub mod tables;
 pub mod ttf_load;
 pub mod weights;
