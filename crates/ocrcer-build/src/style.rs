@@ -122,17 +122,22 @@ pub fn singlet(per_face: &[FaceBest], faces: impl Iterator<Item = usize>) -> Opt
 }
 
 /// Labels one field under the style-conditioned (LS) classifier: sums each
-/// candidate face's distance over the field, keeps the lowest sum (ties to
-/// the lowest face index), then labels every glyph by its own best match
-/// within that face. `excluded`, when set, removes one face from every
-/// candidate sum -- the leave-one-face-out simulation of "the true font is
-/// not in the bank". A face missing even one glyph's coverage (that glyph's
-/// `per_face[k]` is `None`) cannot be the field's style at all.
+/// candidate face's distance over the field, keeps the lowest sum. A tie on
+/// the sum breaks to the face whose per-glyph label vector (class indices,
+/// in field order) is lexicographically smallest -- `ARCHITECTURE.md` §8.2's
+/// "exact tie breaks by lowest class index", applied field-wise -- and only
+/// when the label vectors also match does the lower face index decide.
+/// Every glyph is then labelled by its own best match within the chosen
+/// face. `excluded`, when set, removes one face from every candidate sum --
+/// the leave-one-face-out simulation of "the true font is not in the bank".
+/// A face missing even one glyph's coverage (that glyph's `per_face[k]` is
+/// `None`) cannot be the field's style at all.
 ///
 /// Returns the chosen face index (`None` when no face covers the whole
 /// field) and one label per glyph, in field order.
 pub fn label_field(field: &[Glyph], n_faces: usize, excluded: Option<u16>) -> (Option<usize>, Vec<Option<u16>>) {
     let mut sum = vec![0.0f64; n_faces];
+    let mut labels: Vec<Vec<u16>> = vec![Vec::new(); n_faces];
     let mut viable = vec![true; n_faces];
     for k in 0..n_faces {
         if Some(k as u16) == excluded {
@@ -141,7 +146,10 @@ pub fn label_field(field: &[Glyph], n_faces: usize, excluded: Option<u16>) -> (O
         }
         for g in field {
             match g.per_face[k] {
-                Some((d, _)) => sum[k] += f64::from(d),
+                Some((d, c)) => {
+                    sum[k] += f64::from(d);
+                    labels[k].push(c);
+                }
                 None => {
                     viable[k] = false;
                     break;
@@ -154,10 +162,13 @@ pub fn label_field(field: &[Glyph], n_faces: usize, excluded: Option<u16>) -> (O
         if !viable[k] {
             continue;
         }
-        k_star = Some(match k_star {
-            Some(bk) if sum[k] >= sum[bk] => bk,
-            _ => k,
-        });
+        let better = match k_star {
+            Some(bk) => sum[k] < sum[bk] || (sum[k] == sum[bk] && labels[k] < labels[bk]),
+            None => true,
+        };
+        if better {
+            k_star = Some(k);
+        }
     }
     match k_star {
         None => (None, vec![None; field.len()]),
@@ -165,11 +176,11 @@ pub fn label_field(field: &[Glyph], n_faces: usize, excluded: Option<u16>) -> (O
     }
 }
 
-/// The mandatory sanity check: with a field of exactly one glyph, LS's own
-/// face-first tie-break and the singlet classifier's class-first tie-break
-/// must still land on the same label, because a one-glyph field's sum is
-/// just that glyph's own per-face distance. Returns `(singlet, ls)` so a
-/// caller that finds them unequal can report which glyph and how.
+/// The mandatory sanity check: with a field of exactly one glyph, LS's
+/// label-vector tie-break reduces to comparing single classes, which is
+/// exactly the singlet classifier's own lower-class-index rule, so the two
+/// must land on the same label. Returns `(singlet, ls)` so a caller that
+/// finds them unequal can report which glyph and how.
 pub fn l1_agreement(per_face: &[FaceBest], excluded: Option<u16>) -> (Option<u16>, Option<u16>) {
     let n_faces = per_face.len();
     let glyph = Glyph { truth: 0, per_face: per_face.to_vec() };
@@ -223,25 +234,41 @@ mod tests {
         }
     }
 
-    /// The two classifiers break ties by *different* rules on purpose: LS
-    /// picks the lower face index so it can name a style even when nothing
-    /// else distinguishes two candidates; the singlet classifier picks the
-    /// lower class index, matching `Bank::search`. This is the adversarial
-    /// case sanity check 1 does not exercise: two faces at the exact same
-    /// summed distance but disagreeing on which class won.
+    /// The exact cross-face tie the style probe hit for real (chunk
+    /// style-probe, hyphen vs. en/em dash, face 31): `ARCHITECTURE.md` §8.2
+    /// fixes ties to the lowest class index, and LS now applies that rule
+    /// field-wise (lexicographically smallest label vector), so at L=1 the
+    /// two classifiers must agree rather than being allowed to differ.
     #[test]
-    fn ls_and_singlet_break_ties_by_different_rules() {
+    fn ls_and_singlet_agree_on_an_exact_cross_face_tie() {
         // face 0 says class 9 at distance 1.0, face 1 says class 5 at the
-        // same distance: LS keeps face 0 (lowest face index) and reports 9;
-        // singlet ignores which face and keeps the lower class, 5.
+        // same distance: face 1's label vector ([5]) is lexicographically
+        // smaller than face 0's ([9]), so LS keeps face 1 and reports 5 --
+        // the same class singlet's lower-class-index rule picks.
         let per_face: Vec<FaceBest> = vec![Some((1.0, 9)), Some((1.0, 5))];
         let glyph = Glyph { truth: 0, per_face: per_face.clone() };
         let (k_star, labels) = label_field(std::slice::from_ref(&glyph), 2, None);
-        assert_eq!(k_star, Some(0), "LS ties break to the lower face index");
-        assert_eq!(labels, vec![Some(9)]);
+        assert_eq!(k_star, Some(1), "LS ties break to the lexicographically smaller label vector");
+        assert_eq!(labels, vec![Some(5)]);
 
         let single = singlet(&per_face, 0..2);
         assert_eq!(single, Some(5), "singlet ties break to the lower class index");
+        assert_eq!(single, labels[0], "LS and singlet must agree on an exact tie");
+    }
+
+    /// At L=2, the field-wise label rule -- not merely "lowest face index"
+    /// -- decides an exact cross-face sum tie: face 1's label vector
+    /// (`[3, 7]`) is lexicographically smaller than face 0's (`[10, 1]`)
+    /// even though face 1 has the higher index, so LS must pick face 1.
+    #[test]
+    fn l2_cross_face_sum_tie_is_broken_by_the_label_vector_not_the_face_index() {
+        let field = vec![
+            Glyph { truth: 0, per_face: vec![Some((1.0, 10)), Some((0.25, 3))] },
+            Glyph { truth: 1, per_face: vec![Some((1.0, 1)), Some((1.75, 7))] },
+        ];
+        let (k_star, labels) = label_field(&field, 2, None);
+        assert_eq!(k_star, Some(1), "the smaller label vector wins even at the higher face index");
+        assert_eq!(labels, vec![Some(3), Some(7)]);
     }
 
     /// A face missing coverage for even one glyph in the field cannot be the
