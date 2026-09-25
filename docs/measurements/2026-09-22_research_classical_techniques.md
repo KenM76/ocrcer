@@ -1456,21 +1456,33 @@ in the document, so it does not apply to financial statements.
 - **How the descender branch was identified:** it is the `Observed` line
   whose cap height equals x-height / `x_height_per_cap`. That value was
   inferred from the `FromCapHeight` lines as 0.7431.
-- **Page reference:** the width-weighted median x-height of the page's
-  cap-band `Observed` lines. 24 pages have one.
-- **Result:**
-  - 197 of 1,834 lines took the descender branch.
-  - 186 of them have an x-height 1.25–1.6 times the page reference, with a
-    peak at 1.3 (152 lines). That is the page's cap height
-    (1 / 0.7431 = 1.346).
+- **Result on all 43 pages:** 905 of 6,141 lines took the descender
+  branch. They hold **13.9% of all components**, and 31 of the 43 pages
+  have at least one.
+- **Pages with a cap-band line** (24 pages; reference = the width-weighted
+  median x-height of those lines):
+  - 197 descender-branch lines.
+  - 186 of them sit at 1.25–1.6 times the reference, peaking at 1.3.
+    That is the page cap height (1 / 0.7431 = 1.346).
   - Only 7 sit near 1.0.
-  - On the 24 pages with a reference, 8.2% of components lie on such
-    lines, and 13 of the 24 pages have at least one.
-- **One line checked by eye** (`filing__s4__r000782`):
-  - The line is `COMMON STOCKS - 44.0% - (continued)`.
-  - The page x-height is 9 px; the line is read as 12 px.
-  - The bold capitals are the width mode, nothing sits 15% above them, and
+- **Pages with no cap-band line** (19 pages; reference = the cap height of
+  their `FromCapHeight` lines):
+  - The descender-branch lines sit at that cap height.
+  - 15 of these pages are trade tables. Each date cell (`23/12/2024`)
+    takes the branch because the `/` hangs below the baseline. The time
+    and quantity cells in the same row read correctly as
+    `FromCapHeight`.
+- **Checked by eye:**
+  - `filing__s4__r000782`: the line is
+    `COMMON STOCKS - 44.0% - (continued)`. The page x-height is 9 px and
+    the line is read as 12 px. The bold capitals are the width mode, and
     the parentheses hang below.
+  - `filing__s1__r000045`: the date cells are read with an x-height of
+    16 px, against 11.89 for the other cells in the same row.
+- **A reference built from cap-band lines only** would re-read 185 of the
+  905 lines. A reference that also uses the `FromCapHeight` lines' cap
+  heights would re-read 893 (13.7% of components). That is the reason
+  for the 2026-09-25 amendment in §11.
 - **Not observed:** which component tripped the test on each line, and the
   CER effect. The per-line truth shown by `--layout` is by index, so it is
   not aligned.

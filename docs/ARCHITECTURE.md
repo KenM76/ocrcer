@@ -7944,3 +7944,46 @@ band *below* the mode, pairing modes at a 1.25–1.8 ratio as Tesseract's
 `compute_xheight_from_modes` does. It needs no page context. It is
 considered if the page rule leaves misses on pages with no cap-band lines:
 19 of the 43 sampled pages had none.
+
+### 2026-09-25 — Amended: the descender check's cap reference also counts `FromCapHeight` lines, and the defect is 13.9% of components, not 8.2%
+
+This amends item 2 of the entry directly above ("A one-band line that only
+descends is checked against the page's cap height"). That entry stays as
+written. Its reading counted only the 24 of 43 sampled pages that have a
+cap-band `Observed` line.
+
+**Corrected reading** (same sample: finfilings-train, every 10th page,
+layout only):
+- 905 of 6,141 lines take the descender branch.
+- They hold 13.9% of all components, on 31 of the 43 pages.
+- 15 of the 19 pages with no cap-band line are trade tables. On those, each
+  date cell (`23/12/2024`) takes the branch because the `/` hangs below
+  the baseline. Checked by eye on `filing__s1__r000045`: the date cells
+  read 16 px, while the other cells in the same row read 11.89.
+
+**Where the entry above falls short.** Its reference, voted from cap-band
+`Observed` lines only, re-reads 185 of the 905 lines.
+- On a page with no cap-band line it falls back to the current vote.
+- That vote is exactly the flagged lines, so their x-height matches the
+  page and nothing is re-read.
+
+**Amended item 2.** At `lines.descender_cap_check = 1`:
+- **Page cap height:** the width-weighted median `cap_height` over
+  unflagged lines whose source is `Observed` or `FromCapHeight`. Both of
+  those measured a cap band.
+- **Page x-height:** the vote over unflagged `Observed` lines, as before.
+  If there are none, it is page cap × `x_height_per_cap`.
+- **The re-read test** is unchanged: within `cap_match_margin` of the page
+  cap, and not within it of the page x-height.
+
+Off-line replay of this rule on the sample re-reads 893 lines, 13.7% of
+components. That replay was run on the `--layout` dump, not on the
+implementation.
+
+**Tests added to the list:**
+- A trade-table page: date cells with a descending `/`, next to digit
+  cells that are `FromCapHeight`. The date cells are re-read.
+- A page whose only lines are the flagged ones: untouched, because there is
+  no reference.
+
+The gate and landing order are unchanged.
