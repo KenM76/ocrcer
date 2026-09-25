@@ -38,6 +38,19 @@
 //! *not* identifier-shaped by this predicate and is not tested here — a
 //! true statement about what the authored predicate protects, not a gap in
 //! this harness.
+//!
+//! # Causation, not just coincidence (architect review, 2026-09-25)
+//!
+//! `Outcome::RewrittenLexicon` looked like it measured the lexicon bonus
+//! pulling a reading toward a dictionary word. It measured something weaker:
+//! the *output* happening to be a lexicon word, which a truncation satisfies
+//! by accident (`"6mm"` read as `"mm"` is a dropped `6`, not the lexicon
+//! winning). [`score_dir`] now also runs every page through a second engine
+//! identical to the first except `decode.w_lex = 0`, and reports every case
+//! where the two runs disagree *and* the lexicon-on run is wrong
+//! (`Report::lexicon_caused`) — see [`score_dir`]'s own doc for why both
+//! conditions are required. `bin/ident.rs` gates on this count with its own
+//! `--lexicon-threshold` (default 0), separate from `--threshold`.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -46,7 +59,7 @@ use ocrcer_core::decode::lexicon;
 use ocrcer_core::decode::viterbi::ClassInfo;
 use ocrcer_core::ocrw::Model;
 use ocrcer_core::params::{identifier_shape, Decode};
-use ocrcer_core::pipeline::Engine;
+use ocrcer_core::pipeline::{Engine, Word};
 use ocrcer_core::Gray;
 
 use crate::ident_corpus;
@@ -198,6 +211,17 @@ pub fn is_lexicon_word(word: &str, model: &Model, char_to_class: &HashMap<char, 
 /// reported separately because they are different mechanisms an
 /// `ocrcer-linguist` fix would address differently (a confusion/segmentation
 /// fix for the former, a lexicon-suppression fix for the latter).
+///
+/// **`RewrittenLexicon` is descriptive, not causal.** It fires whenever the
+/// hypothesis word happens to be a whole word in the model's lexicon —
+/// including truncations that land on a short entry by coincidence (`"6mm"`
+/// read as `"mm"` is a dropped `6`, not a case where the lexicon bonus won
+/// against a correct identifier reading). Architect review, 2026-09-25:
+/// measuring cause requires re-scoring with the lexicon term removed and
+/// checking whether *that* changes the answer — [`lexicon_ab`] does this and
+/// is the causal gate. Keep both: this variant still tells `ocrcer-linguist`
+/// which REWRITTEN outputs are dictionary words, which is useful context even
+/// when the lexicon did not cause them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Outcome {
     Exact,
@@ -214,6 +238,24 @@ pub struct IdentCase {
     pub truth_word: String,
     pub hyp_word: Option<String>,
     pub outcome: Outcome,
+    /// The hypothesis word's reported confidence. Always present for a
+    /// REWRITTEN case: alignment only produces `hyp_word: Some(_)` when a
+    /// hypothesis word exists at that position, and every recognised word
+    /// carries a confidence (`ocrcer_core::pipeline::Word::confidence`).
+    pub confidence: f32,
+}
+
+/// One identifier-shaped ground-truth word whose reading changed between two
+/// runs of the same engine that differ only in `decode.w_lex`, where the
+/// lexicon-on run's answer is not the truth. See [`lexicon_ab`]'s doc for
+/// why this is the causal test and `Outcome::RewrittenLexicon` above is not.
+#[derive(Clone, Debug)]
+pub struct LexCase {
+    pub stem: String,
+    pub line: usize,
+    pub truth_word: String,
+    pub hyp_on: Option<String>,
+    pub hyp_off: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -239,6 +281,55 @@ impl IdentTally {
         self.rewritten_identifier += other.rewritten_identifier;
         self.rewritten_lexicon += other.rewritten_lexicon;
     }
+}
+
+/// Reported confidence of every classified identifier-shaped token, split by
+/// outcome — measured, not gated (`ident score` prints it; nothing fails on
+/// it yet). Rule 5's harm is a *confident* wrong answer, so the REWRITTEN
+/// population's confidence distribution is the thing that matters, not just
+/// its count.
+#[derive(Clone, Debug, Default)]
+pub struct ConfidenceSplit {
+    pub rewritten: Vec<f32>,
+    pub exact: Vec<f32>,
+}
+
+impl ConfidenceSplit {
+    pub fn rewritten_at_least(&self, threshold: f32) -> usize {
+        self.rewritten.iter().filter(|&&c| c >= threshold).count()
+    }
+
+    pub fn median_rewritten(&self) -> Option<f32> {
+        median(&self.rewritten)
+    }
+
+    pub fn median_exact(&self) -> Option<f32> {
+        median(&self.exact)
+    }
+}
+
+fn median(values: &[f32]) -> Option<f32> {
+    if values.is_empty() {
+        return None;
+    }
+    let mut v = values.to_vec();
+    v.sort_by(|a, b| a.partial_cmp(b).expect("a confidence is never NaN"));
+    let n = v.len();
+    Some(if n % 2 == 1 { v[n / 2] } else { (v[n / 2 - 1] + v[n / 2]) / 2.0 })
+}
+
+/// Everything one `score_dir` run produces.
+pub struct Report {
+    pub tally: IdentTally,
+    pub offenders: Vec<IdentCase>,
+    pub confidence: ConfidenceSplit,
+    /// Every LEXICON-CAUSED case found by the `decode.w_lex` A/B — see
+    /// [`score_dir`]'s doc for the definition. Not the same population as
+    /// `offenders`' `RewrittenLexicon` cases and not expected to overlap
+    /// much: one measures coincidence in the output (does the hypothesis
+    /// happen to be a lexicon word), the other measures cause (did removing
+    /// the lexicon term change the answer).
+    pub lexicon_caused: Vec<LexCase>,
 }
 
 /// Aligns two word sequences by Levenshtein edit distance (substitution
@@ -311,62 +402,131 @@ fn classify_word(
     }
 }
 
-/// Runs every page in `dir` through `engine` end to end (real segmentation,
-/// real binarization — not the oracle reader `pages::read_with_bank` gives
-/// other harnesses) and classifies every identifier-shaped ground-truth
-/// word. `dir` must hold pages [`generate`] wrote.
-pub fn score_dir(engine: &Engine, dir: &str) -> Result<(IdentTally, Vec<IdentCase>), String> {
-    let model = engine.model();
+/// Groups a page's recognised lines the same way [`pages::page_text`] joins
+/// them for printing — lines sharing a `band` (`ARCHITECTURE.md` section 11)
+/// are fragments of one visual row — but keeps the `Word`s themselves
+/// (needed here for confidence) instead of flattening to a string. Must
+/// agree with `page_text`'s join rule exactly: two readers of the same rule
+/// that drifted would score a spacing difference as a word error.
+fn banded_words(lines: &[ocrcer_core::pipeline::Line]) -> Vec<Vec<&Word>> {
+    let mut out: Vec<Vec<&Word>> = Vec::new();
+    let mut prev_band: Option<usize> = None;
+    for l in lines {
+        if prev_band == Some(l.band) {
+            out.last_mut().expect("a same-band row always follows a row that opened it").extend(l.words.iter());
+        } else {
+            out.push(l.words.iter().collect());
+        }
+        prev_band = Some(l.band);
+    }
+    out
+}
+
+/// Runs every page in `dir` through `engine_on` end to end (real
+/// segmentation, real binarization — not the oracle reader
+/// `pages::read_with_bank` gives other harnesses), classifies every
+/// identifier-shaped ground-truth word, and records its confidence.
+///
+/// # The lexicon causal test (architect review, 2026-09-25)
+///
+/// `Outcome::RewrittenLexicon` (see its doc) is descriptive, not causal: it
+/// fires whenever the hypothesis happens to be a lexicon word, which
+/// includes truncations that land on a short entry with no lexicon
+/// participation at all (`"6mm"` -> `"mm"` is a dropped `6`). To test cause,
+/// every identifier-shaped truth word is *also* read through `engine_off`,
+/// which the caller must construct identically to `engine_on` except for
+/// `decode.w_lex = 0` — a caller that swept any other knob between the two
+/// would be measuring that knob, not the lexicon, and every [`LexCase`]
+/// would misattribute it. A case is **LEXICON-CAUSED**
+/// (`Report::lexicon_caused`) when the two runs disagree on this word *and*
+/// `engine_on`'s answer is not the truth: the lexicon term moved the
+/// decoder's choice, and that move did not land on the truth. Both
+/// conditions matter — a disagreement that still reads correctly is the
+/// lexicon bonus doing its intended job, not a rule-6 harm.
+///
+/// `dir` must hold pages [`generate`] wrote.
+pub fn score_dir(engine_on: &Engine, engine_off: &Engine, dir: &str) -> Result<Report, String> {
+    let model = engine_on.model();
     let char_to_class: HashMap<char, u16> =
         model.classes.iter().map(|c| (c.codepoint, c.index)).collect();
-    let decode = &engine.params().decode;
+    let decode = &engine_on.params().decode;
 
     let pgms = pages::list_pages(dir)?;
     let mut tally = IdentTally::default();
     let mut offenders = Vec::new();
+    let mut confidence = ConfidenceSplit::default();
+    let mut lexicon_caused = Vec::new();
 
     for pgm in &pgms {
         let stem = pgm.file_stem().unwrap_or_default().to_string_lossy().to_string();
         let truth = pages::load_truth_beside(pgm)?;
         let (w, h, grey) = pages::load_page(pgm)?;
-        let lines = engine
+        let lines_on = engine_on
             .recognize_lines(Gray { width: w, height: h, data: &grey })
             .map_err(|e| format!("{stem}: {e:?}"))?;
-        let read = pages::page_text(&lines);
-        let hyp_lines: Vec<&str> = read.lines().collect();
+        let lines_off = engine_off
+            .recognize_lines(Gray { width: w, height: h, data: &grey })
+            .map_err(|e| format!("{stem}: {e:?}"))?;
+        let rows_on = banded_words(&lines_on);
+        let rows_off = banded_words(&lines_off);
 
         for (li, truth_line) in truth.lines.iter().enumerate() {
             let truth_words: Vec<&str> = truth_line.split_whitespace().collect();
-            let hyp_words: Vec<&str> =
-                hyp_lines.get(li).map(|s| s.split_whitespace().collect()).unwrap_or_default();
-            let alignment = align_words(&truth_words, &hyp_words);
+            let empty: Vec<&Word> = Vec::new();
+            let words_on = rows_on.get(li).unwrap_or(&empty);
+            let words_off = rows_off.get(li).unwrap_or(&empty);
+            let texts_on: Vec<&str> = words_on.iter().map(|w| w.text.as_str()).collect();
+            let texts_off: Vec<&str> = words_off.iter().map(|w| w.text.as_str()).collect();
+            let align_on = align_words(&truth_words, &texts_on);
+            let align_off = align_words(&truth_words, &texts_off);
 
             for (wi, tw) in truth_words.iter().enumerate() {
                 if !is_identifier_shaped(tw, decode) {
                     continue;
                 }
-                let hyp_word = alignment[wi].map(|hi| hyp_words[hi]);
-                let outcome = classify_word(tw, hyp_word, model, &char_to_class, decode);
+                let on_idx = align_on[wi];
+                let hyp_on = on_idx.map(|hi| texts_on[hi]);
+                let outcome = classify_word(tw, hyp_on, model, &char_to_class, decode);
                 match outcome {
                     Outcome::Exact => tally.exact += 1,
                     Outcome::DroppedOrGarbled => tally.dropped += 1,
                     Outcome::RewrittenIdentifier => tally.rewritten_identifier += 1,
                     Outcome::RewrittenLexicon => tally.rewritten_lexicon += 1,
                 }
-                if matches!(outcome, Outcome::RewrittenIdentifier | Outcome::RewrittenLexicon) {
-                    offenders.push(IdentCase {
+                if let Some(hi) = on_idx {
+                    let conf = words_on[hi].confidence;
+                    match outcome {
+                        Outcome::Exact => confidence.exact.push(conf),
+                        Outcome::RewrittenIdentifier | Outcome::RewrittenLexicon => {
+                            confidence.rewritten.push(conf);
+                            offenders.push(IdentCase {
+                                stem: stem.clone(),
+                                line: li,
+                                truth_word: (*tw).to_string(),
+                                hyp_word: hyp_on.map(str::to_string),
+                                outcome,
+                                confidence: conf,
+                            });
+                        }
+                        Outcome::DroppedOrGarbled => {}
+                    }
+                }
+
+                let hyp_off = align_off[wi].map(|hi| texts_off[hi]);
+                if hyp_on != hyp_off && hyp_on != Some(*tw) {
+                    lexicon_caused.push(LexCase {
                         stem: stem.clone(),
                         line: li,
                         truth_word: (*tw).to_string(),
-                        hyp_word: hyp_word.map(|s| s.to_string()),
-                        outcome,
+                        hyp_on: hyp_on.map(str::to_string),
+                        hyp_off: hyp_off.map(str::to_string),
                     });
                 }
             }
         }
     }
 
-    Ok((tally, offenders))
+    Ok(Report { tally, offenders, confidence, lexicon_caused })
 }
 
 #[cfg(test)]
@@ -392,5 +552,72 @@ mod tests {
         let hyp = vec!["PART", "NO.", "REV", "C"];
         let a = align_words(&truth, &hyp);
         assert_eq!(a[2], None);
+    }
+
+    #[test]
+    fn median_of_even_count_averages_the_middle_pair() {
+        assert_eq!(median(&[0.2, 0.4, 0.6, 0.8]), Some(0.5));
+        assert_eq!(median(&[0.9]), Some(0.9));
+        assert_eq!(median(&[]), None);
+    }
+
+    fn word(text: &str, confidence: f32) -> Word {
+        Word { text: text.to_string(), rect: Default::default(), confidence, chars: Vec::new() }
+    }
+
+    fn line(band: usize, words: Vec<Word>) -> ocrcer_core::pipeline::Line {
+        ocrcer_core::pipeline::Line {
+            words,
+            rect: Default::default(),
+            baseline: 0.0,
+            x_height: 0.0,
+            confidence: 0.0,
+            band,
+        }
+    }
+
+    /// `banded_words` must agree with `pages::page_text`'s join rule
+    /// exactly (this module's own doc explains why): same band joins onto
+    /// the current row, a new band starts a new one.
+    #[test]
+    fn banded_words_matches_page_texts_row_grouping() {
+        let lines = vec![
+            line(0, vec![word("4X", 0.9), word("M8x1.25", 0.8)]),
+            line(0, vec![word("THRU", 0.7)]), // same band: continues row 0
+            line(1, vec![word("NOTE", 0.6)]), // new band: row 1
+        ];
+        let rendered = pages::page_text(&lines);
+        let rows = banded_words(&lines);
+
+        let flattened: Vec<String> = rows
+            .iter()
+            .map(|r| r.iter().map(|w| w.text.as_str()).collect::<Vec<_>>().join(" "))
+            .collect();
+        assert_eq!(flattened.join("\n"), rendered);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].len(), 3); // "4X" "M8x1.25" "THRU"
+        assert_eq!(rows[1].len(), 1); // "NOTE"
+    }
+
+    /// The conjunction in [`score_dir`]'s LEXICON-CAUSED definition: a
+    /// disagreement between the two runs is not enough on its own — the
+    /// lexicon-on run must also be wrong, or the lexicon did its intended
+    /// job rather than causing a rule-6 harm.
+    #[test]
+    fn lexicon_caused_requires_both_disagreement_and_a_wrong_on_answer() {
+        let truth = "M8x1.25";
+        // Disagreement, on-answer correct: not LEXICON-CAUSED.
+        let hyp_on: Option<&str> = Some("M8x1.25");
+        let hyp_off: Option<&str> = Some("M8xI.25");
+        assert!(!(hyp_on != hyp_off && hyp_on != Some(truth)));
+        // Disagreement, on-answer wrong: LEXICON-CAUSED.
+        let hyp_on: Option<&str> = Some("M8xI.25");
+        let hyp_off: Option<&str> = Some("M8x1.25");
+        assert!(hyp_on != hyp_off && hyp_on != Some(truth));
+        // No disagreement (lexicon changed nothing here): not LEXICON-CAUSED
+        // even though the on-answer is wrong.
+        let hyp_on: Option<&str> = Some("M8xI.25");
+        let hyp_off: Option<&str> = Some("M8xI.25");
+        assert!(!(hyp_on != hyp_off && hyp_on != Some(truth)));
     }
 }
