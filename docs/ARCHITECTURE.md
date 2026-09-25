@@ -208,9 +208,10 @@ than a source pixel and the filter degenerates to that pixel's value, which is
 blocky for very small glyphs and is accepted — it is deterministic, which is
 what matters here.
 
-Aspect ratio is deliberately destroyed by this scaling and reintroduced as an
-explicit feature, so that shape and proportion are separately weighted rather
-than entangled.
+The scaling is isotropic — one `s` for both axes — so `G` keeps the glyph's
+proportions: a narrow glyph fills a narrow central band of the grid, not the
+whole of it. Aspect is additionally carried as an explicit dimension (`103`),
+so proportion can be weighted separately from shape.
 
 **Dimension layout.** Fixed, and the class id of a dimension never changes.
 
