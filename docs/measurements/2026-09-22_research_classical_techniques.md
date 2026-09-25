@@ -925,3 +925,40 @@ Read, not measured. Source: Tombre, Tabbone, Pélissier, Lamiroy, Dosch,
   grouping. Whether touching text is a real error class on pages-cov
   drawings is unmeasured, so it needs a census of drawing misses by cause
   first. No chunk is proposed.
+
+## Addendum 2026-09-25: Tesseract's case check needs no line x-height
+
+Read from source, not measured. Sources: `wordrec/lm_consistency.cpp`,
+`lm_consistency.h`, `language_model.h`, `language_model.cpp` (Tesseract
+`main`).
+
+- Every classifier choice carries `min_xheight` and `max_xheight`. That is
+  the range of line x-heights consistent with this blob being this
+  character, derived from the blob's size and the character's trained
+  top and bottom range.
+- As a path grows, `ComputeXheightConsistency` intersects those ranges,
+  separately for normal, subscript and superscript positions. The path
+  becomes `XH_INCONSISTENT` when any intersection is empty, or when more
+  than 40% of the sub- or superscript characters are punctuation, or when a
+  sub- or superscript range falls below 0.4 of the mainline range. An
+  inconsistent path is penalised, and it is refused as an acceptable
+  choice.
+- Case is scored separately. `NumInconsistentCase` is
+  `min(upper case after the first letter, lower case letters)`. The
+  penalty is 0.1 for the first and 0.01 more for each further one
+  (`language_model_penalty_case`, `_increment`). A leading capital is
+  free.
+
+**How this differs from `case-geom`.** Our check compares a glyph's top
+height with the height the bank expects for it and for its case twin. It
+measures that height in units of the line's x-height, so it is only as
+right as the line x-height. Tesseract's check is relative: in `Sees`, a
+capital `S` implies an x-height about 0.7 times the one the `e`s imply, so
+the ranges fail to intersect whatever the line estimate says. It gives no
+information where every letter in the word is a case twin (`sow`/`SOW`),
+and there the line x-height is the only cue.
+
+Candidate, if the `case-geom` sweep leaves case misses on lines whose
+x-height estimate is wrong: add word-internal consistency as a second arm.
+Each case-twin choice would carry an implied x-height interval from its
+bank heights, and each path would intersect them. Not specced.
