@@ -1733,3 +1733,81 @@ No source was read. This is a measurement.
   - the CAD dev set not worse;
   - the identifier test;
   - the table size and the decode wall time, both reported.
+
+
+---
+
+## Addendum 2026-09-25: white text on dark bars — Tesseract re-reads unsure lines inverted (read from source, and a train count)
+
+**Tesseract.** `invert_threshold` defaults to 0.7: "For lines with a mean
+confidence below this value, OCR is also tried with an inverted image"
+(`tesseractclass.cpp`). In `LSTMRecognizer::RecognizeLine`
+(`lstmrecognizer.cpp`), the line is run once, the mean output confidence is
+taken, and if it falls below the threshold the line image is inverted and run
+again. The inverted result is kept only if its mean confidence is higher.
+The pattern is the general one: a confidence gate, an alternative image, and
+keep the better-scoring read.
+
+**OCRcer today.** Polarity is decided once per page
+(`binarize.rs`, `auto_polarity`: a mask covering more than half the page is
+inverted). A dark bar with white text on an otherwise dark-on-light page is
+therefore one large ink component, and the letters are holes in it.
+
+**Train count (finfilings-train only, 427 pages, a numpy/scipy script, not
+the engine).** Method:
+- global Otsu threshold;
+- dark 8-connected components with height ≥ 1.2× the page's median glyph
+  height, width ≥ 4×, and fill ≥ 0.5 of the bounding box;
+- holes of glyph size (0.5–2× median height, width ≤ 3×);
+- a region counts with ≥ 3 such holes.
+
+Result:
+- 3 pages, 4 regions, 127 glyph-sized holes;
+- against 836,934 dark glyph-sized components on all 427 pages, about 0.015%;
+- all three pages viewed, and all are genuine header bars:
+  - "Share Classes A C I R3 R4 R5 R6 Y F" (black);
+  - "COMMON STOCKS - 96.7%" and its "(continued)" (dark grey);
+  - "Analysis of Profit and Loss account items" (dark grey).
+
+The ground truth carries all of it.
+
+**What the engine does with one (a layout-only run, `ocr --layout
+--no-decode`, master's binary, on `filing__s4__r000750`).**
+- In the bar's band the layout reports 11 one-member lines 3–5 px wide:
+  the dark counters inside the white letters.
+- No line carries the bar's text.
+- So the text is lost, and the fragments may add insertions. Decode was not
+  run, so the insertions are not measured.
+
+**For OCRcer, not queued.** On this corpus the ceiling is about 0.015% of
+characters. The mechanism, if a trigger fires:
+- a dense dark component whose holes are glyph-sized is a reverse region;
+- read its bounding box inverted, as its own block;
+- drop the dark islands inside its holes.
+
+Both thresholds would be authored guesses and go on the tuning list.
+Triggers:
+- reverse bars in the CAD dev set or in a pdfcer report (title blocks are
+  the place to look);
+- or the census showing counter-fragment insertions.
+
+**The general form, parked.** Lund, Kennard & Ringger (SPIE DRR XX, 2013)
+read one page at several global thresholds, aligned the outputs into a word
+lattice, and committed one word per slot. On 19th-century newspapers their
+baseline WER was 13.8% and higher, and the committed WER was 8.41%. The
+lattice oracle was 7.6% with two thresholds and 6.8% with five. These are
+figures from the abstract, via search results. The committing method was not
+read. The OCRcer version would re-read low-confidence words at a few Sauvola
+`k` values and keep the best by calibrated word confidence. It waits on:
+1. the conf-margin merge, because a calibrated confidence is needed to choose
+   with;
+2. the Sauvola-window measurement above, which is the cheaper fix for the
+   same broken strokes;
+3. a train oracle reading: of words wrong at the default threshold, how many
+   come out right under any of K variants.
+
+Sources:
+- [tesseract `tesseractclass.cpp`](https://github.com/tesseract-ocr/tesseract/blob/main/src/ccmain/tesseractclass.cpp)
+- [tesseract `lstmrecognizer.cpp`](https://github.com/tesseract-ocr/tesseract/blob/main/src/lstm/lstmrecognizer.cpp)
+- [Lund, Kennard & Ringger, Combining multiple thresholding binarization values to improve OCR output (SPIE 8658)](https://www.spiedigitallibrary.org/conference-proceedings-of-spie/8658/1/Combining-multiple-thresholding-binarization-values-to-improve-OCR-output/10.1117/12.2006228.short)
+- [Lund, Kennard & Ringger, Why multiple document image binarizations improve OCR (HIP 2013)](https://www.researchgate.net/publication/255482649_Why_Multiple_Document_Image_Binarizations_Improve_OCR)
