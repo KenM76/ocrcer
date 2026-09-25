@@ -132,3 +132,28 @@ they are in `ocrcer-core` and pre-existing files inside `ocrcer-build`
 tests. `cargo test -p ocrcer-build` passes in full (lib, `main.rs`, and
 `roundtrip.rs` tests, 0 failures), including the two new/changed `style.rs`
 tests above.
+
+## Verdict (architect, 2026-09-25): parked
+
+The decision rule was set before the run: a relative glyph-error cut of at
+least 10% at leave-one-face-out L=4 writes a candidate, 5–10% parks it as
+weak, and anything under 5% parks it. The measured change is +21.8% (held-out
+18) and +38.8% (held-out 40), where positive means LS makes more errors. Style-consistent
+field classification is parked. No candidate spec, and no §11 entry, since
+nothing was ever proposed there.
+
+What the reading says, beyond the rule. In-bank, LS names the true face for
+94.5% of L=4 fields and is still worse than singlet at every L>1. So a
+correctly identified face's own prototypes at the nearest ladder size label
+glyphs worse than the whole bank does. Other faces' prototypes of the same
+class fill in for the size the ladder lacks. The bank gains more from its
+spread of faces than a page gains from staying consistent within one face.
+That bears on the per-page adaptive prototype candidate
+(`2026-09-22_research_classical_techniques.md`, 2026-09-24 addendum) in one
+direction only: that candidate *adds* page-specific prototypes to the bank,
+while LS *restricts* the bank to one face. This result is evidence against
+restricting, not against adding.
+
+Caveat: the metric is `bank.rs`'s unweighted L2, not the runtime's weighted
+matcher, and the glyphs are synthetic renders at held-out sizes. Reopen only
+if a weighted-metric reading or real-page evidence contradicts it.
