@@ -8514,3 +8514,58 @@ answers.
   writer is built when a consumer asks for one.
 - the chunk's token estimate, which is re-estimated at chunk start per
   `PLAN.md` §2a.
+
+### 2026-09-25 — Chunk 9 spec, part 1, amended: how cells are enumerated, and each cell's grid span
+
+Amends "Candidate chunk 9 spec, part 1" above, the *Cells* paragraph of
+9a. The rest of that entry stands.
+
+**Why.** "A minimal rectangle each of whose four sides is covered" does
+not say minimal in which order. It also does not say what a rule that
+stops inside a rectangle does. Two implementers could build different
+cells from the same page, and that is the ambiguity §8.2's fixtures are
+meant to rule out. Prior art, read from source, settles both (research
+addendum "cells from ruling lines", 2026-09-25).
+
+**Enumeration.**
+
+- **Crossings.** After endpoint snapping (`structure.join_tol_h`), a
+  crossing is any point where a horizontal and a vertical rule meet. That
+  includes T and L junctions.
+- **The cell from each crossing.** Take the crossing as a top-left corner.
+  - Walk the crossings below it on the same vertical rule, nearest first.
+  - For each of those, walk the crossings to its right on the same
+    horizontal rule, nearest first.
+  - The first pair that closes a rectangle is the cell. Closed means the
+    bottom-right crossing exists, and all four sides pass the
+    `structure.side_cover` test.
+  - At most one cell comes from each crossing.
+  - This is Tabula's `findCells` order.
+- **Stubs.** A rule that ends inside a rectangle does not split it. So a
+  spanning cell is one cell, and no word ever needs moving between cells.
+- A rectangle has one top-left corner, so no cell is found twice. Cells
+  are still reported in `(y0, x0, y1, x1)` order.
+- If two cells overlap, a word still goes to the smallest cell containing
+  its centre, as 9a already says.
+
+**Grid span.** Within each region:
+
+- the distinct x-coordinates of its cells' edges are the column anchors;
+- the distinct y-coordinates are the row anchors;
+- both are merged within `structure.join_tol_h`.
+
+`Cell` gains `rows: (u32, u32)` and `cols: (u32, u32)`, half-open anchor
+indices. 9a computes and fixture-asserts them. 9c's `GriTS_Top` scores
+them. Nothing in 9a or 9b reads them.
+
+**No joint minimum.** Camelot drops a ruled area with four or fewer
+joints. OCRcer does not: a single closed box is a cell, and 9b's
+`form.min_boxes` is the only count threshold.
+
+**Fixtures added to `structure`:**
+
+- a rule stub ending inside a cell;
+- a T junction;
+- a cell spanning two columns, asserting its `cols` span;
+- a rule whose end falls short of the crossing rule by more than
+  `structure.join_tol_h`, asserting no cell closes there.

@@ -2308,3 +2308,77 @@ the operator before any use, and even then it would be scoring-only.
 **Not measured:** how many finfilings-train statement pages carry indent,
 rules or bold that separate the levels; any tree accuracy on OCRcer
 output, since no table layer exists.
+
+## Addendum 2026-09-25: cells from ruling lines — how Camelot and Tabula build them (read from source, for chunk 9a)
+
+**Why.** The chunk 9 spec, part 1 (`ARCHITECTURE.md` §11, 2026-09-25),
+defines a cell as a minimal rectangle closed by rules. Two widely used PDF
+table extractors already build cells from rulings. They were read before
+anyone implements 9a, so the spec either matches prior art or says where it
+departs.
+
+**Camelot, lattice mode** (`camelot/parsers/lattice.py`,
+`camelot/image_processing.py`, read 2026-09-25):
+
+- *Rules.* Morphological opening (erode, then dilate) with a one-pixel-wide
+  structuring element whose length is the page dimension divided by
+  `line_scale`. The lattice parser passes 15. The function's own default,
+  and the "How it works" page, say 40.
+  - That makes the shortest detectable rule a fixed fraction of the page.
+  - At 300 dpi on a letter page, 15 gives 220 px vertically and 170 px
+    horizontally; 40 gives 82 px and 63 px (arithmetic, not a reading).
+  - Their docs warn that a `line_scale` above about 150 detects text as
+    lines.
+- *Joints.* The pixelwise AND of the horizontal and vertical masks.
+- *Tables.* External contours of the OR of the two masks, at least
+  0.05% of the page area. A table with four or fewer joints is discarded
+  (`if len(jc) <= 4: continue`).
+- *Grid.* Joint x-coordinates within `line_tol` (2) merge into column
+  anchors, and y-coordinates into row anchors. Each grid cell then gets an
+  edge flag per side when a segment lies within `joint_tol` (2) of it.
+- *Spanning cells.* These are grid cells with a missing edge. Text in a
+  spanning cell is moved along `shift_text` (default left, then top) to the
+  cell that owns it. `copy_text` optionally repeats it across the span.
+
+**Tabula, spreadsheet mode** (`SpreadsheetExtractionAlgorithm.findCells`,
+read 2026-09-25):
+
+- The crossings of horizontal and vertical rulings are the candidate
+  corners.
+- For each crossing taken as a top-left corner, it walks crossings below
+  it on the same vertical ruling and to its right on the same horizontal
+  ruling.
+- It takes the first pair whose bottom-right crossing exists, with rulings
+  present on all four sides. That rectangle is the cell.
+- A ruling that stops inside a rectangle does not split it, so spanning
+  cells come out directly.
+- Whether a page is tabular at all is a ratio test between the rule-based
+  and text-based row and column counts (`MAGIC_HEURISTIC_NUMBER = 0.65`).
+
+**What this means for 9a.**
+
+1. The spec's cell is Tabula's cell: the nearest closed rectangle from
+   each crossing. Camelot's grid with edge flags gives the same rectangles
+   on a well-formed grid, and adds what 9c's `GriTS_Top` needs: each
+   cell's row and column span.
+   - Both come cheaply: enumerate cells Tabula's way, then take the
+     region's distinct cell-edge coordinates as anchors, and report each
+     cell's span in those anchors.
+2. Neither tool's length floor transfers. Camelot's is page-relative. A
+   slip's box side is short compared with the page but long compared with
+   the type, which is why the spec measures rule length in `h`, the page's
+   median glyph height.
+   - That this beats a page-relative floor on real slips is an
+     expectation, not a reading. The `rules` fixture's tall-box and
+     short-box cases are where it gets checked.
+3. Camelot's "four or fewer joints is not a table" rule would drop a
+   single isolated box. For 9b that is the wrong rule: a lone box with a
+   printed box number is a field. The spec's `form.min_boxes` is the
+   form-level threshold, and a cell needs no joint count of its own.
+4. Both tools assign a word to a cell by coordinates, and Camelot moves
+   spanning-cell text to a single owner cell. The spec's rule, the
+   smallest cell containing the word's centre, never needs to move text,
+   because a spanning cell is one cell.
+
+**Not measured:** any rule or cell accuracy for either tool, or for
+OCRcer, on any page.
