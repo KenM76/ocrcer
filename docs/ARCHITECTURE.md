@@ -8646,3 +8646,51 @@ others.
 - a rule with one-pixel breaks, which is one rule;
 - a dashed rule, which is not a rule;
 - a single em dash in running text, which is not a rule.
+
+### 2026-09-25 — Chunk 12b's vector: a move made on a tie is reverted before the ablations, and the fitting scripts are committed with the fold
+
+Amends steps 1 and 7 of "How chunk 12b's vector is chosen". The rest of
+that entry stands.
+
+**What happened.** When the campaign resumed on 2026-09-24, its tie rule
+changed: a candidate replaces the current value only if it beats it by more
+than `EPS` on the inner sample. The first rule took the lowest CER, and the
+first candidate on a tie. The new rule was applied to `decode.w_lex` and to
+every tier after tier 1, but not to the rest of tier 1. The campaign log
+shows one other tier-1 move made on a tie: `decode.seg_split_penalty` went
+from 0.75 to 0.5 with an inner CER of 22.318 for both (train, stride 35).
+Every other tier-1 move beat the current value by more than `EPS`.
+
+**Decision: A starts with `decode.seg_split_penalty` at 0.75**, the
+default.
+- The revert is made before any post-chain number exists. It applies the
+  rule the rest of the campaign ran under, so it is not a new choice.
+- The stride-2 ablations measure A as reverted. Every value that folds has
+  therefore been through phase 2 and val.
+- The tier 2–4 sweeps, their confirms and the cost knobs ran with 0.5 in
+  the base. They stand as train readings. They proposed values; phase 2 and
+  val are what test them.
+
+**Decision: the fitting scripts and logs are committed with the fold.**
+Step 7 names `campaign.py` and `campaign_post.py`. Both ran from a session
+scratch directory, with machine paths written in. The campaign was a first
+run plus two resumes after its process was killed. A `fitted` row that names
+a file outside the repository has no source. The fold's merge adds:
+- `tools/fit12b/`: the two drivers, the two resume scripts and
+  `decide_12b.py`. Machine paths become arguments, and nothing else
+  changes; the diff against what ran is reviewed at the merge.
+- `docs/measurements/2026-09-25_fit12b/`: the campaign log, the status
+  files, `post_status.json` and `decision_12b.json`. They hold each run's
+  argv and train metrics, and no page text.
+
+**What re-runs byte for byte:** each logged run, the phase-2 ablations,
+`decide_12b.py`, and the val comparison. A fresh run of the driver is not
+claimed to retrace the search. The tie rule changed after tier 1, and tier
+2's first five sweeps ran with `w_lex` at 0.35. `tools/fit12b/README.md`
+states the path as run. Each moved row's description names
+`tools/fit12b`, finfilings-train and `bench/splits/manifest.tsv`.
+
+**For every later fit:**
+- the script is committed before it runs, and takes its paths as
+  arguments;
+- a rule change mid-run is a §11 entry made before the next number.
