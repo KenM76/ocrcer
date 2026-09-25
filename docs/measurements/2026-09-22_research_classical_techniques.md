@@ -3102,3 +3102,72 @@ measured):
 **Not measured:** everything above for OCRcer, and how often stacked
 tolerances occur. There is no licence-clean drawing corpus to count them
 in, and scoring pages are not counted to justify design.
+
+## Addendum 2026-09-25: digits share one width — measure a space inside a number from digit centres, not from the ink gap (font metrics measured)
+
+**Why.** Census bucket (o) counts spurious spaces inside numeric truth
+tokens. Most text faces set their default digits "tabular": every digit
+has one advance, so columns of figures line up. A narrow `1` then carries
+wide side bearings. The ink gap next to it grows while the pitch stays
+fixed. This is a typographic fact about the faces, readable from their
+metrics, so it was measured rather than assumed.
+
+**Method.** `tools/digit_pitch.py` (committed), run 2026-09-25 over every
+`shippable` row of `model/fonts.tsv`. It reads font metrics only: `hmtx`
+advances and outline bounds. It uses no kerning and renders nothing. For
+every ordered digit pair (a, b) it compares:
+- the ink gap `rsb(a) + lsb(b)` against the same pair with a space,
+  `rsb(a) + space + lsb(b)`;
+- the ink-centre distance, the same way.
+
+A ratio is the largest within-number value over the smallest across-space
+value. A ratio of 1 or more means that no single threshold separates every
+pair, even on a perfect render.
+
+**Readings** (53 faces measured; `norm-stroke`'s path is missing):
+- 51 faces have tabular digits. Both Inter styles are proportional.
+- **Ink gap: five faces have a ratio of 1 or more.**
+  - Roboto Italic 1.12;
+  - Roboto Condensed Italic 1.04;
+  - Noto Sans Regular 1.02;
+  - Open Sans Condensed Light 1.02;
+  - Noto Serif Italic 1.01.
+
+  Twelve faces are at 0.9 or more. In 24 faces the worst pair is `11`, and
+  in 10 it is `17`.
+- **Centre distance: every face is below 1.** The largest is 0.92, in both
+  Noto Serif italics.
+- Liberation Sans and Serif (Arial and Times metrics, the likely filing
+  faces):
+  - ink ratio 0.36–0.52 upright and 0.56–0.78 italic;
+  - centre ratio 0.70–0.88.
+
+**What it means** (reasoned, not measured on pages):
+- On faces like these, an ink-gap test cannot be right for both `1 1` and
+  `11`. A centre-distance test can, with at least 8% of the across-space
+  distance to spare on perfect geometry.
+- Rendering and binarisation move ink edges by about a pixel. At 20 px/em
+  that is 0.05 em, a large share of that margin. Real pages will overlap
+  more than these ratios show.
+- The pitch needs no knowledge of the face. It is the median
+  centre-to-centre distance of adjacent digits in the same number or
+  column.
+- The layout-stage word splitter runs before classes are known, so this
+  test belongs after recognition. That is the "fuzzy-space decoder
+  resolution" backlog item, where Tesseract settles doubtful spaces too:
+  - a gap between two digit-classified glyphs whose centre distance is
+    within the line's digit pitch plus a margin is joined;
+  - the margin is `guess`;
+  - the pitch is a median of the line's own digit pairs;
+  - it is never applied across a comma or a period.
+
+**Queued, not specced.**
+- Bucket (o)'s neighbour split, once the census runs, says whether the
+  spurious spaces on finfilings-train sit next to `1`.
+- If they do, the test above is a candidate spec. Fitted on train, it is
+  gated on val with the usual guards, and the identifier test must pass.
+- If they do not, font geometry is not the cause on that corpus, and this
+  addendum stays a reading.
+
+**Not measured:** any engine output, and the faces finfilings pages are
+actually set in.
