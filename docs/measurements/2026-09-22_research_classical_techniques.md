@@ -3353,3 +3353,91 @@ Sources: https://github.com/tesseract-ocr/tesseract/blob/main/src/ccstruct/otsut
 https://github.com/tesseract-ocr/tesseract/blob/main/src/ccmain/thresholder.cpp,
 https://patents.google.com/patent/US7853074B2/en,
 https://en.wikipedia.org/wiki/Drop-out_ink.
+
+## Addendum 2026-09-25: highlighter and shaded rows — the binarizer marks the edge of a mid-grey band as ink (engine measured on synthetic lines; a train count)
+
+In an accounting office, reviewers highlight amounts and statements shade
+their header rows. Both put a flat mid-grey band behind black text once
+pdfcer converts the page to luma (the stamp addendum above).
+
+**Measured on synthetic lines.**
+- Setup:
+  - three accounting-style lines, drawn by `tools/highlight_lines.py` in
+    Liberation Sans at 10 pt and 300 dpi;
+  - the band is multiplied over the text, then converted to Rec.601 luma;
+  - the third line is banded over its first half only, so one band edge
+    falls inside the account number;
+  - read by `Engine::recognize` from `ocrcer-core` at master, with the
+    master model, through a scratch harness (not committed).
+- One face, one size, a clean render. The highlighter RGB values are
+  guesses.
+- Highlighter results:
+  - yellow (luma 230): the text is identical to the unbanded page;
+  - green (195): one hyphen is lost, `2026-0930`;
+  - blue (178): `jnvoice`, `2026-09-3Ó`;
+  - pink (168): the first or last letter of every banded line changes
+    (`jnvoice`, `galance`, `pemit`, `applieg`). Where the band ends inside
+    the number, `00417` becomes `OOÿ17`;
+  - orange (182): a spurious `,` word at confidence 0.80 where the band
+    starts.
+- Grey ladder results:
+  - 215 to 190: the text is correct, except one hyphen lost at 200;
+  - 180: edge letters change;
+  - 170: `1,234.56` splits into `1` and `234.56`, and spurious words
+    `L , 4` appear;
+  - 150 to 100: words merge across the line (`palancejorward`);
+  - 160 read almost clean, so the damage is not monotonic in this range.
+
+**Mechanism (binarizer output and a component diff inspected).**
+- The added ink sits at the band's corners and ends. At about 150 and
+  below it also runs along the band's top and bottom edges. The glyphs
+  nearest that ink merge with it. Thin strokes inside a band also thin
+  out, which is the lost hyphen.
+- A Sauvola window that straddles the band edge averages paper and band,
+  so its threshold rises above the band's own grey.
+- Worked, with §6's k = 0.34 and R = 128:
+  - a corner window, one quarter band at 168 and three quarters paper:
+    m = 233 and s = 38, so T = 233 × (1 + 0.34 × (38/128 − 1)) ≈ 177.
+    The band pixel is ink.
+  - a top-edge window, half band: T ≈ 164, so 168 is paper, barely. At
+    150, T ≈ 162, so the whole edge is ink.
+  - Text inside the window raises s and therefore T, which is why the
+    marks gather beside glyphs.
+
+**Train count (finfilings-train, 427 pages; pixels counted, nothing
+tuned).**
+- 25 pages carry a flat grey band across at least 15% of the page width
+  for at least 20 rows. The modal grey is 191 on 24 pages and 213 on one.
+- On three of those pages, the banded text read identically with the band
+  flattened to white. Confidence moved by a few hundredths either way.
+- The corpus's shading is lighter than the onset. So the scoring gates
+  would not see this failure if it appeared in client documents.
+
+**Candidate fixes, none chosen.**
+1. In pdfcer, lightness-gated colour dropout: use max(R, G, B) where luma
+   is above a floor (a guess, about 140), and luma below it.
+   - Highlighters (luma 158 to 230) become paper. Red text (luma 76) and
+     saturated stamps stay ink.
+   - It does nothing for grey shading.
+   - Reasoned: anti-aliased edges of red text cross the floor and thin by
+     about a pixel.
+2. In the engine, flatten the background before Sauvola: divide each pixel
+   by a local background estimate that keeps the band's sharp edges.
+   - One way is a grey closing with an element wider than the thickest
+     stroke. Leptonica's `pixBackgroundNorm` is a tile-based relative.
+   - The flattening checked above was done by hand, inside a known
+     rectangle.
+   - A general version must size the element from the text size, or a
+     heading's thick strokes become background.
+   - It changes the binarization stage, so every binarized fixture hash
+     moves and every stage is re-blessed. That is a §11 decision, gated
+     on no loss on either scoring corpus.
+3. Before either: turn the generator plus a small bench bin into a probe
+   that every binarization change must pass. The ladder is the test; no
+   corpus with truth has highlighter.
+
+**Queued, behind the 12b fold.** A train-page arm like the stamp arm:
+- H0: no band (the control);
+- H1: bands at luma 230, 195, 182 and 168 over seeded amount tokens.
+Both finfilings metrics, and the count of digits changed inside banded
+numbers.
