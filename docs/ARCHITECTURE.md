@@ -7530,3 +7530,64 @@ and not committed.
 - `w_bigram` and `w_lex` are re-fitted on train with the new tables and
   reported beside the old values.
 - The table's size in bytes is reported.
+
+
+### 2026-09-25 — Chunk 14 spec, reconciled with the counting stage already built
+
+The spec entry above was written without citing the counting stage, which
+already exists. That stage is the `count-text` binary in `ocrcer-bench`,
+committed 2026-09-24, and it is measured in
+`docs/measurements/2026-09-24_chunk14_counts.md`:
+- 427 train documents and 161,146 tokens;
+- 6,497 distinct candidate words and 3,125 distinct character pairs;
+- the firewall is checked per row, and core's `identifier_shape` predicate
+  is reused, not copied.
+
+The spec builds on its outputs. Where the two differ, this entry decides.
+
+**Bigrams: the spec's count mixture replaces the measurement's proposed
+log-linear blend.** The measurement proposed `w_train · train_logp +
+(1 − w_train) · authored_logp`, with `w_train = 0.3` as a guess. The count
+mixture is preferred for two reasons:
+- It yields one distribution. Its per-row backoff comes from the computed
+  discount D, which retires the authored `BACKOFF_MASS`. A blend of two
+  log-probabilities keeps that guess and adds a second one.
+- It keeps the counts the table is built from reproducible end to end.
+
+μ still has to be chosen, on the terms the spec states. The compile step
+maps `count-text`'s `<BOUND>` marker to the table's boundary row. `^` is a
+real charset class, which is why the counter could not use it as the
+boundary marker.
+
+**Lexicon: the measured candidate counts replace the spec's thresholds.**
+The rule "at least 3 characters, on at least 2 pages" is withdrawn. The
+measurement sized three (count, pages) rules, not yet applied:
+
+| Rule | Candidates |
+|---|---|
+| (3, 2) | 1,503 |
+| (5, 3) | 848 |
+| (10, 5) | 405 |
+
+The rule is chosen from that grid on finfilings-val, starting at (5, 3).
+New words enter at the lowest authored tier, as the measurement proposed.
+
+**No manual review step.** The measurement flagged `sh`, `com` and `dfnd`.
+They are frequent in the filings, but they are fragments of filer names,
+domains and boilerplate, not English words. The rule is not changed for
+them, because a string that recurs across 24 to 44 filings is a correct
+prior for this domain. Rule 6 also caps the cost of a spurious entry at a
+bonus on that one string: it can never rewrite another word. A manual
+review cannot be re-run by a script.
+
+If val shows a specific entry doing harm, it is excluded in a committed,
+authored list with its reason, and not by hand at build time.
+
+**The operator question in the spec entry is withdrawn.** The added words
+go into `model/lexicon.txt`. The counted pair table is committed beside
+`bigram_priors.tsv`. Both ship inside the `.ocrw` regardless. Apache-2.0
+permits redistribution with attribution. Committing them keeps the build
+reproducible from the repo alone (rule 1). `NOTICE` and `meta` gain the
+`multifinben-englishocr` entry in the same commit, as the measurement
+already noted. The raw text and the per-document `sources.tsv` stay out of
+the repo, per the existing convention for derived corpus artifacts.
