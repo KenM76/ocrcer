@@ -815,6 +815,15 @@ impl OcrEngine for OcrcerEngine {
 }
 ```
 
+**Input resolution contract.** For a raster source (a scanned page, an
+embedded image), pass pixels at the source's native resolution. If the
+caller must resample upward, it magnifies with a smoothing filter (bilinear
+or better). Nearest-neighbour magnification staircases stroke edges and
+bridges neighbouring glyphs into shapes the matcher reads as ligatures or
+accented letters (`project` → `projæt`); see §11, 2026-09-25. Vector-only
+pages have no native resolution and render at whatever DPI puts the text
+above the §11 per-line resolution floor.
+
 ### 8.2 The correctness contract
 
 With one implementation there is nothing to compare against, so regressions are
@@ -7688,3 +7697,49 @@ Whether that costs punctuation context is for the gates to show.
 
 **Order.** After chunk 12b is folded. It competes with the 16b serial runs
 for single-`ocr.exe` time, and goes after them.
+
+### 2026-09-25 — Nearest-neighbour upsampling, not resolution, garbles the 300 dpi smoke page
+
+**Finding (measured on one page, N = 47 words, so read it as mechanism
+evidence, not a rate).** pdfcer's `scan.pdf` embeds a 200 dpi image. The
+2026-09-24 smoke run read 97.9% of words at 200 dpi and 83.0% at 300 dpi,
+with garbling shaped like accents and ligatures (`Recogmtion`, `quaüty`).
+A controlled diagnostic (branch `dpi-diag`, note
+`2026-09-25_dpi_scale_vs_blur.md`) isolated the cause:
+
+| input, same page | x-height | words read |
+|---|---|---|
+| native 200 dpi | 19 px | 46/47 |
+| ×1.5 nearest-neighbour | 29 px | 41/47, `project` → `projæt`, `quality` → `qua11ty` |
+| ×1.5 bilinear | 29 px | 46/47 |
+| vector text rendered at the same x-height | 27 px | 44/47, case flips only |
+
+- Scale alone does not cause it: same-size vector text shows no garbling.
+- Blur does not cause it either. The smoothed upsample reads as well as
+  native.
+- Pixel replication staircases the edges and closes the gaps between
+  strokes. Binarized crops show the `c`–`t` gap in `project` bridged.
+
+**Why pdfcer's path hits it (read from pdfcer source, not measured
+there).** pdfcer's renderer smooths on minification by default. On
+magnification it honours the image's `/Interpolate`, which is usually
+absent, so it magnifies with `FilterQuality::Nearest`. Rendering a 200 dpi
+scan at 300 dpi is magnification.
+
+**Decision.**
+- §8.1 gains an input resolution contract: pass raster sources at native
+  resolution, and magnify only with a smoothing filter. This matches
+  OCRmyPDF, which rasterises image pages at the image's own dpi and vector
+  pages at 400 dpi (`_pipeline.py`, read 2026-09-25).
+- The call-site change is pdfcer's to make, in pdfcer's own session.
+  OCRcer does not edit pdfcer.
+
+**Candidate, not specced.** The engine could detect nearest-neighbour
+upsampling itself: runs of identical adjacent grey rows and columns are
+rare in a real scan and systematic after pixel replication. It would then
+restore the native grid with a box downsample, which is deterministic and
+needs no dependencies. It is not specced on 47 words. Before any spec,
+measure it on finfilings-train pages rendered native, ×1.5 nearest and ×2
+nearest, and on each of those, gate both finfilings metrics and the
+false-detection rate on unscaled pages. It queues behind the 12b fold and
+the 16b runs.
