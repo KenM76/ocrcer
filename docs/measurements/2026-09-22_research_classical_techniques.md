@@ -3975,3 +3975,99 @@ second part, where the mark is next to the text.
   chosen from it).
 - The pen-marks pages go into the binarization probe bin with the other
   ladders.
+
+## Addendum 2026-09-25: show-through detection — read the faint layer flipped; mirrored letters read better flipped, real text reads worse, and fragments read badly both ways (engine measured on synthetic lines)
+
+The operator asked for show-through handling, with detection on by default
+(§11, 2026-09-25, "show-through handling has four modes"). The show-through
+entry above found one candidate cue, edge sharpness, which separates on
+those pages only because the generator blurs the back. This entry measures
+a second cue. Show-through is mirrored, so it should read better when
+flipped left to right, and real text should read worse.
+
+**Measured on synthetic lines.**
+- Setup:
+  - show-through crops: pages of `tools/showthrough_lines.py`, from row
+    320 down. That part lies below the four front lines and holds
+    show-through only, so the black and ink-160 fronts give the same crop;
+  - front crops: whole pages of `tools/faded_lines.py` on white, ink 0
+    and 180 to 215;
+  - each crop read as it is and flipped left to right, at `binarize.k`
+    0.34 (shipped) and 0.1, raw and after the local stretch of the
+    faded-ink entry;
+  - read at master with the master model through the scratch harness. The
+    score is the mean word confidence over the crop, and the count of words
+    at 0.8 or above.
+- Caveats:
+  - the crops were cut knowing where the back lies. A detector has to find
+    such a region itself;
+  - the generator blurs the back and not the front. Both reads of a crop
+    see the same blur, so the comparison measures mirroring, not
+    sharpness. Blur still caps the flipped read: it reaches 0.54 at most;
+  - one face, one size, noise-free, 17 to 93 words per crop. No per-word
+    score was measured.
+- The shipped read (raw, `k` 0.34) returns nothing on any of these crops:
+  the show-through is ignored and the faded fronts are lost, as in the
+  entries above. Raw `k` 0.1 also returns nothing at B 230.
+
+| crop | read | words | mean confidence, as-is → flipped | words ≥ 0.8, as-is → flipped |
+|---|---|---|---|---|
+| show-through B 185–215 | local stretch, k 0.34 | 29 | 0.34 → 0.54 | 0 → 3 |
+| show-through B 230 | local stretch, k 0.34 | 24 | 0.22 → 0.42 | 0 → 1 |
+| show-through B 185–215 | local stretch, k 0.1 | 29 | 0.30 → 0.45–0.46 | 0 → 2 |
+| show-through B 230 | local stretch, k 0.1 | 18 / 17 | 0.23 → 0.33 | 0 → 0 |
+| show-through B 185 | raw, k 0.1 | 29 | 0.37 → 0.50 | 0 → 2 |
+| show-through B 200 | raw, k 0.1 | 40 | 0.19 → 0.24 | 0 → 0 |
+| show-through B 215 | raw, k 0.1 | 93 | 0.26 → 0.24 | 1 → 3 |
+| front, ink 0 | raw, k 0.34 | 24 | 0.82 → 0.37 | 14 → 1 |
+| front, ink 0 | raw, k 0.1 | 24 | 0.80 → 0.35 | 15 → 1 |
+| front, ink 180–215 | local stretch, k 0.34 | 24 | 0.81–0.83 → 0.37 | 13–16 → 1 |
+| front, ink 180–215 | local stretch, k 0.1 | 24 | 0.79–0.81 → 0.35 | 14–16 → 1 |
+| front, ink 180–215 | raw, k 0.1 | 24 | 0.77–0.80 → 0.34–0.38 | 11–15 → 0–1 |
+
+**What the table says.**
+- Real text drops by 0.40 to 0.46 when flipped, on every read that returns
+  it. Its flipped read keeps at most one word at 0.8 or above.
+- Show-through that reads as whole letters rises by 0.10 to 0.20 when
+  flipped: the local stretch at every B, and raw `k` 0.1 at 185. Its
+  flipped read is the back's text; "Thank you for your business" comes
+  back.
+- Show-through that reads as fragments does not separate. Raw `k` 0.1 at
+  200 and 215 breaks the soft letters into dots and pieces (the entry
+  above). They read 0.19 to 0.26 both ways; flipping moves the mean by
+  +0.05 and −0.02.
+- So the cue sorts three ways, not two: clearly front, clearly mirrored,
+  and fragments it cannot place. Fragments read low on average, but the
+  entry above counted words at 0.8 or above among them on a full page at
+  `k` 0.1.
+- Mirror-symmetric glyphs (`0`, `8`, `O`, `H`, `I`, `l`, `-`, `.`) read
+  the same either way. A figure such as `800.08`, or a capitalised word
+  built only from symmetric letters, would give no signal. Not measured;
+  the four lines here hold few such words.
+
+**A detector the four modes could use (candidate, not chosen).**
+1. The shipped binarizer reads the page as today.
+2. Regions where it found no ink, but whose grey range clears a floor
+   (the retry-on-empty cue of the faded-ink entry), are read again with a
+   recovery read: a lower `k` or the local stretch.
+3. Each word that only the recovery read returned is read again flipped.
+   - Where the flipped read wins by a margin, the word is show-through and
+     is dropped.
+   - Where the as-is read wins by a margin, it is front text and is kept.
+   - In between, it is kept and marked as uncertain background.
+4. The page reports that background was found.
+
+Words the shipped read returned never enter the test. A page with no
+empty grey region reads byte for byte as today and costs no extra read.
+The cost elsewhere is two extra reads of the flagged regions (recovery,
+then flipped). The margins are not measured: the numbers above are crop
+means, and every threshold starts as a labelled guess.
+
+**Queued, behind the 12b fold and the merge train.**
+- Per-word mirror scores on the same crops, to see whether the crop-mean
+  separation holds word by word.
+- Show-through overlapping the front, and the noise arm of the faded-ink
+  entry, in the binarization probe bin.
+- The mirror test on finfilings-train, counting only: how often does real
+  front text read better flipped? That is the false-fire rate that prices
+  dropping a word.

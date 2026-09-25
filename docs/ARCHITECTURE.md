@@ -8840,3 +8840,78 @@ addendum 2026-09-25, "faxed pages".
 - Whether that needs a sampling hint from the caller (a binding API
   question) waits for the fax arm added to the queued nearest-neighbour
   measurement (train pages, arms F0 to F4 in the addendum).
+
+### 2026-09-25 — Operator requirement: show-through handling has four modes, with detection on by default
+
+**Requirement (operator, 2026-09-25, verbatim).** "sometimes scanned pages
+have faded mirrored text show through the scanned page from the other
+side. We might need a way to detect when a background like this might be a
+problem on a page. We could have a default setting to auto detect,
+optional ones to user set contrast, or auto set contrast, or disable
+detection."
+
+**Context (measured on synthetic lines; research addenda 2026-09-25, "faded
+ink", "show-through" and "show-through detection").**
+- The shipped binarizer ignores show-through down to grey 185 on those
+  pages. It also loses front ink lighter than about 175, and returns
+  nothing for it.
+- Every lever that recovers faint ink also reads show-through somewhere.
+  Faded-ink recovery and show-through handling are therefore one feature,
+  not two.
+- Reading a region flipped left to right separates whole mirrored letters
+  from real text on those pages. Fragments do not separate.
+
+**Decision.**
+- Page-background handling gets four modes. They are named here by
+  behaviour; parameter names are chosen at spec time.
+  - **Auto-detect (the default).** The engine looks for background that
+    might be a problem and reports it per page. Where it recovers faint
+    text, it tests each recovered word against show-through before
+    keeping it.
+  - **Auto contrast.** The engine chooses a contrast level for each page
+    from its own measurement of the page, and binarizes the whole page at
+    that level.
+  - **Manual contrast.** The user sets the level. The engine never
+    overrides a user-set level.
+  - **Off.** No detection and no recovery: the shipped binarizer, byte for
+    byte.
+- How the operator's four options map to these behaviours is the
+  architect's reading of his message. If his intent differs, this entry
+  is superseded by a new one, not edited.
+- Byte identity:
+  - Off reads every page byte for byte as today;
+  - auto-detect reads byte for byte as today on any page where it finds
+    nothing, and never changes a word the shipped read returned;
+  - the two contrast modes rebinarize the whole page, so they can move
+    anything. They are opt-in for that reason.
+- Staged shipping:
+  - stage 1: auto-detect reports the page flag and changes no text. It
+    becomes the default once every fixture is unchanged and its
+    false-fire count on finfilings-train is known (counting only; its
+    thresholds start as labelled guesses);
+  - stage 2: auto-detect recovers faint words through the mirror test. It
+    becomes the default's behaviour only after its own gate: every fixture
+    unchanged, the false-fire count on train, the synthetic ladders
+    (faded, show-through and the queued noise arm), and the scoring sets
+    once at the end;
+  - until stage 1 passes, the default behaves as Off.
+- The page flag is an output, not a confidence. Rule 5 keeps confidence
+  the calibrated match margin.
+- Once exposed, the manual level keeps its meaning across releases. A
+  user's saved setting depends on it.
+- pdfcer exposes the modes and the flag. OCRcer does not edit pdfcer; the
+  hand-off goes through the operator.
+
+**Open, not decided.**
+- Which recovery read auto-detect and auto contrast use: a lower `k`, the
+  local stretch or a new pre-step (faded-ink designs 1 to 3, unpriced on
+  noise).
+- Which engine quantity the manual level sets: Sauvola `k`, a background
+  cut-off grey, or the stretch floor.
+- The flag's shape: a page-level field in the output (a binding change)
+  or a separate query.
+- Per-word mirror margins, mirror-symmetric glyphs and fragments, all
+  queued in the detection addendum.
+- Whether the operator meant auto contrast as a mode of its own, or as
+  what auto-detect does when it fires. The four-mode shape holds either
+  way.
