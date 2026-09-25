@@ -17,6 +17,10 @@ pub mod compare;
 pub mod decodefile;
 pub mod featurefile;
 pub mod fixture;
+#[cfg(feature = "pages")]
+pub mod ident;
+#[cfg(feature = "pages")]
+pub mod ident_corpus;
 pub mod knobs;
 pub mod meta;
 pub mod pbm;

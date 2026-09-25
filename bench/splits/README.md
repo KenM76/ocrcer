@@ -84,11 +84,19 @@ whole, no sampling needed.
   not because of a licence problem.
 
 **Noted, not listed as rows:** `bench/holdout`, `bench/holdout-cov`,
-`bench/pages-cov`, `bench/sizesweep*` and every fixture under `fixtures/`
-are synthetic pages rendered directly from authored text and fonts — they
-are not rows of any external dataset, so they carry no manifest entry. They
-are scoring-only by construction (that is what a fixture and a held-out set
-are for) and stay that way for the same reason the firewall exists at all.
+`bench/pages-cov`, `bench/sizesweep*`, `bench/ident` and every fixture under
+`fixtures/` are synthetic pages rendered directly from authored text and
+fonts — they are not rows of any external dataset, so they carry no
+manifest entry. They are scoring-only by construction (that is what a
+fixture and a held-out set are for) and stay that way for the same reason
+the firewall exists at all.
+
+`bench/ident` (`cargo run -p ocrcer-bench --bin ident`) is a further case of
+the same rule: it is dense in identifier-shaped tokens by design (see
+`crates/ocrcer-bench/src/ident_corpus.rs`'s header), built to catch one
+specific failure mode (`CLAUDE.md` rule 6) rather than to represent a
+document mix, and its numbers are never a fitting input for the same reason
+none of the corpora above are.
 
 ## What could and couldn't be checked for near-duplicates
 
