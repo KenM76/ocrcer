@@ -155,6 +155,42 @@ impl Engine {
         Ok(self.recognize_lines(img)?.into_iter().flat_map(|l| l.words).collect())
     }
 
+    /// Recognises a page from a raw 8-bit greyscale buffer.
+    ///
+    /// `width`/`height` are pixels; `pixels` is row-major, top-down, one byte
+    /// per pixel, `width * height` bytes long — the layout every external OCR
+    /// consumer takes, `pdfcer`'s `OcrEngine::recognize` included. This is
+    /// [`Engine::recognize`] with the [`crate::Gray`] borrow built for the
+    /// caller, so an embedder never has to name that type itself; it performs
+    /// no work of its own and is not a second implementation of anything
+    /// (`CLAUDE.md` rule 4).
+    ///
+    /// # Coordinates
+    ///
+    /// [`Word::rect`] and each [`CharBox::rect`] are in the coordinates of
+    /// this image, y-down, unrotated. This crate never converts to a
+    /// page-space or a y-up convention — see the pipeline module's own
+    /// contract doc.
+    ///
+    /// # Confidence
+    ///
+    /// [`Word::confidence`] is the calibrated match-margin score from
+    /// `confidence.rs` (`CLAUDE.md` rule 5), already a geometric mean over
+    /// the word's characters — never a raw distance.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::BadTable`] if `pixels.len() != width * height`. Never errors
+    /// on a blank or unreadable page; "no text here" returns `Ok(vec![])`.
+    pub fn recognize_bytes(
+        &self,
+        width: u32,
+        height: u32,
+        pixels: &[u8],
+    ) -> Result<Vec<Word>, Error> {
+        self.recognize(crate::Gray { width, height, data: pixels })
+    }
+
     /// Recognises a page, keeping the line grouping.
     pub fn recognize_lines(&self, img: crate::Gray<'_>) -> Result<Vec<Line>, Error> {
         let p = &self.model.params;
@@ -167,6 +203,11 @@ impl Engine {
         if img.width == 0 || img.height == 0 {
             return Ok(Vec::new());
         }
+
+        // Stage timing (docs/measurements/2026-09-24_dense_page_speed.md):
+        // everything through word-splitting is one "binarize/layout" bucket,
+        // stopped where the per-word segmentation loop below starts its own.
+        let prof_t = crate::prof::start();
 
         // 1. Binarize, then estimate skew on the mask rather than the
         //    grayscale: the estimator counts ink, and ink is what the mask is.
@@ -210,17 +251,18 @@ impl Engine {
             lexicon: self.model.lexicon.as_ref(),
             confusions: self.model.confusions.as_ref(),
         };
+        let bands = lines::group_with_bands(&comps, page.width, page.height, &line_p);
+        prof_t.stop(&crate::prof::COUNTERS.binarize_layout_ns);
 
         let mut out = Vec::new();
-        for (band, group) in lines::group_with_bands(&comps, page.width, page.height, &line_p)
-            .into_iter()
-            .enumerate()
-        {
+        for (band, group) in bands.into_iter().enumerate() {
             // Space thresholds for every fragment of this band at once: a
             // band the column cut split needs its fragments' gaps pooled,
             // per `ARCHITECTURE.md` section 11 ("The column cut's precision
             // collapse..."), which a fragment split alone cannot do.
+            let split_t = crate::prof::start();
             let spans_by_line = words::split_band_with(&group, &comps, &word_p);
+            split_t.stop(&crate::prof::COUNTERS.binarize_layout_ns);
             for (line, spans) in group.iter().zip(spans_by_line) {
                 let mut got: Vec<Word> = Vec::new();
                 for span in spans {
@@ -235,6 +277,7 @@ impl Engine {
                     // (gating off) is treated as not slanted, the same
                     // behaviour-neutral choice `italic_ok = true` makes for
                     // gating itself.
+                    let slant_t = crate::prof::start();
                     let slanted = if p.layout.italic_gating != 0 {
                         let mut member_labels: Vec<u32> =
                             span.members.iter().map(|&i| comps[i].label).collect();
@@ -256,8 +299,16 @@ impl Engine {
                         false
                     };
                     let italic_ok = p.layout.italic_gating == 0 || slanted;
+                    slant_t.stop(&crate::prof::COUNTERS.binarize_layout_ns);
+
+                    let seg_t = crate::prof::start();
                     let lat =
                         segment::build_with(&span, &comps, &labels, page.width, line, &seg_p);
+                    seg_t.stop(&crate::prof::COUNTERS.segment_ns);
+                    if crate::prof::enabled() {
+                        crate::prof::add(&crate::prof::COUNTERS.words, 1);
+                        crate::prof::add(&crate::prof::COUNTERS.edges, lat.edges.len() as u64);
+                    }
                     let Some(w) = self.read_word(
                         &lat,
                         line,
@@ -329,8 +380,16 @@ impl Engine {
             if g.width == 0 || g.height == 0 {
                 continue;
             }
+            let extract_t = crate::prof::start();
             let raw = crate::feature::extract(&g.input(line));
-            let Some(m) = crate::r#match::nearest(&self.model, &raw, k, italic_ok) else {
+            extract_t.stop(&crate::prof::COUNTERS.extract_ns);
+            let match_t = crate::prof::start();
+            let matched = crate::r#match::nearest(&self.model, &raw, k, italic_ok);
+            match_t.stop(&crate::prof::COUNTERS.match_ns);
+            if crate::prof::enabled() {
+                crate::prof::add(&crate::prof::COUNTERS.match_calls, 1);
+            }
+            let Some(m) = matched else {
                 continue;
             };
             let ratio = m.ratio();
@@ -367,8 +426,10 @@ impl Engine {
         };
 
         let lattice = WordLattice { nodes: lat.positions.len(), edges: hyps };
-        let decoded =
-            viterbi::decode_word(&lattice, &self.model.class_info, tables, &p.decode, slanted)?;
+        let decode_t = crate::prof::start();
+        let decoded = viterbi::decode_word(&lattice, &self.model.class_info, tables, &p.decode, slanted);
+        decode_t.stop(&crate::prof::COUNTERS.decode_ns);
+        let decoded = decoded?;
 
         let mut text = String::new();
         let mut chars = Vec::with_capacity(decoded.chars.len());

@@ -4,6 +4,7 @@ members = [
     "crates/ocrcer-core",
     "crates/ocrcer-build",
     "crates/ocrcer-bench",
+    "crates/ocrcer-llm",
 ]
 
 [workspace.package]

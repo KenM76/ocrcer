@@ -1,0 +1,51 @@
+OCRcer is MIT-licensed (see LICENSE). This NOTICE records the third-party
+material OCRcer's model and tests are derived from.
+
+## Font faces (prototype bank)
+
+The prototype bank's feature vectors are measured from glyphs rendered from
+the OFL-1.1 and Apache-2.0 font faces listed with their licences and sources
+in `model/fonts.tsv`. No font file or outline data is included.
+
+## Evaluation and training datasets (not redistributed)
+
+Only row identifiers and hashes are committed (`bench/splits/`); no dataset
+text or image is.
+
+- MultiFinBen-EnglishOCR, Apache-2.0.
+- CORD-v2, CC-BY-4.0.
+- SROIE (ICDAR 2019). Its licence is not verified at source: the CC-BY-4.0
+  label seen on mirrors may be the competition paper's licence, not the
+  dataset's. It is not used for fitting until verified.
+
+## Qwen3-0.6B and Qwen2.5-0.5B-Instruct
+
+The optional add-on converts published weights for these two models into the
+`.ocrl` format via `ocrcer-build llm-pack`. Neither model's weights, nor any
+`.ocrl` file built from them, is committed to this repository — the operator
+downloads and converts them locally (`ARCHITECTURE.md` section 11,
+2026-09-24). This notice exists because a converted `.ocrl` file is a
+derivative artifact of that upstream work and Apache License 2.0 section 4(d)
+requires attribution to travel with it; `ocrcer-build llm-pack` also embeds
+the model's full upstream LICENSE text directly into the `.ocrl` file's
+`meta` block for the same reason.
+
+- **Qwen3-0.6B** — Copyright the Qwen Team, Alibaba Cloud.
+  Source: https://huggingface.co/Qwen/Qwen3-0.6B
+  Licensed under the Apache License, Version 2.0.
+
+- **Qwen2.5-0.5B-Instruct** — Copyright the Qwen Team, Alibaba Cloud.
+  Source: https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct
+  Licensed under the Apache License, Version 2.0.
+
+A copy of the Apache License, Version 2.0 is available at
+http://www.apache.org/licenses/LICENSE-2.0. Use of either model is subject
+to that license's terms, including its NOTICE and attribution requirements
+and its disclaimer of warranties.
+
+`fixtures/llm/` contains test fixtures derived from these models: token-ID
+sequences produced by each model's tokenizer and final-position logit
+vectors produced by each model on short strings authored in
+`tools/qwen_reference.py`. They are reproduced here under the same Apache
+License 2.0 attribution, solely as a reference oracle for `ocrcer-llm`'s
+tests.

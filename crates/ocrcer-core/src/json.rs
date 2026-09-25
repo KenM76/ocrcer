@@ -101,9 +101,26 @@ impl Json {
         }
     }
 
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            Json::Bool(b) => Some(*b),
+            _ => None,
+        }
+    }
+
     pub fn as_array(&self) -> Option<&[Json]> {
         match self {
             Json::Arr(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    /// The object's fields in file order, or `None` for a non-object. Used
+    /// by callers that need to enumerate every key (`ocrcer-build`'s
+    /// `safetensors` reader listing tensor names), not just look one up.
+    pub fn as_object(&self) -> Option<&[(String, Json)]> {
+        match self {
+            Json::Obj(v) => Some(v),
             _ => None,
         }
     }

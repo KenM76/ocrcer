@@ -208,9 +208,10 @@ than a source pixel and the filter degenerates to that pixel's value, which is
 blocky for very small glyphs and is accepted — it is deterministic, which is
 what matters here.
 
-Aspect ratio is deliberately destroyed by this scaling and reintroduced as an
-explicit feature, so that shape and proportion are separately weighted rather
-than entangled.
+The scaling is isotropic — one `s` for both axes — so `G` keeps the glyph's
+proportions: a narrow glyph fills a narrow central band of the grid, not the
+whole of it. Aspect is additionally carried as an explicit dimension (`103`),
+so proportion can be weighted separately from shape.
 
 **Dimension layout.** Fixed, and the class id of a dimension never changes.
 
@@ -348,6 +349,14 @@ while `0` against `O` inside a part number is one it is forbidden to touch.
 against the error count.** Any candidate weight set is therefore reported with
 its per-confusion-pair effect beside its aggregate, and a set that improves
 the aggregate while worsening an identifier-critical pair is a regression.
+
+**Speed steps must not change the answer.** Step 3 abandons a prototype's
+sum once it passes the tighter of its class's best so far and the current
+m-th best across classes (m = max(k, 2)). Both are exact: a partial sum of
+non-negative terms never exceeds the full one
+(`docs/measurements/2026-09-24_dense_page_speed.md`). Any further speed step
+is held to the same bar: the same `Match`, bit for bit, for every query.
+Section 11's 2026-09-25 pivot-bound entry is the next one.
 
 Projected: comfortably under a second per page single-threaded, which is
 *faster* than the neural design it replaces rather than slower.
@@ -813,6 +822,19 @@ impl OcrEngine for OcrcerEngine {
     fn reports_confidence(&self) -> bool { true }
 }
 ```
+
+**Input resolution contract.** For a raster source (a scanned page, an
+embedded image), pass pixels at the source's native resolution. If the
+caller must resample upward, it magnifies with a smoothing filter (bilinear
+or better). Nearest-neighbour magnification staircases stroke edges and
+bridges neighbouring glyphs into shapes the matcher reads as ligatures or
+accented letters (`project` → `projæt`); see §11, 2026-09-25. Vector-only
+pages have no native resolution and render at whatever DPI puts the text
+above the §11 per-line resolution floor.
+A source whose horizontal and vertical resolutions differ (a standard-mode
+fax is about 204 × 98 dpi) is squared at the larger of the two, and the
+other axis is magnified with a smoothing filter. The engine assumes square
+pixels. See §11, 2026-09-25, on faxed pages.
 
 ### 8.2 The correctness contract
 
@@ -6960,3 +6982,1936 @@ so this needs no rebuild.
 
 Carried forward: r000583's remaining losses are not fixed by a bigger
 slanted-word bonus. The next lever for that page has not been identified.
+
+
+### 2026-09-24 — Operator: integrate into pdfcer now; beating `ocrs` is no longer a precondition
+
+Operator directive, verbatim: "don't worry about beating the current ocr
+before building the other things needed for integration into pdfcer. We'll
+get it integrated asap and then continue improving the ocr results."
+
+This supersedes the precondition in `PLAN.md` §2c's hand-off gate
+(2026-09-21: "once you have determined that our OCR is better ... pdfcer to
+be informed"). The alpha path is now:
+1. the binding (chunk 7);
+2. dense-page speed;
+3. model packaging and licence attribution;
+4. a pdfcer-side change that adds OCRcer as an **opt-in** engine alongside
+   `ocrs`.
+
+The pdfcer change follows pdfcer's own rules and agents. `ocrs` stays the
+default until the head-to-head says otherwise.
+
+What does not change:
+- The head-to-head is still run and reported per domain, losses included
+  (rule 8). It now informs the default engine choice rather than gating
+  integration.
+- Accuracy work (chunks 12–16) continues after integration.
+
+
+### 2026-09-24 — Chunk 16a accepted for correctness; speed is not yet usable
+
+Readings from `docs/measurements/2026-09-24_llm_engine.txt`:
+- **Correctness.** The tokenizer matches on 50/50 strings for both models.
+  f32 logits are within 1.1e-4 of transformers, with top-1 matching on
+  every prompt. Q8 keeps 96.8–97.3% top-1 agreement on a 219-token text,
+  with mean KL around 1e-3 nats.
+- **Size.** Q8 `.ocrl` files are 673 MB (Qwen3-0.6B) and 558 MB
+  (Qwen2.5-0.5B). Neither is committed.
+- **Speed.** 3–4 tok/s at 20 threads, and 20 threads buys only 2.1–2.3×.
+  That is too slow for rescoring on real pages.
+
+Decision: the engine is accepted as the correctness reference. Before
+16b, a 16a-speed step is required:
+- a blocked matmul kernel with fixed reduction order;
+- a persistent thread pool instead of scoped spawns per matmul;
+- restricting `lm_head` to the positions that need a distribution.
+
+The measured f32/Q8 outputs are the regression oracle for that step. The
+target is set by what 16b needs, not by comparison with other runtimes:
+rescoring the low-confidence lines of a dense page in a time comparable to
+OCR-ing it. That target is a projection, to be measured.
+
+Also on 2026-09-24: the pdfcer binding (chunk 7) merged into master. Its
+entry point is proven byte-identical to the pipeline path and compiles
+against a real `pdfcer-core` checkout, native and wasm32
+(`docs/measurements/2026-09-24_pdfcer_binding.md`). Operator decisions:
+publish OCRcer as a public MIT repo after a history audit; until then
+pdfcer uses a local path dependency.
+
+
+### 2026-09-24 — Published: github.com/KenM76/ocrcer (public, MIT), master only
+
+A full-history audit found no font data, datasets, weights, SolidWorks
+tooling or secrets. NOTICE was completed before the push (fonts, datasets,
+Qwen fixtures), and agent-memory notes were untracked. Operator approved the
+push.
+
+SROIE's licence is unverified at source: the CC-BY-4.0 on mirrors may be
+the competition paper's licence. SROIE rows are held out of any fitting or
+bank building until the operator clears it (rule 2).
+
+Each future push still needs the operator's go. pdfcer keeps its local path
+dependency for now.
+
+
+### 2026-09-24 — pdfcer smoke misses: case confusion is not a feature-vector change
+
+Source: `docs/measurements/2026-09-24_pdfcer_smoke_misses.md`, one page. All
+five misses were substitutions inside correctly bounded words. Three were
+e→a (at 150 dpi, x-height 15 px; gone at 200 dpi). Two were word-initial
+c→C and s→S, which persist across dpi.
+
+The diagnosis flagged case as possibly needing a new feature. **Declined.**
+The size cue already exists: §3 dims `105..107` carry `baseline_dy / x_height`
+and `(height - baseline_dy) / x_height`, so `c` (top ≈ 1 x-height) and `C`
+(≈ 1.4) differ there. They are just 2 of 107 dims in an unweighted
+distance. Two things could be failing:
+- the line's x-height is wrong;
+- the cue is drowned out in the distance.
+
+Neither needs a charset, feature or format change. The work goes to
+`ocrcer-runtime`: measure those dims on the failing glyphs, and if the cue
+is sound, add a decode-side geometric case check as a new param. That
+check is off by default until it passes the usual gates, and its threshold
+is fitted on the training split. The decoder's leading-capital allowance
+(`case_penalties`) is left as is; sentence case is real.
+
+Separately, 300 dpi garbles (x-height 30 px), a binarisation issue. pdfcer
+rasterises at 150 dpi by default, a value chosen for `ocrs`. Whether
+OCRcer should ask pdfcer for a different dpi is open. One page is not
+evidence; a dpi sweep on more pages decides it.
+
+
+### 2026-09-24 — pdfcer vendors OCRcer's local HEAD and builds it by default (supersedes "local path dependency")
+
+Operator, in pdfcer's session (pdfcer decision 160, Pass 327.1, merged to
+pdfcer `main`): "always use the latest version of ocrcer available in
+d:\dev\ocrcer; github might be a few versions behind."
+
+How it works now:
+- `ocrcer-core` is copied from OCRcer's committed HEAD into pdfcer's
+  `vendor/ocrcer-core` by pdfcer's `tools/sync-ocrcer.py`.
+- `integration/pdfcer/ocrcer_engine.rs` is copied by the same script.
+- pdfcer's feature `ocrcer` is on by default. `ocrs` is still the default
+  engine.
+- The model is still neither shipped nor downloaded.
+
+This supersedes the "pdfcer keeps its local path dependency" line in
+today's publishing entry. That entry stands as it was written.
+
+Consequences for OCRcer:
+- Every OCRcer commit that touches `ocrcer-core` code or the adapter trips
+  pdfcer's `check-ocrcer-vendored.py` until pdfcer re-syncs. That is by
+  design, and it is pdfcer's to run. OCRcer does not edit pdfcer's
+  `vendor/`.
+- So OCRcer master must stay releasable at every commit. Unreviewed or
+  ungated core changes stay on branches until they pass. That was already
+  the practice; it now has a consumer.
+- pdfcer's LLM rescoring add-on (their Pass 327.2) unblocks when an LLM
+  adapter appears in `integration/pdfcer/`. That is chunk 16b's hand-off
+  point.
+- The pdfcer-gui engine choice is being handled through pdfcer-gui's own
+  feature-request channel. OCRcer does not build it.
+
+
+### 2026-09-24 — Chunk 16b rescoring: spec details fixed before implementation
+
+Adds to the 16a entry's point 5 and point 7; nothing there is withdrawn.
+
+- **Score.** The final choice per low-confidence line is
+  `ocr_score + λ·llm_logprob + β·n_tokens`. The β term offsets the LLM's
+  bias toward shorter candidates, which is well documented in ASR n-best
+  rescoring. λ, β and the confidence threshold that selects lines are all
+  `fitted` on finfilings-train and confirmed on finfilings-val. Scoring
+  data never tunes them.
+- **Context.** The previous line's chosen text (OCR text, or rescored text
+  if it was rescored) is the LLM prefix. The prefix is scored once, and the
+  candidates are scored as continuations of it through
+  `Model::score_candidates`. Each candidate's result must be bit-identical
+  to scoring that candidate alone.
+- **Candidates.** The decoder's n-best list is capped at 8 per line.
+  Identifier-shaped words take the same choice in every candidate, so the
+  LLM cannot flip them. This is rule 6 enforced by construction, not by a
+  penalty.
+- **Additional gate: no harm on confident lines.** Lines above the
+  threshold must be byte-identical with the add-on on or off. The reported
+  CER must also show that the lines it did touch improved on net.
+  Prior art is the reason: unconstrained LLM post-correction has been
+  measured to raise error on cleaner inputs (arXiv 2502.01205).
+- **Fallback if the gain is thin.** A small correction model fitted on
+  finfilings-train, char-level and n-best-constrained, is the alternative
+  lever. Prior art reports that specialised small models beat generic-LLM
+  rescoring (arXiv 2405.15216). It is not started unless 16b's measured
+  gain is below the gates.
+- **Speed precondition.** 16a-speed (persistent pool, blocked kernel) and
+  16a-speed2 (batched candidates) exist on branch `llm-speed`. They merge
+  to master only after a serial real-weights oracle run
+  (`--test-threads=1`, never concurrent with another heavy job) and pinned
+  timings. The single-candidate `forward_token` and the batched
+  `forward_tokens_batch` are two copies of one transformer step, held
+  together only by an equality test. 16b folds `forward_token` into the
+  batch-of-one path once a pinned benchmark shows no regression.
+
+
+### 2026-09-24 — Operator: LLM rescoring offers modes, including a full run
+
+Operator: build the rest of 16b now, alongside the speed work, with "a few
+options for using the LLM such as only using it on parts where the ocr
+confidence was low … plus a full run."
+
+**Modes** (one enum, chosen per call; default `Off`):
+- `Off`. No LLM is loaded or called. Output is byte-identical to the
+  engine without the add-on.
+- `LowConfidence { threshold, max_lines }`. Only lines whose OCR line
+  confidence is below `threshold` are rescored. If `max_lines` is set, the
+  least-confident lines are taken first, up to that cap, with ties going to
+  reading order. This is a time budget for slow machines.
+- `Full`. Every line with two or more distinct candidates is rescored.
+
+**What does not change in any mode:**
+- The LLM only chooses among the OCR's n-best. It never generates text
+  (rule 6).
+- Identifier-shaped words are fixed across every candidate.
+- Each changed line reports the OCR's first choice alongside the chosen
+  text.
+- Word boxes come from the chosen candidate's own word choices.
+- Ties go to the OCR's top-1.
+
+**Confidence.** A changed line's confidence is recomputed, never inherited.
+Until a calibration curve for the combined score is fitted, it is capped at
+the OCR's own confidence for that line. This follows rule 5: an uncalibrated
+number must not claim more certainty than the OCR had.
+
+**Gates per mode.** `LowConfidence` keeps 16b's no-harm gate: lines above
+the threshold are byte-identical. `Full` cannot meet that gate by
+definition, so it is gated on:
+- net CER improvement on finfilings;
+- pages-cov ≤ control + 0.05, with drawing Δ ≤ 0;
+- the identifier-preservation test.
+
+Both modes report wall time and the number of lines rescored. λ, β and the
+threshold ship labelled `guess` until they are fitted on finfilings-train.
+
+**Where the code lives.** A new crate, `ocrcer-rescore`, depends on
+`ocrcer-core` and `ocrcer-llm`. `ocrcer-core` stays LLM-free, with its three
+invariants intact. `ocrcer-llm` keeps no dependency on `ocrcer-core`. The
+pdfcer-facing adapter is added in `integration/pdfcer/` beside the existing
+one. Its arrival is the hand-off signal from the pdfcer-vendoring entry.
+
+
+### 2026-09-25 — Chunk 13 spec: real-scan prototypes by forced alignment
+
+Fixes how PLAN.md chunk 13 is built. Nothing earlier is withdrawn. Starts
+only after chunk 12's fitted params are merged, because alignment runs
+through the fitted segmenter.
+
+**Source.** The pages are the finfilings-train rows of
+`bench/splits/manifest.tsv` and nothing else: MultiFinBen EnglishOCR,
+Apache-2.0. Attribution goes in `meta` and `NOTICE`.
+- The aligner refuses any page not labelled `train` in the manifest, and a
+  test asserts that refusal.
+- Val, score, pages-cov and fixtures never feed a row.
+- The derived rows live under `D:/Dev/ExcludedPrivate/ocrcer` and are never
+  committed. They are reproducible from the script, the manifest and the
+  model version.
+
+**Alignment: forced, not agreement-only.** Keeping only glyphs the engine
+already reads correctly teaches it nothing. The glyphs it misreads or
+mis-cuts are the ones worth having.
+1. Run `ocrcer-core`'s pipeline to lines and words.
+2. Pair OCR lines to ground-truth lines by the same claim-cheapest-first
+   rule `line_matched_score` uses. The rule is factored out and shared,
+   never copied.
+3. Align words within a matched line by edit distance over word sequences.
+4. For each matched word pair, run a constrained search over that word's
+   segmentation lattice (the same `segment::build`):
+   - a path must consume the ground-truth string exactly, one class per
+     edge;
+   - an edge's cost is the matcher's standardised distance from the crop
+     to the nearest prototype of the required class;
+   - the path with the least total cost wins;
+   - ties go to the earliest cut, the section 8.2 rule.
+5. Crops and features come only from core's own `crop` and `extract`
+   (rule 4).
+
+The constrained search is a build-time algorithm, not a second decoder. It
+lives with the aligner in `ocrcer-bench` and calls core for every crop,
+distance and lattice.
+
+A ground-truth character outside the charset skips its whole word. A word
+with no path skips.
+
+**Filtering: mislabels poison kNN.** A wrong label is worse than a missing
+row, so there are three filters, in this order:
+- *Word gate.* The word's mean per-glyph aligned distance must be within a
+  bound. Its line's line-matched CER must be at most a bound. Both bounds
+  are `guess` and are fitted on train.
+- *Editing, after Wilson (1972).* Drop a candidate row when most of its k
+  nearest neighbours carry another label. The neighbours are drawn from
+  all candidate rows plus the rendered bank. This removes isolated
+  mislabels, but keeps a consistent cluster of real `e` crops that the
+  rendered bank would call `c`. Its neighbours are other real `e` crops,
+  and that cluster is the thing this chunk exists to add.
+- *Condensing, after Hart (1968).* Keep a surviving row only if the bank
+  as it stands, rendered rows plus rows already kept, misclassifies it or
+  matches it with a margin below a threshold. Rows are visited in manifest
+  order, then reading order.
+
+Hard caps apply: per class per page, and per class in total. Both are
+`guess` and must be stated in the measurement.
+
+Survey context: García, Derrac, Cano and Herrera (2012), *Prototype
+Selection for Nearest Neighbor Classification*, IEEE TPAMI.
+
+**Standardisation is frozen at the rendered rows.** `bank::build` today
+computes mean and SD from every row. Under this chunk, the moments come
+from the rendered rows only, and real rows are standardised with those
+constants. Why:
+- every existing distance stays exactly what it was;
+- chunk 12's fitted params and the calibration curve keep meaning what
+  they meant;
+- the A/B measures the new rows alone, not a re-scaled bank.
+
+`meta` records which rows fed the moments. This does not change the feature
+definition, so there is no `.ocrw` version bump.
+
+**Provenance.** Real rows carry a pseudo-face, "real-scan: MultiFinBen
+EnglishOCR train", with its licence. They also carry a source record (page
+key, bbox) in the build's side manifest. The `.ocrw` format is unchanged:
+rows are rows. `ocrcer-exporter` confirms that the face field and the
+`meta.faces` list carry the pseudo-face as they are.
+
+**Gates.**
+- finfilings-val beats the chunk-12 control on end-to-end and on
+  line-matched CER.
+- pages-cov ≤ control + 0.05, and the drawing Δ ≤ 0. Finance scans must
+  not cost the CAD pages.
+- The identifier-preservation test passes.
+- Confidence calibration (ECE) is re-measured on val, because new
+  neighbours move margins. If it is worse, the calibration curve is re-fit
+  on train before shipping.
+- Reported, not gated: bank rows added per class, file size, and wall time
+  on both corpora.
+
+The score set is read once, at the end.
+
+
+### 2026-09-25 — Candidate chunk 13b spec: per-page adaptive prototypes
+
+This is a spec for the ROADMAP candidate. It is not a schedule. It starts
+only after chunk 13 has been measured, because both chunks attack the same
+errors and must be measured one at a time to keep attribution.
+
+**The idea.** Recognise the page once. Promote the glyphs of words that are
+almost certainly correct into a per-page set of prototype rows, then read
+the remaining words again against the bank plus those rows. This is
+Tesseract's two-pass adaptive classifier (Smith, ICDAR 2007, §7). Smith
+notes that it uses "the same features and classifier as the static
+classifier". That is also rule 4's requirement here: the same extractor,
+the same matcher, the same standardised distance, and a row set that is
+only longer.
+
+**Selection is the whole design.** Kae, Huang, Doersch and Learned-Miller
+(CVPR 2010) measured the alternative directly. Training on words picked by
+thresholding Tesseract's confidence cut character error by 9.5% and made 21
+of 56 documents worse. Their "clean list" cut it by 34.1% and made 10 of 56
+worse. So a word is promoted only if it passes all of the following:
+1. Its pass-1 reading is a lexicon word, and it is not identifier-shaped.
+2. No lexicon word at Hamming distance 1 from it appears elsewhere on the
+   page. This is their "aggressive" list: about 18% of words, with at most
+   one error per document in their data.
+3. Every glyph in the word passes the consistency check:
+   - Take the glyph's M nearest glyphs on the same page, using the
+     matcher's distance and pass-1 labels. Break ties by distance, then by
+     reading order.
+   - Walk them nearest first. The glyph is dominated by class c once
+     count(c)/(i+1) > θ at the i-th neighbour.
+   - The glyph passes only if it is dominated by its own pass-1 label.
+
+M = 20 and θ = 0.66 are taken from the paper, labelled `authored`, and go
+on the fitting list.
+
+Calibrated confidence is not a selection criterion. The measurement above
+is the reason.
+
+**Rule 6 holds.** The lexicon only decides which glyphs are trusted as
+samples. It never touches how a word is read in either pass. Words outside
+the lexicon, and every identifier, are read against the enlarged row set
+exactly like any other word.
+
+The price is that digits and identifier glyphs never enter through this
+route, and that matters for CAD pages. A selection rule for them, such as
+the consistency check alone with a stricter θ, is a follow-up with its own
+measurement. It is not part of 13b.
+
+**Known failure.** A font in which one letter is always misread as another
+passes the consistency check, because the misreadings agree with each
+other. The paper names this case. Rules 1 and 2 are what catch it, since a
+word with a systematic substitution is rarely a lexicon word. That is why
+they are not optional.
+
+**Mechanics.**
+- Page rows live in a per-page overlay that the matcher searches alongside
+  the bank. They are standardised with the bank's frozen moments (see the
+  chunk 13 entry), so bank distances do not move.
+- A class's page rows are consulted only once it has at least
+  `adapt.min_class_samples` of them.
+- Each class holds at most `adapt.max_rows_per_class` page rows, kept in
+  reading order. Both limits are `guess`.
+- Pass 2 re-reads every word not promoted. Promoted words keep their
+  pass-1 reading.
+- Page rows join the nearest-rival margin like any other row.
+- The overlay is discarded at the end of the page. Nothing persists between
+  pages or calls.
+
+The stage lives in `ocrcer-core`: deterministic, allocation-bounded, with
+no new dependencies, and wasm-clean. `adapt.enabled` defaults to false
+until the gates pass, so fixtures and pdfcer are unchanged until then. A
+new fixture per page pins the promoted-word list, and blessing it is a
+deliberate act under section 8.2.
+
+**Cost.** The consistency check is O(k·n) per page, for k candidate glyphs
+against n page glyphs, plus a second decode of the words that were not
+promoted. Wall time is reported for both corpora.
+
+**Gates.**
+- The usual gates: finfilings-val beats control on both metrics;
+  pages-cov ≤ control + 0.05 with drawing Δ ≤ 0; identifier test; wasm
+  build; workspace tests.
+- ECE is re-measured with adaptation on.
+- Also reported, as prominently as the mean: the count of val pages whose
+  CER got worse. The paper's own result shows that a mean gain can hide a
+  fifth of documents getting worse.
+
+
+### 2026-09-25 — Candidate chunk 13c spec: text rotated ±90° on drawings
+
+This is a spec for the ROADMAP candidate, and it is in scope (rule 7: CAD
+drawing text). It is not a schedule. Today a rotated string reaches line
+grouping as a stack of one-glyph lines and is read as noise.
+
+**Why not the textbook methods.**
+- Tesseract chooses vertical mode for a whole page, when the fraction of
+  lines it deems vertical passes `textord_tabfind_vertical_text_ratio`
+  (0.5). A drawing is mostly horizontal with a few rotated strings, so the
+  page never qualifies.
+- Fletcher and Kasturi (PAMI 1988), revisited by Tombre et al. (GREC
+  2002), group component centres with a Hough transform over all
+  orientations. Tombre reports two problems: the Hough sampling step is
+  hard to set stably, and "short strings are not reliably detected".
+  Dimension text such as `25.4` is exactly the short string.
+
+**v1 scope.** Only the two orientations that aligned dimensions use: 90°
+and 270°. Arbitrary angles, upside-down text, and upright letters stacked
+vertically are follow-ups.
+
+**Mechanism: rotate the pixels, not the engine.** A quarter turn is an
+exact transpose-and-flip. Nothing is resampled, so a rotated crop becomes
+the same pixels as upright text. The existing pipeline then reads it
+unchanged: no new prototypes, no second extractor (rule 4).
+
+This relies on binarization commuting with the quarter turn. Sauvola's
+square window and its border handling must be symmetric in x and y. A
+property test asserts that reading a rendered page, and reading the same
+page rotated through this path, produce identical words and features.
+
+**Detection: nearest-neighbour chaining, not Hough.** This is in
+Docstrum's spirit (O'Gorman 1993).
+- Candidates are the components that line grouping already treats as
+  text-sized. That filter is shared with line grouping, not copied.
+- Two candidates link when all of these hold:
+  - they are stacked: x-overlap ≥ 0.5 of the narrower;
+  - the vertical gap is ≤ τ times the larger width;
+  - their widths agree within a ratio bound. After the turn, width is the
+    text height.
+- A chain of at least two components is a candidate region.
+- τ and the width-ratio bound are `guess`.
+
+**Arbitration: a rotated reading must beat the horizontal one.** The normal
+horizontal pass runs first, as today. A chain is eligible only if every
+horizontal word touching its components lies wholly inside it. Rotated text
+in a paragraph or table fails this, because its horizontal words run past
+the chain.
+
+For each eligible chain:
+1. Read the crop at 90° and at 270°.
+2. Keep the orientation with the higher mean calibrated character
+   confidence. Ties go to 90°, which reads bottom to top; that tie-break is
+   `authored`.
+3. Replace the horizontal words only if the rotated reading's mean
+   confidence beats theirs by `rotate.margin` (`guess`).
+
+Horizontal is the default, and a rotated reading has to win.
+
+**Output.** Rotated words carry page coordinates plus a per-line rotation
+of 0, 90 or 270. That is an additive public API change. `ocrcer-runtime`
+checks it against the pdfcer adapter, whose signatures are a public
+contract, before it lands. `layout.rotated_text` defaults to off until the
+gates pass.
+
+**Data.**
+- The fitting set is synthetic: drawing-like pages with rotated strings,
+  rendered by `ocrcer-build` from licence-clean faces, so it is
+  deterministic and has exact ground truth. It is split into a fit half
+  and a fixture half.
+- finfilings-train measures false alarms.
+- Before build, a census of pages-cov drawings counts the rotated strings
+  and their share of drawing CER, so the ceiling on the gain is known in
+  advance. The census counts and diagnoses only. No threshold is chosen
+  from scoring pages.
+
+**Gates.**
+- On the synthetic held-out half: rotated-string recall and CER, reported.
+- pages-cov ≤ control + 0.05, with drawing Δ ≤ 0, reported against the
+  census ceiling.
+- finfilings-val no worse than control by more than 0.02 on either
+  metric. This is the false-alarm guard.
+- The identifier test, the wasm build, workspace tests, and wall time on
+  both corpora.
+
+
+### 2026-09-25 — Chunk 14 spec: bigrams and lexicon counted from training text
+
+This fixes how PLAN.md chunk 14 is built. It starts after chunk 12's fit is
+merged, and it is measured apart from chunk 13 so each gain stays
+attributable.
+
+**Why.** The `bigrams` table today is built from two sources:
+- counts over `lexicon.txt`, a word list weighted by authored tiers;
+- pseudo-counts from `bigram_priors.tsv`.
+
+Neither source is running text. So the statistics of amounts, dates and
+codes, the strings this corpus is made of, are authored guesses. Finance
+text from the train split supplies them as real token counts.
+
+**Source.** The ground-truth text of the finfilings-train rows in the
+manifest, and nothing else. This is MultiFinBen EnglishOCR, Apache-2.0,
+and the attribution goes in `meta` and `NOTICE`. The counting script refuses
+any page whose manifest label is not `train`, and a test asserts it.
+
+**Bigrams: absolute discounting into the existing layout.** The layout
+stays as it is: sparse pairs, a per-row backoff, and a category-pair table.
+1. Count character pairs over tokens, with `^` at word boundaries. A pair
+   that touches a character outside the charset is skipped.
+2. Add μ times the existing authored evidence (the lexicon-tier counts plus
+   the priors) to those counts. The finance split has no drawing text. The
+   authored priors are what know that `M8x1.25` is ordinary.
+3. Discount every observed pair by D = n1 / (n1 + 2·n2), where n1 and n2
+   are the numbers of pairs seen exactly once and twice. This is the
+   estimate of Ney, Essen and Kneser (1994), as used by Chen and Goodman
+   (1998). D is `computed`.
+4. Each row's freed mass becomes its backoff weight, renormalised over the
+   characters that row never saw. This replaces the authored guess
+   `BACKOFF_MASS = 0.15` with a computed quantity.
+5. The category table holds log(P(next category | previous category) /
+   size of next category): uniform within a category. The lookup then
+   stays one add, as now.
+
+The arithmetic is f64 with deterministic iteration, so the same inputs give
+the same bytes.
+
+μ cannot be fitted on finance text alone, because finance text will always
+prefer μ → 0 and the drawings would pay. μ is chosen on finfilings-val,
+subject to not worsening a rendered CAD-string dev set written for this
+purpose. That set is disjoint from `corpus.rs`, from fixtures, and from
+every scoring page.
+
+**Lexicon: add only what recurs.** Words enter from train text when all of
+these hold:
+- after stripping edge punctuation, the token is letters only;
+- it is at least 3 characters long;
+- it is not identifier-shaped, by core's own `identifier_shape` predicate,
+  called and not copied (rule 4);
+- it occurs on at least 2 distinct train pages. This keeps out one-off
+  typos and ground-truth noise.
+
+Words are case-folded as the lexicon already is, and the result is a union
+with the authored list. The number added is reported.
+
+Rule 6 is unchanged. Entry only earns the bonus.
+
+This has a cost to 13b: a larger lexicon gives more words a Hamming-1
+neighbour, so fewer words qualify as clean. 13b's measurement states which
+lexicon it ran with.
+
+**Open for the operator.** Should the derived count files (pair counts and
+added words) be committed so the build reproduces from the repo alone, or
+generated into the private data directory from the manifest? They are
+derived from Apache-2.0 text, not the text itself. Rule 2 sends an unclear
+case like this to the operator. Until an answer arrives, they are generated
+and not committed.
+
+**Gates.**
+- finfilings-val beats control on both metrics.
+- pages-cov ≤ control + 0.05, with drawing Δ ≤ 0. This is the check that
+  finance statistics did not leak into drawing reads.
+- The identifier-preservation test passes. The counted bigram applies
+  inside identifier-shaped words, where the lexicon and case terms do not.
+- `w_bigram` and `w_lex` are re-fitted on train with the new tables and
+  reported beside the old values.
+- The table's size in bytes is reported.
+
+
+### 2026-09-25 — Chunk 14 spec, reconciled with the counting stage already built
+
+The spec entry above was written without citing the counting stage, which
+already exists. That stage is the `count-text` binary in `ocrcer-bench`,
+committed 2026-09-24, and it is measured in
+`docs/measurements/2026-09-24_chunk14_counts.md`:
+- 427 train documents and 161,146 tokens;
+- 6,497 distinct candidate words and 3,125 distinct character pairs;
+- the firewall is checked per row, and core's `identifier_shape` predicate
+  is reused, not copied.
+
+The spec builds on its outputs. Where the two differ, this entry decides.
+
+**Bigrams: the spec's count mixture replaces the measurement's proposed
+log-linear blend.** The measurement proposed `w_train · train_logp +
+(1 − w_train) · authored_logp`, with `w_train = 0.3` as a guess. The count
+mixture is preferred for two reasons:
+- It yields one distribution. Its per-row backoff comes from the computed
+  discount D, which retires the authored `BACKOFF_MASS`. A blend of two
+  log-probabilities keeps that guess and adds a second one.
+- It keeps the counts the table is built from reproducible end to end.
+
+μ still has to be chosen, on the terms the spec states. The compile step
+maps `count-text`'s `<BOUND>` marker to the table's boundary row. `^` is a
+real charset class, which is why the counter could not use it as the
+boundary marker.
+
+**Lexicon: the measured candidate counts replace the spec's thresholds.**
+The rule "at least 3 characters, on at least 2 pages" is withdrawn. The
+measurement sized three (count, pages) rules, not yet applied:
+
+| Rule | Candidates |
+|---|---|
+| (3, 2) | 1,503 |
+| (5, 3) | 848 |
+| (10, 5) | 405 |
+
+The rule is chosen from that grid on finfilings-val, starting at (5, 3).
+New words enter at the lowest authored tier, as the measurement proposed.
+
+**No manual review step.** The measurement flagged `sh`, `com` and `dfnd`.
+They are frequent in the filings, but they are fragments of filer names,
+domains and boilerplate, not English words. The rule is not changed for
+them, because a string that recurs across 24 to 44 filings is a correct
+prior for this domain. Rule 6 also caps the cost of a spurious entry at a
+bonus on that one string: it can never rewrite another word. A manual
+review cannot be re-run by a script.
+
+If val shows a specific entry doing harm, it is excluded in a committed,
+authored list with its reason, and not by hand at build time.
+
+**The operator question in the spec entry is withdrawn.** The added words
+go into `model/lexicon.txt`. The counted pair table is committed beside
+`bigram_priors.tsv`. Both ship inside the `.ocrw` regardless. Apache-2.0
+permits redistribution with attribution. Committing them keeps the build
+reproducible from the repo alone (rule 1). `NOTICE` and `meta` gain the
+`multifinben-englishocr` entry in the same commit, as the measurement
+already noted. The raw text and the per-document `sources.tsv` stay out of
+the repo, per the existing convention for derived corpus artifacts.
+
+
+### 2026-09-25 — Chunk 13 and 13b specs, reconciled with the 2026-09-24 research addenda
+
+The two spec entries above did not cite the research addenda that
+`docs/measurements/2026-09-22_research_classical_techniques.md` already
+carries for these chunks. Both addenda are dated 2026-09-24: "forced
+alignment for real-scan glyph samples" and "per-page adaptive prototypes".
+This entry decides where they differ.
+
+**Chunk 13: the addendum's acceptance tests are adopted, and they tighten
+the spec.**
+- *Fold before align.* Ground truth passes through the charset's own
+  folding (ligatures, quotes, dashes) before alignment. Only a character
+  still outside the charset after folding skips its word. Without this,
+  normalised transcriptions produce mislabelled crops.
+- *Per-glyph bound computed, not guessed.* A crop is kept only if its
+  distance to its truth class lies within that class's spread in the
+  rendered bank. This replaces the spec's `guess` bound on mean word
+  distance. The line-CER bound stays.
+- *Neighbour agreement.* The unconstrained decode must agree with the truth
+  on the word's neighbours. This catches alignment errors at word edges.
+
+Wilson editing, Hart condensing and the caps then apply as specified.
+
+**Chunk 13b: the spec's selection rule stands over the addendum's.** The
+addendum harvested on calibrated confidence plus a lexicon hit, or a clean
+identifier shape. It had read Kae et al. from the abstract only. The spec
+entry is based on the full paper, whose confidence-threshold baseline gained
+9.5% and made 21 of 56 documents worse. The clean-list rule gained 34.1% and
+made 10 of 56 worse. So confidence is not a harvest criterion.
+
+The addendum's identifier-shape route for digits is the same weak
+selection. Digits stay deferred, as the spec says.
+
+**Adopted from the addendum into 13b:**
+- *The cost cap as a fallback.* If re-reading every word that was not
+  promoted fails the wall-time report, pass 2 narrows to words holding at
+  least one glyph below a margin threshold. That threshold is fitted.
+- *Lee & Smith's cluster check (ICDAR 2011) as a named follow-up.* It
+  flags a pass-1 glyph that sits closer to a large page cluster of another
+  class. It also clusters glyph pairs, which repairs `rn`/`m` without
+  re-segmenting. It is purely image-side, so it is safe in identifiers. It
+  is not in the first 13b build, so the first measurement stays
+  attributable.
+- *No document-cache lexicon.* The two agree: it reinforces a consistent
+  misread with high confidence, which is the failure rule 6 exists to
+  prevent.
+
+**Not adopted:** the addendum's fitted distance discount for page rows.
+Page rows are plain rows in the first build. A discount can join the
+fitting list if the measurement asks for one.
+
+### 2026-09-25 — Candidate: weight each character's decoder terms by its width, as Tesseract does
+
+**Evidence.**
+- The r000583 autopsy found four decoder losses, each a merged edge
+  beating two good single-letter edges.
+- The `char_bonus` re-sweep showed that the per-character credit, the only
+  counter-bias, trades prose against drawings at every step.
+- Tesseract's legacy search weights each character's classifier and n-gram
+  cost by outline length, and it has no per-character credit. That was
+  verified from source; see the research addendum of 2026-09-25 in
+  `docs/measurements/2026-09-22_research_classical_techniques.md`.
+- In our lattice, `Hyp.x0`/`x1` are node positions, so edge widths along
+  any path sum exactly to the word's width. A width-weighted credit is the
+  same for every path, so the length bias disappears by construction
+  rather than being offset by a tuned constant.
+
+**Spec (candidate; no format change).**
+- `decode.width_weighting`: a u32 mode, 0 or 1, `authored`, default **0**.
+  At 0 every fixture is byte-identical, and the test suite asserts that.
+- At 1, each edge's match term `w_match * (bonus - distance)` and its bigram
+  term (and the confusion adjustment riding on it) are multiplied by
+  `(x1 - x0) / x_height`. `x_height` is the line's measured x-height,
+  passed in as an additive field.
+- The segmentation prior, the case-shape penalty and the lexicon bonus stay
+  as they are. Identifier suppression is unchanged.
+- Confidence is unchanged. It stays the per-glyph margin, as Tesseract
+  keeps its certainty unweighted.
+
+**Fit and gates.**
+- With the mode on, refit `w_match`, `w_bigram`, `char_bonus`,
+  `char_bonus_slanted` and `w_seg` on finfilings-train with the campaign
+  harness, starting from the shipped chunk-12b vector.
+- Confirm on val once. Then run the usual gates once: pages-cov with
+  drawing Δ ≤ 0, both finfilings metrics, identifier test, workspace, wasm.
+- Also report, from the train run, how many merged and split edges the
+  chosen paths use per 1,000 characters, with the mode on and off.
+
+**Hypotheses the measurement settles.** Whether this dissolves the
+prose-versus-drawing trade is a hypothesis, not a finding. Narrow
+characters (`.`, `i`, `l`) get less bigram weight, as they do in Tesseract.
+Whether that costs punctuation context is for the gates to show.
+
+**Order.** After chunk 12b is folded. It competes with the 16b serial runs
+for single-`ocr.exe` time, and goes after them.
+
+### 2026-09-25 — Nearest-neighbour upsampling, not resolution, garbles the 300 dpi smoke page
+
+**Finding (measured on one page, N = 47 words, so read it as mechanism
+evidence, not a rate).** pdfcer's `scan.pdf` embeds a 200 dpi image. The
+2026-09-24 smoke run read 97.9% of words at 200 dpi and 83.0% at 300 dpi,
+with garbling shaped like accents and ligatures (`Recogmtion`, `quaüty`).
+A controlled diagnostic (branch `dpi-diag`, note
+`2026-09-25_dpi_scale_vs_blur.md`) isolated the cause:
+
+| input, same page | x-height | words read |
+|---|---|---|
+| native 200 dpi | 19 px | 46/47 |
+| ×1.5 nearest-neighbour | 29 px | 41/47, `project` → `projæt`, `quality` → `qua11ty` |
+| ×1.5 bilinear | 29 px | 46/47 |
+| vector text rendered at the same x-height | 27 px | 44/47, case flips only |
+
+- Scale alone does not cause it: same-size vector text shows no garbling.
+- Blur does not cause it either. The smoothed upsample reads as well as
+  native.
+- Pixel replication staircases the edges and closes the gaps between
+  strokes. Binarized crops show the `c`–`t` gap in `project` bridged.
+
+**Why pdfcer's path hits it (read from pdfcer source, not measured
+there).** pdfcer's renderer smooths on minification by default. On
+magnification it honours the image's `/Interpolate`, which is usually
+absent, so it magnifies with `FilterQuality::Nearest`. Rendering a 200 dpi
+scan at 300 dpi is magnification.
+
+**Decision.**
+- §8.1 gains an input resolution contract: pass raster sources at native
+  resolution, and magnify only with a smoothing filter. This matches
+  OCRmyPDF, which rasterises image pages at the image's own dpi and vector
+  pages at 400 dpi (`_pipeline.py`, read 2026-09-25).
+- The call-site change is pdfcer's to make, in pdfcer's own session.
+  OCRcer does not edit pdfcer.
+
+**Candidate, not specced.** The engine could detect nearest-neighbour
+upsampling itself: runs of identical adjacent grey rows and columns are
+rare in a real scan and systematic after pixel replication. It would then
+restore the native grid with a box downsample, which is deterministic and
+needs no dependencies. It is not specced on 47 words. Before any spec,
+measure it on finfilings-train pages rendered native, ×1.5 nearest and ×2
+nearest, and on each of those, gate both finfilings metrics and the
+false-detection rate on unscaled pages. It queues behind the 12b fold and
+the 16b runs.
+
+### 2026-09-25 — pages-cov "drawing" pages are drawing vocabulary, not drawing layout; the chunk 13c census is dropped
+
+**Finding (read from source, `ocrcer-build` `main.rs` corpus render loop
+and `corpus.rs`).** The pages-cov `drawing` category is the nine authored
+lines of the `drawing` block, rendered horizontally, one face and one size
+per page. They contain no rotated strings, no dimension or leader lines, no
+borders, and no text touching graphics. The category measures drawing
+*vocabulary* on clean horizontal text (`4X M8x1.25 THRU`,
+`REV C`), not drawing *layout*.
+
+**Consequences.**
+- The chunk 13c pre-build census (the 13c spec's Data section) would count
+  zero rotated strings, by construction. It is dropped. For 13c, pages-cov
+  is only a no-regression gate (≤ control + 0.05, drawing Δ ≤ 0). The
+  words "reported against the census ceiling" no longer apply.
+- 13c's evidence of gain is its synthetic held-out half alone. That shows
+  the mechanism works on rendered layouts, not that real drawings improve.
+- The same holds for any layout-targeted drawing work, including the
+  touching-line retrieval researched on 2026-09-25 (Tombre, DAS 2002). It
+  needs its own synthetic layout set with disjoint fit and score halves.
+- A real-drawing score set is the only evidence that would transfer. Using
+  the operator's drawings, which are private, as a private and unpublished
+  score set is the operator's decision. It is asked when 13c is scheduled,
+  not before.
+- Nothing already decided on pages-cov changes. Every past drawing Δ gate
+  was a vocabulary gate, and that is what it was used for.
+
+### 2026-09-25 — A character's confidence is its own margin, and the curves are fitted, not authored
+
+**Two defects, read from source.**
+- `pipeline.rs` gives every candidate on a lattice edge the same ratio:
+  the matcher's winner's `d1/d2`. When the decoder picks a different class
+  (a bigram, lexicon or confusion override), that character reports the
+  confidence the matcher had in the class it did *not* pick. §4.2 and
+  `CLAUDE.md` rule 5 define confidence as the margin of the chosen class
+  over its nearest rival of a different class. An override currently
+  reports a high number exactly where it should report doubt.
+- `confidence::adjust` is never called. The language-model agreement term
+  that §4.2 lists for character confidence is not wired, and
+  `confidence.lm_floor` is a dead parameter.
+
+**Decision.**
+1. Each candidate carries its own ratio. For the matcher's winner it stays
+   `d1/d2`. For any other class it is `d1/d_c`, where `d_c` is that class's
+   own distance: how close it came to the class that beat it.
+2. Confidence uses two curves chosen by whether the decoder agreed with the
+   matcher's top-1: `agree` over `d1/d2` and `override` over `d1/d_c`.
+   This replaces `adjust` and `lm_floor` with a measured split. Whether an
+   override is usually right is a measurement, not an assumption.
+3. A word gets its own curve, taking the geometric mean of its characters
+   to the probability that the whole word is right. The geometric mean
+   stays the aggregate; the curve only makes the reported number mean what
+   it says (research addendum of 2026-09-25).
+4. All three curves are fitted by isotonic regression (PAV) on
+   finfilings-val, after the 12b parameter vector is frozen. The fitter is
+   a Rust bin in `ocrcer-bench`. Knot x-values sit at equal-mass quantiles.
+   The knots go into `params.tsv` labelled `fitted`, with the script, the
+   manifest and the split named. There is no `.ocrw` version bump. They are
+   params rows, and a reader skips a row name it does not know (2026-09-22
+   entry).
+5. Measured and reported on each run: equal-mass-bin ECE, the reliability
+   diagram, the errors caught against characters flagged at each
+   threshold, and the deletion rate. Deletions are reported because no
+   confidence can flag them. Calibration is scored once on the scoring
+   set, as its own line and never blended into CER (`PLAN.md` §4).
+
+**Gates.**
+- Output text is byte-identical before and after, on the train stride
+  run: this changes confidence only.
+- Equal-mass ECE on val beats `AUTHORED`'s, for characters and for words.
+- Confidence fixtures move at one stage boundary only. Their re-bless is
+  adjudicated here.
+
+**Sequencing.** This lands before 16b fits the LLM low-confidence
+threshold. That threshold is fitted against whatever confidence means at
+the time, so a later change here would force a refit. Order: 12b fold,
+then this, then 16b.
+
+### 2026-09-25 — Chunk 15 contract amended: the network learns to reject non-characters, and has a junk output
+
+**Amends** "Operator: do training steps (a)–(c) in order, and build a neural
+glyph classifier" (2026-09-24), items 3, 5 and 7. Nothing is built yet, so
+nothing is withdrawn.
+
+**Why.** The network scores every lattice candidate, including wrong cuts
+and merges. Trained on correct glyphs only, with a softmax over the
+charset, it has no way to reject all classes. A wrong cut still gets a
+confident `-log p` for some class, and the lattice would believe it.
+LeCun et al. (1998) name this failure and fix it by training on
+non-characters (research addendum of 2026-09-25).
+
+1. **A junk output.** The output layer is the charset plus one junk unit.
+   The junk index equals the charset length, and the layer spec in `meta`
+   records it, so the output layer and the class indices still cannot
+   disagree. Junk is never emitted. It takes probability mass, which
+   raises `-log p(c)` for every real class on a bad piece.
+2. **Negatives in the training data,** labelled junk. Both sources are
+   deterministic, and both come from `ocrcer-core`'s own segmenter (rule 4):
+   - lattice candidates on rendered lines whose x-extent matches no truth
+     glyph box to within 1 px at each edge;
+   - non-path candidates inside words that chunk 13 aligned, from
+     finfilings-train only.
+   The negative-to-positive ratio is a `guess`, recorded in `meta`, and
+   tuned on val.
+3. **Measured and reported, not assumed:**
+   - negative counts by source;
+   - the share of negatives that the prototype matcher reads as its top
+     class with a ratio under the positives' median for that class (real
+     shapes, such as half an `m` read as `n`).
+   Whether those negatives stay labelled junk is decided on val by
+   measurement. The result is recorded here.
+4. **Confidence** stays `log p₁ − log p₂` between the top two different
+   *charset* classes. Junk is not a rival class.
+5. **One gate added.** Insertions and deletions are reported separately
+   on val, network against prototypes, from the census char-dump. More
+   insertions means the network is accepting bad cuts.
+
+Not adopted: string-level discriminative training (GTN). It needs
+gradients through the decoder, which chunk 15 leaves unchanged. It can be
+revisited only if the junk output measurably fails.
+
+### 2026-09-25 — A one-band line that only descends is checked against the page's cap height
+
+**The defect, from a reading on train.** When `measure` finds one top band
+with ink hanging below the baseline, it reads that band as the x-height and
+labels it `Observed`.
+
+On finfilings-train (every 10th page, layout only):
+- 197 of 1,834 lines took that branch.
+- 186 of them sit at 1.25–1.6 times the page's x-height, peaking at the
+  cap ratio (1.346).
+- That is 8.2% of components on the pages that have a reference.
+
+Checked by eye on one line, `COMMON STOCKS - 44.0% - (continued)`:
+- the page x-height is 9 px, and the line is read as 12;
+- the bold capitals are the width mode, and the parentheses hang below.
+
+These lines are wrong in two ways:
+- their x-height is about 1.35 times too large;
+- `inherit_x_heights` skips them, and they vote for the page value.
+
+The error reaches everything that divides by x-height:
+- features 103–107;
+- the segmentation prior;
+- `case-geom`;
+- `width_weighting`.
+
+Details and method: research addendum 2026-09-25 ("a line that only
+'descends' is often a capitals line"). Tesseract resolves the same case in
+`correct_row_xheight`.
+
+**Rule, for `ocrcer-runtime`, behind `lines.descender_cap_check`
+(u32 0/1, default 0).** At 0, every output and fixture is byte-identical.
+
+1. `measure` records which lines came from the descender branch. This is
+   carried as a flag on `TextLine`, not as a new `XHeightSource` value, so
+   the dumps and fixtures do not change at 0.
+2. At 1, `inherit_x_heights` works as follows:
+   - **The page vote.** The page x-height is voted from `Observed` lines
+     that are not from the descender branch. If there are none, the
+     current vote is used.
+   - **The re-read.** A descender-branch line is re-read as a cap band
+     when its x-height is within `lines.cap_match_margin` of the page cap
+     height (page / `x_height_per_cap`), and *not* within it of the page
+     x-height. The re-read line gets
+     `x_height = x × x_height_per_cap`, `cap = x`, and `FromCapHeight`.
+   - **Everything else.** All other lines are unchanged.
+3. `lines.cap_match_margin` is 0.1, labelled `authored`, with its source
+   given as Tesseract's `textord_xheight_error_margin`.
+
+**Tests.**
+- The traced shape (a capitals-dominated line with parentheses, at the page
+  cap height) is re-read.
+- A lowercase line with descenders and no ascenders, at the page
+  x-height, is untouched.
+- A page with no cap-band lines is untouched.
+- At 0, the fixture suite passes unchanged.
+
+**Diagnostic, on the same train sample.** For each descender-branch line,
+record which component set the deepest drop: `(`/`)`, `$`, a letter
+(`J`, `Q`, `g`…), or other.
+
+**Gate.**
+- On train, compare 1 against 0 with the same binary:
+  - at inner stride 35, then confirm at stride 6;
+  - report end-to-end and line-matched CER.
+- Then on val, as part of 12c.
+- The change lands after 12b closes, so 12b's vector is not moved during
+  the campaign.
+- 12c refits `lines.descender_fraction` and tier 2 with the check on.
+
+**Supporting reading only.** In tier 2's inner sweep, `descender_fraction`
+improved at each step, 0.08 → 0.12 → 0.17 (22.365 → 22.348 → 22.315), with
+the optimum at the edge. That fits the defect, but it does not prove it.
+
+**Named alternative, not specced.** A within-line search for an x-height
+band *below* the mode, pairing modes at a 1.25–1.8 ratio as Tesseract's
+`compute_xheight_from_modes` does. It needs no page context. It is
+considered if the page rule leaves misses on pages with no cap-band lines:
+19 of the 43 sampled pages had none.
+
+### 2026-09-25 — Amended: the descender check's cap reference also counts `FromCapHeight` lines, and the defect is 13.9% of components, not 8.2%
+
+This amends item 2 of the entry directly above ("A one-band line that only
+descends is checked against the page's cap height"). That entry stays as
+written. Its reading counted only the 24 of 43 sampled pages that have a
+cap-band `Observed` line.
+
+**Corrected reading** (same sample: finfilings-train, every 10th page,
+layout only):
+- 905 of 6,141 lines take the descender branch.
+- They hold 13.9% of all components, on 31 of the 43 pages.
+- 15 of the 19 pages with no cap-band line are trade tables. On those, each
+  date cell (`23/12/2024`) takes the branch because the `/` hangs below
+  the baseline. Checked by eye on `filing__s1__r000045`: the date cells
+  read 16 px, while the other cells in the same row read 11.89.
+
+**Where the entry above falls short.** Its reference, voted from cap-band
+`Observed` lines only, re-reads 185 of the 905 lines.
+- On a page with no cap-band line it falls back to the current vote.
+- That vote is exactly the flagged lines, so their x-height matches the
+  page and nothing is re-read.
+
+**Amended item 2.** At `lines.descender_cap_check = 1`:
+- **Page cap height:** the width-weighted median `cap_height` over
+  unflagged lines whose source is `Observed` or `FromCapHeight`. Both of
+  those measured a cap band.
+- **Page x-height:** the vote over unflagged `Observed` lines, as before.
+  If there are none, it is page cap × `x_height_per_cap`.
+- **The re-read test** is unchanged: within `cap_match_margin` of the page
+  cap, and not within it of the page x-height.
+
+Off-line replay of this rule on the sample re-reads 893 lines, 13.7% of
+components. That replay was run on the `--layout` dump, not on the
+implementation.
+
+**Tests added to the list:**
+- A trade-table page: date cells with a descending `/`, next to digit
+  cells that are `FromCapHeight`. The date cells are re-read.
+- A page whose only lines are the flagged ones: untouched, because there is
+  no reference.
+
+The gate and landing order are unchanged.
+
+### 2026-09-25 — Clarified: in the descender check, the re-read runs before the inheritance vote
+
+This settles the order the two entries above left open. At
+`lines.descender_cap_check = 1`, `inherit_x_heights` runs in three steps:
+1. Compute the page cap and page x-height references, excluding flagged
+   lines, as amended.
+2. Re-read the flagged lines that qualify.
+3. Run the existing inheritance vote on the updated lines. Any line still
+   flagged is left out of the `Observed` set.
+
+**Why the order matters.** On `filing__s5__r000385` (train) every text line
+is `FromCapHeight`, with an x-height of 10.4. The only `Observed` lines are
+9 flagged ones at 14. Today those 9 carry the page vote alone, so 124
+`Inherited` marks take an x-height of 14. After steps 1–3, the `Observed`
+set is empty and the vote falls to all lines, which gives 10.4.
+
+**Test added:** that page's shape. `FromCapHeight` text, a few flagged
+lines, and small marks below the inheritance floor. The marks inherit the
+text's x-height, not the flagged lines'.
+
+**Measured and not specced: the mirror case.** Tesseract's `ROW_UNKNOWN`
+branch also covers a one-band line with no descender whose height matches
+the page x-height, such as a short lowercase word. OCRcer reads that line
+as a cap band. On the same sample, 8 of 308 `FromCapHeight` lines fit,
+holding 19 components. That is too few to act on.
+
+
+### 2026-09-25 — Clarified: counted lexicon words keep the 3-letter floor, and "already covered" is case-folded
+
+This entry corrects the reconciled chunk 14 spec above. It came from
+reviewing the chunk 14 table build, which added 1,555 / 889 / 437 words
+under the three rules. The counting stage had reported 1,503 / 848 / 405
+not-covered candidates for the same rules.
+
+**Case folding.** `count-text` lowercases the expanded lexicon before it
+tests whether a word is already covered. The union step does not. 449
+authored entries contain a capital. So `december`, `inc`, `corp` and
+`title` counted as new beside `December`, `Inc`, `Corp` and `Title`:
+- 80 / 66 / 52 counted words, depending on the rule, match a capitalised
+  entry;
+- the gap between the two reports is 52 / 41 / 32.
+
+The union's test is corrected to lowercase the expanded lexicon, as
+`count-text` does. Both paths then have to agree exactly, and a test
+asserts that.
+
+**Length floor.** The reconciled entry withdrew "at least 3 characters, on
+at least 2 pages" as a unit. Only the page threshold was meant to go, since
+the (count, pages) grid replaced it. The length floor stays:
+- A counted word shorter than 3 letters does not enter.
+- Under rule (3, 2), 63 such strings clear the counts and are not in the
+  authored list. Among them are `o`, `l`, `x`, `s`, `ii`, `iv`, `vi`, `sh`,
+  `co` and `mo`.
+- Short strings like these compete with digits and symbols in lone cells
+  and codes: `0`, `1`, `×`, `5`, `11`. There a lexicon bonus is the
+  expensive failure CLAUDE.md rule 6 names.
+- The real short English words are already authored.
+- The union report gains a "too short" column.
+
+**The exclusions file does not mean a manual review.**
+`model/lexicon_exclusions.txt` is the committed list that the reconciled
+entry allows. It gains a row only when val shows a specific entry doing
+harm. Its header says so, and a build does not read it as a review step.
+
+### 2026-09-25 — Clarified: a fitted confidence curve is one params row per knot coordinate
+
+This settles the row convention that item 4 of "A character's confidence is
+its own margin, and the curves are fitted, not authored" left open. The
+fitter's review found no existing convention for a multi-knot curve.
+
+**Rows.** Each knot is two `f32` rows:
+- `confidence.agree.r0` … `r5` and `confidence.agree.c0` … `c5`: the
+  ratio and the confidence of each of the 6 `agree` knots;
+- `confidence.override.r0`, `r1`, `c0`, `c1`;
+- `confidence.word.r0`, `r1`, `c0`, `c1`.
+
+The knot counts are the array sizes in `confidence::Calibration`. The fitter
+reduces to exactly those counts, so a fitted curve always has the same shape
+as the struct. Changing a count is a new entry here.
+
+**Labels.** Each row is labelled `fitted`, names `fit-calibration`, the split
+manifest and `finfilings-val`, and is `tune = no`. The parameter campaign
+never sweeps these rows. Calibration moves no output text, so a CER sweep
+over them would only report a tie.
+
+**Validation at load.** The runtime assembles each curve and checks it:
+- the ratios ascend;
+- `agree` does not rise and `override` does not fall;
+- `word` does not fall;
+- every confidence lies in [0, 1].
+
+A curve that fails is a load error, not a silent fallback to `AUTHORED`.
+A file that carries none of these rows loads with `AUTHORED`, under the
+existing rule that a reader skips row names it does not know.
+
+**Who writes them.** `fit-calibration` prints the rows in `params.tsv` form
+and never writes the file. Copying them into `params.tsv` and
+`Params::DEFAULT` is a reviewed act, adjudicated here, in the same way as
+blessing a fixture.
+
+### 2026-09-25 — Candidate spec: exact pivot bounds in the matcher (dense-page speed, step 2)
+
+**Why.** Dense real pages are still slow after the early-abandon change:
+6.3, 10.3 and 25.6 s on three finfilings pages, with `match()` taking
+95–98% of the wall time (measured,
+`docs/measurements/2026-09-24_dense_page_speed.md`). Each `nearest()` call
+visits 23–26k of the bank's 50,095 prototypes, and every visit sums at
+least 16 dimensions before its first abandon check. The remaining cost is
+the number of visits, not the dimensions per visit. It is also what makes
+a stride-6 train pass take about 25 minutes.
+
+**Method.** Classical exact nearest-neighbour elimination by the triangle
+inequality (Fukunaga & Narendra 1975; LAESA, Micó, Oncina & Vidal 1994).
+The weighted distance `sqrt(sum w_i (x_i - y_i)^2)` with every `w_i >= 0`
+is a (pseudo)metric, so for any point `c`:
+`d(q, p) >= |d(q, c) - d(p, c)|`.
+
+- **Index, built at load.** For each class, the pivot `c` is the mean of
+  its prototypes in standardised space. Each prototype stores
+  `r_p = d(p, c)` in f64. Within a class, prototypes are held in ascending
+  `r_p` order, ties by prototype index. The index is derived from the
+  prototypes table while the model loads. The `.ocrw` format and its
+  version are unchanged.
+- **Per query.**
+  1. For each class the hole gate allows, compute `dq = d(q, c)`. The
+     class's lower bound is `LB_c = (max(0, dq - r_max, r_min - dq))^2`.
+  2. Visit classes in ascending `LB_c`, ties by class index.
+  3. Skip the whole class when `LB_c` exceeds the global ceiling.
+  4. Within a class, start at the prototype whose `r_p` is nearest `dq` and
+     walk outward. Stop each direction once `(dq - r_p)^2` exceeds the
+     tighter of the class ceiling and the global ceiling.
+  5. Survivors go through the existing partial-sum scan, unchanged, in
+     canonical dimension order.
+- **Unchanged.** The italic skip and the hole gate act before any bound.
+
+**Exactness contract.** The result is the same `Match` as the current scan,
+bit for bit: `best` including each prototype index, `d1`, `d2` and `gated`.
+Two rules make that hold:
+- **Ties.** A tie in accumulated distance within a class goes to the lower
+  prototype index. That is the current scan's implicit file-order rule,
+  made explicit because the visit order changes.
+- **Slack.** A prune fires only when the bound exceeds
+  `ceiling * (1 + 1e-9) + 1e-12`. f64 rounding over 107 terms is about
+  1e-14 relative, so the slack only ever keeps extra candidates. It never
+  cuts a true one. The absolute term covers a ceiling of exactly zero.
+
+f64 `sqrt` is correctly rounded under IEEE 754, so x86 and wasm32 agree.
+The three `ocrcer-core` invariants hold: no unsafe code, no dependencies,
+wasm32-clean.
+
+**Cost metric: machine-independent.** Add a `dims_summed` profiling
+counter beside `prototypes_visited`. Report both per call, before and after
+the change, on the three densest finfilings-**train** pages. The first
+profile used score pages; this one does not. Counts do not depend on
+machine load, so they can be measured while the tuning campaign runs. Wall
+time is reported as indicative only.
+
+**Gates.**
+1. An oracle test: a plain full scan kept in `ocrcer-bench` only as a
+   checker, compared with `nearest()` on every query from those three
+   pages. There must be zero differences. Unit tests also cover engineered
+   ties: within a class, and across the class skip boundary.
+2. `ocr.exe` output byte-identical to master on those three pages.
+3. Byte-identical output on stride-6 finfilings-train, run by the
+   architect once the heavy slot is free.
+4. `dims_summed` falls by at least 25% on each of the three pages. Load
+   time is reported.
+
+**Projection, labelled.** How much this prunes in 107 dimensions is
+unknown. A class spans 54 faces and several sizes, and its ball may be
+wide. If the measured cut misses gate 4, the named next step is several
+pivots per class (k-means within a class). That step is not part of this
+spec.
+
+### 2026-09-25 — How chunk 12b's vector is chosen, fixed before the ablations report
+
+**Why now.** The campaign's last cost knob (`decode.beam_width`) and the
+post chain (edge walks, then the stride-2 ablations A/B/C/D) are still
+running. The rule for turning their output into one vector is written down
+before any ablation number exists, so the choice cannot be fitted to the
+numbers afterwards.
+
+**Definitions.** Every comparison below is on finfilings-train, using the two
+metrics the campaign already reports: end-to-end CER and line-matched CER.
+`EPS` is the campaign's 0.02 CER points. **One vector *beats* another** when it
+is better than the other by more than `EPS` on at least one metric and worse
+by more than `EPS` on neither. Anything else is a tie. On a tie the vector
+with fewer changes from `Params::DEFAULT` is kept.
+
+**Steps.**
+1. **Start from A.** A is the post chain's vector: tiers 1–4, the cost
+   knobs, and any phase-1 edge move that passed its own stride-6 confirm.
+2. **Tier 2 (B, tier 2 reverted).** Tier 2 stays only if A beats B.
+   Otherwise B's values replace it. This is the ablation that tier 2's mixed
+   confirm (end-to-end CER better, line-matched worse) required.
+3. **`w_lex` (C, `w_lex` 0.35).** C's value replaces A's only if C beats A.
+4. **If steps 2 and 3 both change A**, the combination was never measured
+   together. One more stride-2 run of B+C must beat A before both changes are
+   adopted. If it does not, adopt only the one with the larger end-to-end
+   gain.
+5. **Control (D, no overrides).** The result of steps 1–4 must beat D. If it
+   does not, 12b closes with **no fold**: `Params::DEFAULT` stays and the
+   filing says so.
+6. **Val, once.** The chosen vector against `Params::DEFAULT` on the full
+   finfilings-val split. It must beat the default under the same rule. If it
+   fails, 12b does not fold, and the next step is diagnosis on train, not
+   another candidate tried on val.
+7. **Fold.** `params.tsv` and `Params::DEFAULT` change together. Every
+   moved row is labelled `fitted`, naming `campaign.py`/`campaign_post.py`,
+   the split manifest and "finfilings-train". `fit-12b` then merges.
+8. **Score once.** Only then, the scoring sets (finfilings, pages-cov) run
+   once and are reported. They choose nothing.
+
+**`match.top_k`.** The cost rule adopted 3 (CER 20.963 against 21.010 at
+5 and 21.170 at 8, stride 6). 12b folds 3: the default path, with no LLM
+add-on, gets its best measured 1-best accuracy.
+- If 16b's n-best ceiling measurement (runbook step 3, at `top_k` 3 and 5)
+  shows the add-on needs more candidates, that is a setting of the opt-in
+  LLM mode. It is not a reason to hold the default path back.
+- `top_k` is re-read at 5 with one stride-6 run after chunk 14's grid point
+  is picked, because a stronger language model may earn the extra
+  candidates back.
+
+**Not decided here:** the `xh-desc` gate (its own train, then val, run);
+`match.cand_pad` (gated on census bucket (m)); any wall-clock claim (the
+machine is shared, so no timing from this campaign is a speed reading).
+
+### 2026-09-25 — Candidate chunk 9 spec, part 1: the structure layer, ruled cells, and slip boxes
+
+Candidate spec. It is not a schedule: chunk 9 starts after the current
+runbook. It fixes the shape the whole of chunk 9 builds on, and specifies
+its first two sub-chunks. Tables, statements and prose each get their own
+entry once 9a has readings.
+
+It rests on:
+
+- a read-only survey of the code (file and line citations below);
+- these research addenda: boxed slips, footing, table scoring (GriTS),
+  and statement row trees (ReMine).
+
+**What exists today.**
+
+- `strip_underlines` records a `RuleSegment` for each horizontal band it
+  erases (`layout/underline.rs:16-32`). `pipeline.rs:234-236` keeps only
+  the labels and components, so that record is discarded.
+- The strip sees only bands at least two rows thick, inside components at
+  least `lines.rule_run_heights` page heights wide. A one-pixel rule, or a
+  rule too short for the floor, is neither erased nor recorded.
+- Vertical rules are not detected.
+  - A box side left behind by the strip is erased from the mask as debris
+    when it is tall (`lines.debris_heights`, `lines.thin_debris_heights`,
+    `underline.rs:118-146`).
+  - A shorter side survives as a component and reaches line grouping.
+  - A standalone rule taller than `furniture_fraction` of the page is
+    dropped by `is_glyphish` (`layout/lines.rs:1041-1057`; `rule_aspect`
+    ships at 0).
+  - None of these is recorded.
+- The column cut is one-dimensional, per band (`lines.rs:1339`). Nothing
+  links a fragment to "the same column" in the next band.
+- The checkbox drop deletes box furniture and records nothing
+  (`lines.rs:1059-1176`).
+- The only public types are `Line`, `Word` and `CharBox`. pdfcer's
+  `OcrEngine` carries flat `RecognizedWord`s only
+  (`pdfcer-core/src/ocr/mod.rs:174-206`). Its OCRcer adapter calls
+  `recognize_bytes`, so even `Line.band` never reaches pdfcer.
+
+**The safety property: structure never changes text.** The layer reads
+lines, words, character confidences and rule geometry, and it only writes
+new objects. `recognize_lines` and `recognize` return byte-identical
+results whether the layer runs or not. So no part of 9a–9e can move CER on
+any corpus, and every chunk 9 gate is a structure gate.
+
+A change that alters recognition for structure's sake is not part of this
+layer. The obvious one is erasing vertical-rule pixels, so box sides stop
+being read as `|` or `1`. That is a recognition change, specified
+separately, with the usual finfilings and pages-cov gates. 9a measures
+whether it is worth doing (below).
+
+**Staging.** Each sub-chunk has its own gate, and each ships default-off
+until that gate passes.
+
+| Sub-chunk | Delivers | Needs |
+|---|---|---|
+| 9a | The `Page` result, rule geometry (horizontal kept, vertical detected), ruled cells, word-to-cell assignment, region list, stage fixtures | — |
+| 9b | Boxed forms: box number → value, per-field confidence | 9a |
+| 9c | Tables: columns aligned across rows, ruled and unruled grids, GriTS scoring | 9a |
+| 9d | Statements: row tree, rules above totals, negatives, comparative columns, footing flags | 9c |
+| 9e | Prose: paragraphs, headings, region reading order | 9a |
+
+9b comes first after 9a. `PLAN.md` §2a calls the box-to-value mapping the
+highest-value output of the chunk, and it needs only 9a's cells.
+
+**Where it runs.**
+
+- A new module, `ocrcer_core::structure`. The three core invariants hold:
+  it is pure integer geometry plus f64 ratios, with no dependencies.
+- It runs inside the pipeline, in deskewed space, before the un-shear at
+  `pipeline.rs:330-346`. Every containment test is decided there, so it
+  cannot disagree with itself.
+- Reported geometry follows `Line.rect`'s convention: `x` unchanged, `y`
+  un-sheared at `x0`. A rule is reported as its two endpoints, each
+  un-sheared.
+- The layer is written once; `ocrcer-bench` only scores it.
+
+**9a — the substrate.**
+
+*API, additive.* `Engine::recognize_page` returns
+`Page { lines, rules, cells, regions, fields, flags }`:
+
+- `lines` equals `recognize_lines`' output exactly;
+- `rules` are `RuleSegment`s with an orientation;
+- `cells` are `Cell { rect, sides }`;
+- `regions` are `Region { kind, rect, cells, lines }`. 9a emits only
+  `Unclassified`;
+- `fields` stays empty until 9b;
+- `flags` are typed diagnostics, never text changes.
+
+The existing entry points are untouched. So is pdfcer's adapter.
+
+*Rules: one detector, read-only, before the strip erases anything.*
+
+- The strip erases tall box sides as debris, so rules are found on the
+  mask before that happens. The detector reads the mask and writes
+  nothing, so recognition is unchanged.
+- Lengths are in `h`, the median glyphish-component height the strip
+  already computes. Where the detector sits (inside the strip's
+  pre-erasure phase, or beside it when `lines.underline_strip` is 0) is
+  the implementer's choice.
+- One run rule serves both orientations:
+  - a straight run of continuous ink at least `structure.rule_min_h`
+    long (`guess`);
+  - at most `structure.rule_max_thick_h` thick (`guess`);
+  - with the ends of adjacent rows (or columns) agreeing within 2 px, as
+    the strip's bands do.
+- Dot leaders and dashed rules are not rules, because the ink must be
+  continuous. A double rule is two rules.
+- The strip's `rule_segments` stay the record of what was erased, kept
+  for underline formatting later. A `rules` fixture asserts that every
+  band the strip erased lies inside a detected horizontal rule. If the two
+  ever disagree, a test says so.
+
+*Cells.*
+
+- Rule endpoints within `structure.join_tol_h` (`guess`, in `h`) of a
+  crossing rule snap to the crossing.
+- A cell is a minimal rectangle each of whose four sides is covered by
+  rule segments over at least `structure.side_cover` of its length
+  (`guess`). So a small gap in a printed rule does not open the cell.
+- A spanning cell is the rectangle; the grid it spans is 9c's concern.
+- Three-sided boxes are not cells in 9a, and a fixture asserts that.
+- Cells are enumerated in `(y0, x0, y1, x1)` order.
+
+*Assignment.*
+
+- Each word belongs to the smallest cell containing its rectangle's
+  centre, or to none.
+- A line whose words fall in different cells raises
+  `Flag::LineCrossesCell`. On finfilings-train that count, reported not
+  gated, sizes the vertical-rule erasure question above.
+
+*Regions.* One region per connected component of the rule graph, plus one
+for the lines outside all of them. The reading order stays the existing
+line order.
+
+*Parameters.* Rows are added to `params.tsv` and `Params::DEFAULT` the way
+every layout parameter has been (for example `lines.cell_pairing`). All
+are `guess` until tuned. They are tuned on a **structure dev set**: pages
+laid out and rendered by our own script, disjoint from the fixtures. Rule
+1's firewall applies unchanged:
+
+- fixtures, pages-cov and finfilings score pages stay scoring-only;
+- finfilings-train may be counted but never used to tune a structure
+  threshold, because its truth has no structure.
+
+*Fixtures (§8.2), two new stage boundaries.*
+
+- `rules`: a rendered synthetic page to rule segments. It covers:
+  - single and double rules;
+  - a one-pixel rule;
+  - underlined words;
+  - dot leaders, which must not be rules;
+  - a box whose rule touches digits;
+  - a tall box, whose sides the strip erases as debris.
+- `structure`: authored lines, words and rules, as JSON with no
+  recognition involved, to cells, assignment, regions and flags. It
+  covers:
+  - a spanning cell;
+  - a gapped side under `side_cover`;
+  - a three-sided box;
+  - a line crossing a vertical rule.
+
+Because `structure` fixtures take authored input, they check the layer
+against its own ground truth, independent of recognition accuracy. The
+bench agent adds both stages to `bless`.
+
+*9a gate.*
+
+1. `recognize_page().lines` is byte-identical to `recognize_lines()` on
+   every fixture and on finfilings-train stride 6.
+2. All `rules` and `structure` fixtures pass.
+3. The added wall time on train stride 6 is reported. It is a reading,
+   not a speed claim, while the machine is shared.
+4. wasm32 builds, `forbid(unsafe_code)` holds, no dependencies are added,
+   and the new code is clippy-clean.
+
+**9b — boxed forms.**
+
+*Box-number token.* Two or three digits, then an optional capital letter,
+kept exactly as printed. The T4 uses 10–56 plus `16A` and `17A`, and the
+T4A uses `014`–`211` (`C:/tax_rag/rag/form__t4_slip.md`,
+`form__t4a_slip.md`). A leading zero is part of the key, never normalised.
+This corrects the boxed-slips addendum, which said two digits.
+
+A letter in a box number must survive the numeric-context rules. `16A`
+turning into `164` is a rule 6 failure, and a fixture carries `16A`,
+`17A` and `014`.
+
+*Label and value inside a cell.*
+
+- The cell's lines, top-down, split into:
+  - a label: the top run of lines whose x-height is at most
+    `form.label_xh_ratio` of the cell's largest (`guess`);
+  - a value: the rest.
+- When every line is the same size, a line that starts with a box-number
+  token is the label.
+- The box number is the first box-number token in the label, in reading
+  order.
+
+*Field.* `Field { box, source, value_text, value_words, confidence, cell }`.
+
+- `source` is `Printed`, or `Read` (see below).
+- `value_text` is the recognised words joined as read, never rewritten.
+- A printed box with no value is a field with an empty value. "Not
+  filled" is data.
+- `confidence` is rule 5's geometric mean over the value's characters. It
+  adds no curve and reuses the existing calibration, which is what
+  `PLAN.md` §2a's per-field requirement asks.
+
+*Region.* A connected rule-graph component holding at least
+`form.min_boxes` fields (`guess`) becomes `Region::BoxedForm`. Two slips
+on one page are two components, so they are two forms.
+
+*Read box numbers.* This covers the T4's "Other information" pairs. A cell
+whose **value** is box-number-shaped, next to a cell on its right in the
+same rule row whose value is numeric, forms a field with
+`source: Read`. Its box is the left cell's value. The pairing is purely
+geometric; no caption strings are authored.
+
+*Order check: specified, off by default.* IC97-2R20 says paper slips keep
+"the same numerical order as the boxes on the CRA slip". What is not
+established is which traversal of a slip that order runs in (row-major,
+column-major, or mixed). So `form.order_check` ships at 0. A violation
+would only ever raise `Flag::BoxOrder`, never reorder. It turns on only
+when a fixture built from the real slip's box order shows which traversal
+is meant.
+
+*Plain-paper fallback, specified, off by default.*
+
+- A box-number token set in label-sized type, outside any cell, pairs with
+  the nearest value line to its right or below, within `form.pair_reach_h`
+  (`guess`, in `h`).
+- It has its own fixture set.
+- Its false-positive reading is `BoxedForm` regions found on the
+  structure dev set's prose and statement pages. The target is zero.
+
+*9b gate.*
+
+1. Boxed-form fixtures in our own layouts carry CRA box numbers, which are
+   facts. They cover:
+   - a full slip;
+   - boxes omitted;
+   - boxes moved but kept in order;
+   - two slips per page;
+   - `16A`, `17A` and a three-digit box;
+   - a blank box;
+   - read pairs.
+
+   Each asserts the exact box → value mapping.
+2. `value_text` is byte-equal to the words' text, and `confidence` equals
+   the geometric mean recomputed from `CharBox` confidences.
+3. Deliberate alteration: a fixture whose value is misread must report the
+   misread value. The harness fails loudly if anything in the layer
+   "corrects" it.
+4. On the rendered slip dev set, field exact-match precision and recall
+   are reported. They are not gated in 9b, because the dev set tunes the
+   thresholds.
+
+**Scoring, for the later sub-chunks** (from the addenda, recorded here so
+it is fixed before any reading):
+
+- tables use `GriTS_Top` and `GriTS_Con` side by side;
+- statement row trees use transitive parent-child F1;
+- boxes use field exact match;
+- all of it runs in `ocrcer-bench`, in f64.
+
+**pdfcer.** The API is additive and pdfcer's current path is unchanged.
+Taking structure across its boundary would need a wider type on pdfcer's
+side. That is pdfcer's decision, and OCRcer does not edit pdfcer.
+
+**Operator questions this raises** (not blocking 9a or 9b):
+
+1. FinTabNet (CDLA-Permissive) as a scoring-only table corpus. The
+   copyright of the underlying report pages is unstated.
+2. The ReMine financial-table set (72 tables) as scoring-only. No licence
+   is stated.
+
+Both would be scoring-only. Neither is downloaded until the operator
+answers.
+
+**Not decided here:**
+
+- 9c–9e mechanisms;
+- vertical-rule erasure (a recognition change, sized by 9a's count);
+- any export format writer (PAGE XML, ALTO or hOCR). The `Page` tree maps
+  onto page → region → cell → line → word, which all three share. A
+  writer is built when a consumer asks for one.
+- the chunk's token estimate, which is re-estimated at chunk start per
+  `PLAN.md` §2a.
+
+### 2026-09-25 — Chunk 9 spec, part 1, amended: how cells are enumerated, and each cell's grid span
+
+Amends "Candidate chunk 9 spec, part 1" above, the *Cells* paragraph of
+9a. The rest of that entry stands.
+
+**Why.** "A minimal rectangle each of whose four sides is covered" does
+not say minimal in which order. It also does not say what a rule that
+stops inside a rectangle does. Two implementers could build different
+cells from the same page, and that is the ambiguity §8.2's fixtures are
+meant to rule out. Prior art, read from source, settles both (research
+addendum "cells from ruling lines", 2026-09-25).
+
+**Enumeration.**
+
+- **Crossings.** After endpoint snapping (`structure.join_tol_h`), a
+  crossing is any point where a horizontal and a vertical rule meet. That
+  includes T and L junctions.
+- **The cell from each crossing.** Take the crossing as a top-left corner.
+  - Walk the crossings below it on the same vertical rule, nearest first.
+  - For each of those, walk the crossings to its right on the same
+    horizontal rule, nearest first.
+  - The first pair that closes a rectangle is the cell. Closed means the
+    bottom-right crossing exists, and all four sides pass the
+    `structure.side_cover` test.
+  - At most one cell comes from each crossing.
+  - This is Tabula's `findCells` order.
+- **Stubs.** A rule that ends inside a rectangle does not split it. So a
+  spanning cell is one cell, and no word ever needs moving between cells.
+- A rectangle has one top-left corner, so no cell is found twice. Cells
+  are still reported in `(y0, x0, y1, x1)` order.
+- If two cells overlap, a word still goes to the smallest cell containing
+  its centre, as 9a already says.
+
+**Grid span.** Within each region:
+
+- the distinct x-coordinates of its cells' edges are the column anchors;
+- the distinct y-coordinates are the row anchors;
+- both are merged within `structure.join_tol_h`.
+
+`Cell` gains `rows: (u32, u32)` and `cols: (u32, u32)`, half-open anchor
+indices. 9a computes and fixture-asserts them. 9c's `GriTS_Top` scores
+them. Nothing in 9a or 9b reads them.
+
+**No joint minimum.** Camelot drops a ruled area with four or fewer
+joints. OCRcer does not: a single closed box is a cell, and 9b's
+`form.min_boxes` is the only count threshold.
+
+**Fixtures added to `structure`:**
+
+- a rule stub ending inside a cell;
+- a T junction;
+- a cell spanning two columns, asserting its `cols` span;
+- a rule whose end falls short of the crossing rule by more than
+  `structure.join_tol_h`, asserting no cell closes there.
+
+### 2026-09-25 — Chunk 9 spec, part 1, amended again: rule length, short box sides, and breaks
+
+Amends "Candidate chunk 9 spec, part 1" above, in its *Rules* paragraph
+and its `rules` fixtures. Everything else in the spec stands, including
+the first amendment on cells. This touches only 9a-ii, the detector. 9a-i,
+the geometry built on authored rules, is unaffected.
+
+**Why.** The spec left `structure.rule_min_h` and
+`structure.rule_max_thick_h` as unvalued guesses. Read literally, it also
+drops two cases that real pages have: the sides of a box around one line
+of text, and a printed rule broken by a scan. Tesseract's line finder was
+read from source (research addendum "how Tesseract finds ruling lines",
+2026-09-25).
+
+**Length floor.**
+
+- `structure.rule_min_h` takes the value and the derivation of
+  `lines.rule_run_heights`: 5.4209, labelled `measured`. That is twice the
+  longest straight ink run any glyph in the bank makes, and the same
+  floor serves the vertical orientation (the tallest thin glyph is 2.2859).
+- It must never exceed `lines.rule_run_heights`. Then every band the strip
+  erases is long enough to be a detected rule, and the `rules` fixture's
+  assertion (every erased band lies inside a detected rule) holds by
+  construction rather than by luck.
+- A test on `Params::DEFAULT` asserts that ordering.
+
+**Short sides.**
+
+- A straight run shorter than the floor is still a rule when both of its
+  ends lie within `structure.join_tol_h` of rules of the other
+  orientation, each of which passes the floor on its own.
+- The run must still meet the thickness cap.
+- This closes a box around one line of text, whose sides are about 3 `h`,
+  shorter than any glyph-safe floor.
+- A single glyph cannot pass. It would need rules touching both of its
+  ends.
+
+**Breaks.**
+
+- Two collinear pieces of the same orientation are one run when they
+  overlap across the run's direction and the gap between them is no
+  longer than the thinner piece's thickness.
+- The length test applies after joining.
+- A scan dropout in a printed rule is a pixel or two, so it is joined.
+- The gap in a dot leader or a dashed rule is longer than its dots or
+  dashes are thick, so it stays two pieces and is not a rule.
+- This rule has no parameter. Tesseract's closing uses a fixed 1/60 inch,
+  which would also join a tight leader, so it is not adopted.
+
+**Thickness.** `structure.rule_max_thick_h` starts at 0.8, labelled
+`guess`. It is Tesseract's 1/20-inch line width converted at 10-point type
+with `h` at the x-height. It is tuned on the structure dev set with the
+others.
+
+**Counted, not adopted: Tesseract's text test.**
+
+- Tesseract rejects a line crossed by fewer than two lines when the ink
+  beside it covers more than 25% of its box. That test protects a short,
+  1/4-inch floor.
+- OCRcer's floor is twice the longest glyph run.
+- Adopting the test in the detector alone would make it disagree with the
+  strip, which erases on the same floor.
+- 9a-ii reports, on finfilings-train stride 6 (counted, never tuned), how
+  many detected rules with fewer than two crossings would fail the test.
+  If any of them are text, the test is specified for the strip and the
+  detector together.
+
+**Fixtures added to `rules`:**
+
+- a box around one line of text, whose sides are shorter than the floor,
+  closed by the short-side rule;
+- a lone vertical run of the same length with no rules at its ends, which
+  is not a rule;
+- a rule with one-pixel breaks, which is one rule;
+- a dashed rule, which is not a rule;
+- a single em dash in running text, which is not a rule.
+
+### 2026-09-25 — Chunk 12b's vector: a move made on a tie is reverted before the ablations, and the fitting scripts are committed with the fold
+
+Amends steps 1 and 7 of "How chunk 12b's vector is chosen". The rest of
+that entry stands.
+
+**What happened.** When the campaign resumed on 2026-09-24, its tie rule
+changed: a candidate replaces the current value only if it beats it by more
+than `EPS` on the inner sample. The first rule took the lowest CER, and the
+first candidate on a tie. The new rule was applied to `decode.w_lex` and to
+every tier after tier 1, but not to the rest of tier 1. The campaign log
+shows one other tier-1 move made on a tie: `decode.seg_split_penalty` went
+from 0.75 to 0.5 with an inner CER of 22.318 for both (train, stride 35).
+Every other tier-1 move beat the current value by more than `EPS`.
+
+**Decision: A starts with `decode.seg_split_penalty` at 0.75**, the
+default.
+- The revert is made before any post-chain number exists. It applies the
+  rule the rest of the campaign ran under, so it is not a new choice.
+- The stride-2 ablations measure A as reverted. Every value that folds has
+  therefore been through phase 2 and val.
+- The tier 2–4 sweeps, their confirms and the cost knobs ran with 0.5 in
+  the base. They stand as train readings. They proposed values; phase 2 and
+  val are what test them.
+
+**Decision: the fitting scripts and logs are committed with the fold.**
+Step 7 names `campaign.py` and `campaign_post.py`. Both ran from a session
+scratch directory, with machine paths written in. The campaign was a first
+run plus two resumes after its process was killed. A `fitted` row that names
+a file outside the repository has no source. The fold's merge adds:
+- `tools/fit12b/`: the two drivers, the two resume scripts and
+  `decide_12b.py`. Machine paths become arguments, and nothing else
+  changes; the diff against what ran is reviewed at the merge.
+- `docs/measurements/2026-09-25_fit12b/`: the campaign log, the status
+  files, `post_status.json` and `decision_12b.json`. They hold each run's
+  argv and train metrics, and no page text.
+
+**What re-runs byte for byte:** each logged run, the phase-2 ablations,
+`decide_12b.py`, and the val comparison. A fresh run of the driver is not
+claimed to retrace the search. The tie rule changed after tier 1, and tier
+2's first five sweeps ran with `w_lex` at 0.35. `tools/fit12b/README.md`
+states the path as run. Each moved row's description names
+`tools/fit12b`, finfilings-train and `bench/splits/manifest.tsv`.
+
+**For every later fit:**
+- the script is committed before it runs, and takes its paths as
+  arguments;
+- a rule change mid-run is a §11 entry made before the next number.
+
+### 2026-09-25 — Chunk 9a-i reviewed: the cell walk follows lines, not rule objects; side coverage is a union; a rule with no crossing is not a region
+
+Amends "Candidate chunk 9 spec, part 1" and its first amendment ("how cells
+are enumerated"). It records the review of 9a-i, the geometry built on
+authored rules (branch `structure-9a`). The rest of both entries stands.
+
+**What was built.** It has 11 `structure` fixtures, each checked against a
+separate from-scratch geometry script before the Rust ran. All pass. The
+wasm32 build passes, no dependencies were added, and there are no clippy
+findings in new files. The fixtures were spot-checked by hand for this
+review: the spanning cell, the gap under `side_cover`, and the rule short
+by more than `join_tol_h`.
+
+**Accepted as built.** These are choices the spec left open. They are
+recorded so they are decisions, not accidents.
+- A cell's `rect` runs between rule centrelines, half-open. A cell's own
+  right and bottom border belongs to its neighbour. A rule's centreline is
+  the floor of its band's midpoint.
+- Two rules of the same orientation are connected when their nearest
+  centreline ends are within `structure.join_tol_h`. The distance used is
+  the larger axis difference, which avoids a square root.
+- Regions are sorted by `(y0, x0, y1, x1)` of their rectangle. The region
+  for lines outside every cell comes last, and exists only when some line
+  needs it. A line belongs to the region of its first word's cell.
+- For `LineCrossesCell`, a word in no cell counts as a different cell from
+  one in a cell. A label beside a box and its value inside it also cross a
+  vertical rule, and sizing that is what the flag is for.
+- The spec's `Cell { rect, sides }` loses `sides`. No stage reads it, and
+  the `side_cover` test decides whether a cell closes. If 9b needs to know
+  which rules bound a cell, it is added then.
+- Fixture encoding: `"H"`/`"V"` for orientation, and flags as tagged
+  objects.
+
+**Changed before merge.** A follow-up on the same branch makes these
+changes.
+
+1. *The walk follows lines, not rule objects.*
+   - From a top-left crossing, the walk goes down to the crossings with the
+     same x.
+   - From each of those, it goes right to the crossings with the same y.
+   - A cell closes when that bottom-right crossing exists and all four
+     sides pass `side_cover`. Which rule each crossing lies on no longer
+     matters.
+   - Why: a gap in the middle of a left or bottom side leaves two rule
+     objects. Following one rule object then loses the cell, even though
+     `side_cover` passes. The same gap in a top or right side is
+     tolerated. The spec's promise that "a small gap in a printed rule does
+     not open the cell" held on two sides only.
+   - Tabula also walks by coordinate, but it additionally requires the
+     same ruling object. It first merges collinear rulings within about a
+     pixel (`Ruling.collapseOrientedRulings`,
+     `SpreadsheetExtractionAlgorithm.findCells`, read 2026-09-25). The
+     `side_cover` test replaces that identity check here, and does so on
+     all four sides.
+2. *Side coverage is a union.*
+   - A side's coverage is the length of the union of its overlaps, not
+     their sum.
+   - The segments counted are those of the side's orientation whose
+     thickness band contains the side's coordinate. For a one-pixel rule,
+     that is today's test of equal centrelines.
+   - Why: a sum counts overlapping segments twice. Take segments [0,6) and
+     [2,8) on a side of length 10. The sum gives 1.2, capped to 1.0, so the
+     side passes at 0.9. The union is 0.8, so it should fail.
+3. *Cells hold regions together.* Every rule that covers a closed cell's
+   side joins that cell's region. With change 1, a cell's sides can come
+   from rules that neither cross each other nor end near each other. One
+   example is a left side broken by a gap longer than `join_tol_h`. Without
+   this change, one cell's rules could fall in two regions.
+4. *A rule with no crossing is not a region.*
+   - A component of the rule graph with no crossing (a lone rule, a double
+     rule, a broken underline) is not a region. Its rules still appear in
+     `rules`, and 9d reads the rules above totals from there.
+   - Why: once 9a-ii feeds in the strip's bands, every underline on a page
+     would become a region with no cells and no lines.
+
+*Fixtures added:*
+- a left side, and separately a bottom side, broken mid-length into two
+  rules by a gap under 1 − `side_cover`: each is one cell;
+- two overlapping segments on one side whose union is under `side_cover`:
+  no cell;
+- a left side broken by a gap longer than `join_tol_h` but under
+  1 − `side_cover`: one cell, one region;
+- a lone rule and a double rule: no region.
+
+If change 4 alters an existing expectation, that fixture is re-blessed in
+the same commit, named, with this entry as its reason. No other
+expectation may move.
+
+**Where the parameters live.** 9a-i keeps `join_tol_h` and `side_cover`
+in a constant struct in the source, both labelled guesses there. Nothing
+calls `build` yet, so this does not block the merge. When 9a-ii wires the
+layer into the pipeline:
+- the four structure parameters become `params.tsv` rows and
+  `Params::DEFAULT` fields, labelled `guess`, per the spec: `join_tol_h`,
+  `side_cover`, `rule_min_h`, `rule_max_thick_h`;
+- `structure::build` takes them from there;
+- the source constant goes.
+
+**Also for 9a-ii: a rule with a one-pixel step is one rule.**
+- A deskew residual of a fraction of a degree steps a long one-pixel rule
+  by a row part-way along. The breaks rule joins pieces that overlap
+  across the run's direction. A one-pixel step leaves two bands that only
+  touch, so the rule becomes two half-length pieces at different
+  centrelines. Change 1 cannot fix that, because the pieces' coordinates
+  differ.
+- The breaks rule therefore reads "overlap or touch across the run's
+  direction". The gap condition is unchanged. The joined band spans both
+  pieces.
+- `rules` gains a fixture: a rule stepped by one pixel at mid-length is
+  one rule.
+
+### 2026-09-25 — Faxed pages: a source with unequal resolutions is squared at the larger one, and magnified smoothly
+
+**Finding (standards and source read; nothing measured).** Research
+addendum 2026-09-25, "faxed pages".
+- A Group 3 fax is about 204 dpi across and, in standard mode, about 98 lpi
+  down (ITU-T T.4).
+- §8.1 said "pass pixels at the source's native resolution". For such a
+  source that has two values, and the engine assumes square pixels.
+- OCRmyPDF squares at the larger resolution (`get_page_square_dpi`).
+- pdfcer's renderer chooses one filter per image. It uses bilinear when
+  either axis minifies, and Nearest otherwise. A standard-mode fax
+  rendered at or above about 203 dpi therefore has every row repeated.
+  That is the pixel replication the 2026-09-25 upsampling entry measured
+  garbling words, on one axis. This is read from pdfcer source, not run.
+
+**Decision.**
+- §8.1 gains one sentence. When the two resolutions differ, square the
+  grid at the larger one and magnify the other axis with a smoothing
+  filter.
+- This follows from the existing rule and needs no engine change. The
+  call-site change is pdfcer's, in pdfcer's own session.
+
+**Open, not decided.**
+- After smooth magnification, a standard-mode 10 pt line measures about
+  28 px/em, which is the "calibrated" tier. Its vertical sampling is about
+  13.6 rows per em, at the accuracy cliff. The per-line floor cannot see
+  the difference.
+- Whether that needs a sampling hint from the caller (a binding API
+  question) waits for the fax arm added to the queued nearest-neighbour
+  measurement (train pages, arms F0 to F4 in the addendum).
+
+### 2026-09-25 — Operator requirement: show-through handling has four modes, with detection on by default
+
+**Requirement (operator, 2026-09-25, verbatim).** "sometimes scanned pages
+have faded mirrored text show through the scanned page from the other
+side. We might need a way to detect when a background like this might be a
+problem on a page. We could have a default setting to auto detect,
+optional ones to user set contrast, or auto set contrast, or disable
+detection."
+
+**Context (measured on synthetic lines; research addenda 2026-09-25, "faded
+ink", "show-through" and "show-through detection").**
+- The shipped binarizer ignores show-through down to grey 185 on those
+  pages. It also loses front ink lighter than about 175, and returns
+  nothing for it.
+- Every lever that recovers faint ink also reads show-through somewhere.
+  Faded-ink recovery and show-through handling are therefore one feature,
+  not two.
+- Reading a region flipped left to right separates whole mirrored letters
+  from real text on those pages. Fragments do not separate.
+
+**Decision.**
+- Page-background handling gets four modes. They are named here by
+  behaviour; parameter names are chosen at spec time.
+  - **Auto-detect (the default).** The engine looks for background that
+    might be a problem and reports it per page. Where it recovers faint
+    text, it tests each recovered word against show-through before
+    keeping it.
+  - **Auto contrast.** The engine chooses a contrast level for each page
+    from its own measurement of the page, and binarizes the whole page at
+    that level.
+  - **Manual contrast.** The user sets the level. The engine never
+    overrides a user-set level.
+  - **Off.** No detection and no recovery: the shipped binarizer, byte for
+    byte.
+- How the operator's four options map to these behaviours is the
+  architect's reading of his message. If his intent differs, this entry
+  is superseded by a new one, not edited.
+- Byte identity:
+  - Off reads every page byte for byte as today;
+  - auto-detect reads byte for byte as today on any page where it finds
+    nothing, and never changes a word the shipped read returned;
+  - the two contrast modes rebinarize the whole page, so they can move
+    anything. They are opt-in for that reason.
+- Staged shipping:
+  - stage 1: auto-detect reports the page flag and changes no text. It
+    becomes the default once every fixture is unchanged and its
+    false-fire count on finfilings-train is known (counting only; its
+    thresholds start as labelled guesses);
+  - stage 2: auto-detect recovers faint words through the mirror test. It
+    becomes the default's behaviour only after its own gate: every fixture
+    unchanged, the false-fire count on train, the synthetic ladders
+    (faded, show-through and the queued noise arm), and the scoring sets
+    once at the end;
+  - until stage 1 passes, the default behaves as Off.
+- The page flag is an output, not a confidence. Rule 5 keeps confidence
+  the calibrated match margin.
+- Once exposed, the manual level keeps its meaning across releases. A
+  user's saved setting depends on it.
+- pdfcer exposes the modes and the flag. OCRcer does not edit pdfcer; the
+  hand-off goes through the operator.
+
+**Open, not decided.**
+- Which recovery read auto-detect and auto contrast use: a lower `k`, the
+  local stretch or a new pre-step (faded-ink designs 1 to 3, unpriced on
+  noise).
+- Which engine quantity the manual level sets: Sauvola `k`, a background
+  cut-off grey, or the stretch floor.
+- The flag's shape: a page-level field in the output (a binding change)
+  or a separate query.
+- Per-word mirror margins, mirror-symmetric glyphs and fragments, all
+  queued in the detection addendum.
+- Whether the operator meant auto contrast as a mode of its own, or as
+  what auto-detect does when it fires. The four-mode shape holds either
+  way.

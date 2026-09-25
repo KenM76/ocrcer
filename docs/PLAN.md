@@ -57,8 +57,11 @@ passes, not when its code is written.
 | 10 | Drawing primitives: line tracing, line-type classification, shape fitting (sibling crate `ocrcer-draw`, proposed) | `ocrcer-runtime` | Sonnet | ~1.4 M | Traced polylines, ISO 128/ASME Y14.2 line-type classification, and fitted circles/arcs/rectangles golden-checked against fixture drawings |
 | 11 | Evaluation corpora: acquisition, licence table, ground-truth normalisation | `ocrcer-bench` | Sonnet (prep/normalisation), Opus (adjudication) | ~0.8 M | Corpus table populated with licence-as-read-from-source and a redistributable column per candidate; chunk 8's CER/WER harness fed only from admitted corpora |
 | 12 | Training split manifest, then fitting the `guess` params on the training split | `ocrcer-bench` (split), `ocrcer-linguist` (fit) | Sonnet | ~1.0 M | Committed manifest disjoint from every scoring page; each fitted param labelled `fitted` with script+manifest; pages-cov, drawing, finfilings gates pass |
-| 13 | Real-scan prototypes: ground-truth-aligned glyph crops from the training split added to the bank | `ocrcer-glyphs`, `ocrcer-bench` (alignment) | Sonnet | ~1.3 M | Deterministic crop extraction through core's own segmenter and extractor; rows record source page; usual gates; wall time and file size reported |
-| 14 | Domain lexicon and bigrams counted from training-split text | `ocrcer-linguist` | Sonnet | ~0.8 M | Counts from training split only, attribution in `meta`/`NOTICE`; identifier-preservation test passes; usual gates |
+| 12c | Width-weighted decoder terms (candidate; follows chunk 12's fit): mode `decode.width_weighting`, then a refit of the terms it rescales | `ocrcer-runtime` (mode), `ocrcer-bench` (refit) | Sonnet | ~0.5 M (estimate) | Mode 0 byte-identical on every fixture; refit on train only, confirmed once on val; usual gates including drawing Δ ≤ 0; merged and split edges per 1,000 characters reported on and off |
+| 13 | Real-scan prototypes: ground-truth-aligned glyph crops from the training split added to the bank | `ocrcer-glyphs`, `ocrcer-bench` (alignment) | Sonnet | ~1.3 M | Deterministic crop extraction through core's own segmenter and extractor; a test refuses any non-train page; crops accepted only under `ARCHITECTURE.md` §11's 2026-09-25 acceptance tests (truth folded through the charset, per-class rendered-spread bound, neighbour agreement); rows record source page; usual gates plus an ECE re-measure; wall time and file size reported |
+| 13b | Per-page adaptive prototypes (candidate): second pass over the page with prototypes taken from its own clean-list words | `ocrcer-runtime` (overlay, second pass), `ocrcer-bench` (measure) | Sonnet | ~1.0 M (estimate) | `adapt.enabled` off byte-identical; clean-list selection per `ARCHITECTURE.md` §11 2026-09-25, never confidence; a promoted-word fixture; mean CER and the count of pages made worse both reported; usual gates; wall time reported |
+| 13c | Text rotated ±90° on drawings (candidate) | `ocrcer-runtime`, `ocrcer-bench` (census, measure) | Sonnet | ~0.8 M (estimate) | Transpose-equivariance property test; `layout.rotated_text` off byte-identical; finfilings-val no worse than control + 0.02; drawing gates; pages-cov rotated-string census reported as counts only |
+| 14 | Domain lexicon and bigrams counted from training-split text | `ocrcer-linguist` | Sonnet | ~0.8 M | Counts from training split only (count mixture with absolute discounting, μ and the lexicon rule chosen on val per `ARCHITECTURE.md` §11 2026-09-25); attribution in `meta`/`NOTICE`; identifier-preservation test passes; usual gates |
 | 15 | Neural glyph classifier (optional matcher, `match.classifier`), pure-Rust inference in core, pure-Rust training in `ocrcer-build` | `ocrcer-runtime` (inference), `ocrcer-glyphs` (training data + trainer) | Sonnet | ~2.5 M, two sittings | See `ARCHITECTURE.md` §11 2026-09-24 neural-classifier entry; core invariants intact; byte-reproducible training; beats kNN-only on finfilings with pages-cov and drawing gates passing |
 | 16 | Optional local LLM add-on: `ocrcer-llm` crate (pure safe Rust, std only, in-process), one-file `.ocrl` add-on (weights + tokenizer + licence), n-best rescoring of low-confidence lines | `ocrcer-runtime` (engine), `ocrcer-exporter` (`.ocrl` + converter), `ocrcer-bench` (measure) | Sonnet | ~2.0 M, two sittings | 16a: logits match a reference implementation, tokenizer matches on a test set; 16b: rescoring beats the controls on finfilings with the identifier-preservation test passing and drawing Δ ≤ 0; wall time and add-on size reported |
 | 16c–e | LLM add-on, continued: (c) Qwen3.5-0.8B text path (Gated DeltaNet + gated attention); (d) its vision encoder, for image-conditioned rescoring of n-best candidates on line crops; (e) optional GPU backend (`gpu` feature, wgpu, uses the system's existing graphics driver) | `ocrcer-runtime`, `ocrcer-exporter`, `ocrcer-bench` | Sonnet | ~3.0 M, three sittings | Each stage: logits/embeddings match the reference; fits 8 GB RAM and 2–4 GB VRAM with measured peaks; 16b's gates apply to any OCR use; CPU path stays the default and the fallback |
@@ -399,6 +402,21 @@ scope and is flagged as likely stale rather than silently revised without
 a basis — re-estimating is chunk-start work for whoever picks up chunk 9,
 not done here.
 
+**Staging** (`ARCHITECTURE.md` section 11, 2026-09-25, "Candidate chunk 9
+spec, part 1"). Chunk 9 is built as five sub-chunks, each with its own gate
+and each default-off until that gate passes:
+
+- 9a: the structure substrate (rules, ruled cells, word-to-cell assignment,
+  regions);
+- 9b: boxed forms;
+- 9c: tables;
+- 9d: statements;
+- 9e: prose.
+
+9b follows 9a directly. The structure layer never changes recognised text,
+so every sub-chunk's gate is a structure gate. The exit gate above is the
+union of the five.
+
 ## 2b. Chunk 10 detail — drawing primitives
 
 **Deferred behind chunk 9, operator priority, 2026-09-21** — see section
@@ -505,6 +523,11 @@ preparation work that feeds it. Owner `ocrcer-bench`.
 you have determined that our OCR is better than the one we are currently
 using in pdfcer I want pdfcer to be informed to add this one to its options
 to use." This is a gate attached to chunk 11, not an action taken now.
+
+**Superseded 2026-09-24 (operator):** integration no longer waits on
+beating `ocrs`. OCRcer ships to pdfcer as an opt-in engine as soon as the
+binding, speed and packaging are ready; the head-to-head decides the
+default. See `ARCHITECTURE.md` §11, 2026-09-24.
 
 - **"Better" is defined before it is measured**, or the metric gets chosen
   after the fact to produce a win. Primary metric: **CER** on a shared

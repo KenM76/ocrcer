@@ -54,3 +54,4 @@ bench/finfilings/
 # commit or diff.
 __pycache__/
 *.pyc
+.claude/agent-memory/

@@ -1,0 +1,117 @@
+Chunk 16a — ocrcer-llm: Qwen decoder + .ocrl converter, measured
+=================================================================
+
+Scope: verification and readings for the pure-Rust, std-only LLM add-on
+introduced in ARCHITECTURE.md section 11 (2026-09-24 entry). OCR
+integration is chunk 16b and is not part of this measurement.
+
+Models (Apache-2.0, weights never committed; see NOTICE):
+  - Qwen/Qwen3-0.6B
+  - Qwen/Qwen2.5-0.5B-Instruct
+
+All numbers below are READINGS from one run on the operator's machine
+(20 logical processors), not projections.
+
+-----------------------------------------------------------------------
+1. .ocrl file sizes (ocrcer-build llm-pack, measured on disk)
+-----------------------------------------------------------------------
+qwen3-0.6b.f32.ocrl      2,386,054,400 bytes   (build time 26.2 s)
+qwen3-0.6b.q8.ocrl         672,599,296 bytes   (build time 11.9 s)
+qwen2.5-0.5b.f32.ocrl    1,977,983,872 bytes   (build time 16.9 s)
+qwen2.5-0.5b.q8.ocrl       557,845,376 bytes   (build time  9.5 s)
+
+Q8 quantization (32-value blocks, one f32 scale each, applied only to 2D
+matrices whose inner dim is a multiple of 32) shrinks both models to
+roughly 28% of their f32 size.
+
+-----------------------------------------------------------------------
+2. Verification vs. the transformers/torch reference oracle
+   (tools/qwen_reference.py, transformers 5.1.0 / torch 2.10.0 CPU,
+   fixtures in fixtures/llm/)
+-----------------------------------------------------------------------
+
+Tokenizer (50 fixed strings per model, exact token-id sequence match):
+  qwen2.5-0.5b: PASS, 0 mismatches
+  qwen3-0.6b:   PASS, 0 mismatches
+
+F32 logits vs. transformers float32 (5 fixed prompts, top-1 + max|diff|):
+  qwen2.5-0.5b: top-1 matched HF on all 5 prompts; max|diff| = 0.000110
+  qwen3-0.6b:   top-1 matched HF on all 5 prompts; max|diff| = 0.000079
+
+  Per-prompt top-1 (both models agreed with HF on every prompt):
+    "The capital of France is"                              -> token 12095
+    "2 + 2 ="                                                -> token 220
+    "Q3 2026 revenue: $4,502,118. Net income was"            -> token 400
+    "M8x1.25 thread, tolerance +0.010/-0.005,"     qwen2.5   -> token 220
+                                                    qwen3     -> token 323
+    "Once upon a time, there was a"                qwen2.5   -> token 3908
+                                                    qwen3     -> token 883
+
+Q8 build vs. this crate's own F32 build (5 prompts + ~200 tokens of text,
+top-1 agreement and mean KL divergence in nats):
+  qwen2.5-0.5b: 5/5 prompts top-1; mean KL 0.000792 nats.
+                219 text tokens: 213/219 top-1 (97.3%); mean KL 0.000866.
+  qwen3-0.6b:   5/5 prompts top-1; mean KL 0.001614 nats.
+                219 text tokens: 212/219 top-1 (96.8%); mean KL 0.001038.
+
+(qwen3_tokenizer_matches_reference and qwen3_q8_agrees_with_f32 did not
+finish inside the first --ignored run's 590 s external timeout; re-run
+alone with a 600 s tool timeout, they took 407.95 s total and both
+passed. Not a bug in the engine — it is a slow single-threaded reference
+run, not a hang; see section 3 for why.)
+
+-----------------------------------------------------------------------
+3. Speed and load time (single-threaded and all-threads, nproc 20)
+-----------------------------------------------------------------------
+Method: crates/ocrcer-llm/examples/bench.rs — load a .ocrl file, prefill
+64 tokens of fixed domain text (financial + CAD, matching this project's
+stated domain), then score 64 more tokens one at a time via
+score_continue (the same per-position lm_head cost as prefill: this
+crate's prefill scores every position, not just the last). Both prefill
+and decode therefore pay the full 151,936-row lm_head projection at
+every one of the 64 positions, which dominates the measured throughput
+for a model this small — these numbers describe this crate's current
+prefill/decode API shape, not a lower bound on achievable tok/s with a
+last-position-only prefill or a KV-cache-only decode loop.
+
+                          load(s)  prefill tok/s  decode tok/s
+  qwen3-0.6b   f32  1t     12.536      1.36           1.36
+                    20t    12.693      2.94           2.98
+  qwen3-0.6b   q8   1t      3.052      1.58           1.61
+                    20t     3.050      3.39           3.10
+  qwen2.5-0.5b f32  1t     10.416      1.65           1.61
+                    20t    10.405      3.64           3.72
+  qwen2.5-0.5b q8   1t      2.644      1.97           1.85
+                    20t     2.555      4.05           4.12
+
+Speedup at 20 threads over 1 thread, by file: qwen3 f32 2.16x/2.19x
+(prefill/decode), qwen3 q8 2.15x/1.93x, qwen2.5 f32 2.21x/2.31x, qwen2.5
+q8 2.06x/2.23x. This is a reading, reported as measured, not a
+projection: 20 threads buys roughly 2.1-2.3x, not anything close to
+20x. The likely reason (not yet isolated by profiling, so stated as a
+plausible explanation rather than a proven cause) is that batch=1
+matrix-vector matmul is memory-bandwidth-bound rather than
+compute-bound — every weight byte is read once and used for one
+multiply-add, so more threads contend for the same memory bus instead
+of finding more arithmetic to overlap — compounded by std::thread::scope
+spawn/join overhead recurring on many small per-layer matmuls rather
+than one large one. Load time is dominated by reading the .ocrl file
+into memory (largely disk/page-cache bound) and is flat across thread
+counts, as expected since with_threads only affects matmul.
+
+Q8 vs f32 is consistently ~1.1-1.4x faster despite doing dequantisation
+work per block, because it moves roughly 3.5x fewer bytes per matmul;
+bandwidth-bound behaviour again, this time working in Q8's favour.
+
+-----------------------------------------------------------------------
+4. Housekeeping
+-----------------------------------------------------------------------
+- cargo build -p ocrcer-core --target wasm32-unknown-unknown: green.
+- cargo build -p ocrcer-llm --target wasm32-unknown-unknown (non-gating,
+  parallel feature never enabled for wasm): green.
+- cargo test -p ocrcer-core -p ocrcer-llm -p ocrcer-build --release: all
+  green (193 + 17 + 86 tests). cargo test --workspace --release was not
+  run as a single invocation because another concurrent agent's ocr.exe
+  process held target\release\ocr.exe open for the duration of this
+  chunk's work (project rule: do not run ocr.exe directly); the scoped
+  run above covers every crate touched by this chunk.

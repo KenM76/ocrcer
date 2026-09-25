@@ -1028,3 +1028,754 @@ the one-time `rustfmt` pass (both awaiting Ken's go), and whether "commit
 after each passing change" extends to Ken's other project trees. Token
 spend against `/usage` remains unmeasured — no shell in this dispatch —
 now across seven sessions.
+
+---
+
+## 2026-09-24 — Checkpoint refresh: dense-page speed ships, chunk 16b spec fixed, five unmerged branches inventoried
+
+**Request:** a checkpoint refresh of `ROADMAP.md`, this log and `RESUME.md`
+against today's state, without touching `ARCHITECTURE.md`, `PLAN.md`,
+`FEASIBILITY.md` or the untracked publish-audit note.
+
+**Reconnaissance performed.** Read `ROADMAP.md` and `RESUME.md` (both last
+updated mid-session, before the day's operator directives on training, the
+neural classifier, the LLM add-on and the pdfcer hand-off change); read
+`ARCHITECTURE.md` §11 forward from the last point either file reflected
+(the italic-gating ship) through the newest entry (chunk 16b's spec); read
+`docs/measurements/2026-09-24_dense_page_speed.md` in full.
+
+**The finding that this filing exists to fix.** `ROADMAP.md`'s "In
+progress"/"Next up"/"Backlog" sections still read as if chunk 9 were the
+active frontier and chunks 2/3 were next up, while `ARCHITECTURE.md` §11
+had already logged three operator directives opening chunks 12 through 16,
+a pdfcer integration-priority change, a GitHub publish, and a pdfcer
+vendoring model — none reflected in either file. This is recorded as a
+gap this filing closes by pointer to `ARCHITECTURE.md`, not by restating
+its narrative; `PLAN.md` §2's table does not yet carry chunks 12–16 either,
+flagged to `ocrcer-architect` rather than invented here.
+
+**Delivered.** `ROADMAP.md`: new "In progress" sections for chunk 7
+(pdfcer binding — merged, published, vendored), the chunks-12–16 opening
+(training approved, neural classifier contract, LLM add-on contract,
+16a's correctness-yes/speed-no result), the dense-page speed ship (merge
+`f7757de`, per-page 1.40–1.51x, byte-identical on both corpora, full-corpus
+wall time explicitly flagged as indicative-only/shared-machine), and an
+inventory of five unmerged local branches (`llm-speed`, `nbest`,
+`case-geom`, `fit-12b`) with their pending-before-merge conditions; three
+new *Open questions for the operator* (SROIE licence, resume `fit-12b`,
+per-push approval is not a standing default); research leads (13b/13c
+candidates, x-height-before-Sauvola, the 16b fallback model) filed to
+Backlog as candidates, not commitments; two new Standing rules (`master`
+must stay releasable now that pdfcer vendors HEAD; run LLM oracle tests
+`--test-threads=1`, never beside a fitting campaign). `RESUME.md` rewritten
+to the current state.
+
+**Not independently re-verified by this filing:** no shell in this
+dispatch. The chunk 16a `.ocrl` sizes, wall-time figures, `fit-12b`'s
+inner-sweep numbers and the branch commit hashes are filed as reported by
+the sessions that measured them, per their own measurement files and
+`ARCHITECTURE.md` entries — this filing did not re-run anything.
+
+**Open, carried forward:** everything in `ROADMAP.md`'s now-updated
+Backlog and *Open questions* sections; `fit-12b`'s tier-2 confirm run; the
+`llm-speed` branch's serial real-weights oracle run and pinned timings;
+`nbest`'s byte-identical corpus check and oracle best-of-8 CER; the
+`/usage` calibration, still outstanding.
+
+---
+
+## 2026-09-25 — fit-12b campaign tiers 1-4, chunk 12b/12c/13/13b/13c/14/15/16a/16b specs and builds, two confidence defects, a descender-defect correction
+
+**Request.** Checkpoint refresh (this filing's own dispatch: last filing
+2026-09-24 16:16 / commit f0481e0; large volume of chunk work landed
+since). Not a new engineering request — an append of everything the
+architect's working queue recorded.
+
+**fit-12b campaign, all four tiers now have a verdict (measured, train
+stride-6/stride-2 confirm runs from `campaign.py`/`campaign_resume2.py`/
+`campaign_post.py`, per `fitlogs/campaign_stdout.log`).** Tier 1 (decode
+weights) ACCEPTED: CER 22.091→21.823 (stride 6); `w_lex` moved 0.6→0.35 by
+a flat-sweep tie only, then reverted after a stride-6 A/B showed 0.6 is
+0.021 better (21.802 vs 21.823) — the inner-sample "0.039 worse" reading
+was noise. Tier 2 (line params) ACCEPTED but flagged mixed: CER
+21.802→21.740 improved, but line-matched CER got worse (23.724→23.846)
+and F1/precision/recall all regressed; campaign rule accepted it on CER
+alone, an end-of-campaign ablation is required before trusting it
+long-term. Tier 3 (segmentation params) ACCEPTED clean: CER 21.740→21.099,
+line-matched CER 23.846→23.314, F1 68.338→70.686 — all four metrics
+improved together. Tier 4 (slant) ACCEPTED: 21.099→21.010 (`slant_margin`
+1.08), LM-metric 23.211, F1 70.797. A late reading (not a decision) found
+`match.top_k=3` gives CER 20.963, cheaper than tier-4's `top_k=5` (21.010)
+— filed as a reading, not walked into the post-chain because it would cut
+headroom the chunk-14/16b work still needs.
+
+**Two mid-campaign incidents, neither restarted without Ken's go.** The
+memory-pressure reaper killed the campaign once (PID 29860, 3.8/16 GB
+free) mid tier-2 inner sweep; salvage was tier-1's already-accepted result
+plus a flat tier-2 x-height-fraction reading. It was killed a second time
+when all 6 LLM oracle tests were run concurrently with it (~7.2 GB) — this
+was the architect's own error; the standing rule from the prior filing
+(oracle tests `--test-threads=1`, never beside a campaign) was violated,
+not missing. Both incidents are filed as measurements of what happened,
+not projections.
+
+**Confidence-machinery: two real defects found by research, not yet
+fixed in the shipped default (`decode.width_weighting`/etc. still 0).**
+(1) the pipeline gives every candidate the matcher-winner's d1/d2 instead
+of its own; (2) `confidence::adjust` is never called, so `lm_floor` is
+dead code. Branch `conf-margin` (per-candidate ratio, an `agreed` flag,
+separate agree/override calibration curves, default 0.01→0.05, an
+identity word curve) was built and reviewed accepted (commit `21eb6a3`,
+one bit-for-bit test nit fixed in `07027db`). §11 entries `924f503`
+(research) and `6ad92ab` (decision) hold the defect writeup.
+
+**A fitted confidence curve now has a stated params-row convention
+(§11, commit `0467ac5`, already in `ARCHITECTURE.md` — not restated here
+beyond the pointer):** one row per knot coordinate (agree r0-r5/c0-c5,
+override r0-r1/c0-c1, word r0-r1/c0-c1), labelled `fitted`, naming
+`fit-calibration`/the split manifest/`finfilings-val`, `tune=no`; load-time
+validation requires ratios ascending and the three curve families
+non-rising/non-falling as specified, monotonicity failure is a load error,
+not a silent fallback.
+
+**The descender/cap-band defect was corrected upward, not just found.**
+First reading (spec `f196a6e`) measured 8.2% of components on the
+descender fallback branch, but only counted the 24 of 43 sampled train
+pages that also had an independent cap-band line — a silent exclusion.
+The corrected full re-read (commit `c52c91e`, all 43 pages, every-10th-page
+train sample) found **905 of 6,141 lines on the descender branch, 13.9% of
+all components, across 31 of the 43 pages** — trade-table date cells
+(`23/12/2024`) are a concrete example, taking the branch purely because
+`/` hangs below baseline. §11 carries the amendment; the cap reference is
+now the unflagged `Observed ∪ FromCapHeight` union with measured caps only.
+Runtime work dispatched to worktree `wt-xhdesc`/branch `xh-desc`
+(`f631a10` first spec; a follow-up for the amended cap reference is still
+running as of this filing).
+
+**Chunk specs committed this window, each against a verified prior-art
+source (see `docs/measurements/2026-09-22_research_classical_techniques.md`
+addenda and `ARCHITECTURE.md` §11 for full text — not restated here):**
+chunk 13 (real-scan prototypes, `6c62cd1`); chunk 13b (per-page adaptive
+prototypes, `9b70410`, verified against Kae et al. CVPR 2010 — a phantom
+citation was caught and corrected in the same pass: "3 samples" and
+"30-60%" attributed to Smith 2007 are not in that paper); chunk 13c
+(rotated CAD text, `8e4ebd4`, verified against Tombre et al. 2002); chunk
+14 (counted bigrams + lexicon union, `c820127`, verified absolute
+discounting D=n1/(n1+2n2)); chunk 15 (junk-output amendment per LeCun
+1998, `ab6cf7a`).
+
+**Process miss, self-reported by the architect (commit `6edae2d` +
+reconciliation entries).** The chunk 13/13b/14 specs were written without
+first grepping `docs/measurements/` and git log for prior art already on
+disk — a count-text stage and two addenda already existed and had to be
+reconciled in afterward rather than written once. New standing rule
+adopted by the architect for itself: grep measurements + git log before
+any spec. Chunk 13c's own census was DROPPED (`84e062c`): pages-cov's
+"drawing" category is drawing-*vocabulary*, not drawing-*layout*, so it
+has zero rotated strings by construction — the wrong corpus to census
+against.
+
+**Chunk 14 built and reviewed (branch `chunk14`, off master `4ac2999`).**
+6 commits, ACCEPTED with a fix: a case-folding bug in the lexicon union
+gave 1555/889/437 instead of the corrected 1503/848/405 (§11 `f775399`).
+Follow-up dispatched; val-split pick for chunk 14 waits until 12b closes
+(runbook step 8, below).
+
+**Chunk 16a-speed and 16b reviewed on their own branches.** `llm-speed`
+(fka 16a-speed2, commit `fac7b34`): `score_candidates` verified bit-identical
+to per-candidate scoring across 31 tests, ACCEPTED with a condition
+(`forward_token`/`forward_tokens_batch` are two copies guarded by an
+equality test, to be unified in 16b). `nbest` (`8bb5799`,
+`recognize_lines_nbest`/`decode_word_nbest`, 204 core tests, wasm clean):
+ACCEPTED, merge order fixed as nbest-before-case-geom (case-geom rebased
+onto it after: `6404723`, ACCEPTED). `rescore` (16b shallow-fusion n-best
+rescoring, built on `88f8447`, reviewed `c616715`→`9f2288e`→`0c0f86e`):
+four bugs found and fixed in review — (a) the line-prefix built for line≥2
+was missing a trailing newline, gluing two lines together for the LM; (b)
+Off mode must not load the LLM or run the nbest path at all; (c) the
+confidence cap must apply per word, not just to `LineResult`; (d)
+`--llm-dump` added for offline grid-fitting. A tie-break rule (errors →
+smaller λ → fewer changed lines → lower threshold, FULL tried last →
+smaller |β| → smaller β) and a `--plain-cer` units/tolerance bug (fraction
+with 5e-4 tolerance vs. percent-to-3dp) were both found and fixed in the
+same review cycle. λ/β/threshold defaults (1.0/0.5/0.7) are flagged as
+guesses awaiting a fit grid, not yet fitted values.
+
+**Width-weighted decoder (chunk 12c) built and reviewed** on branch
+`width-weight` (off `case-geom` `6404723`, commit `e28ab39` reviewed
+accepted with a `Params::get` probe bug fixed in `cb07d71`) — verified
+against Tesseract's `Rating=(1-match)×1.5×BlobLength`
+(`adaptmatch.cpp:1415`) and the n-gram/classifier cost's
+`outline_length/16` scaling (`language_model.cpp:910`); `Certainty` stays
+unweighted in Tesseract, matched here. Merge note: the `Hyp` type gains an
+`x_height` field as part of this branch, which touches other in-flight
+branches.
+
+**DPI finding (dpi-diag worktree, note cherry-picked `91d9cdf`, §11
+`91005e2`).** pdfcer's "300dpi garble" smoke page (`scan.pdf`) is
+200dpi-native (a 1700×2200 image on a 612×792pt page) upsampled 1.5× via
+nearest-neighbour — aliasing, not a genuine resolution/blur problem. Fix
+recommendation is filed against pdfcer (native-dpi rasterization, smooth
+magnification), not against OCRcer.
+
+**Smaller research addenda landed this window, each already in
+`ARCHITECTURE.md`/`docs/measurements/` by commit hash — filed here as
+pointers, not restated:** missing-cut/chopper candidate generation
+(`57bc4e4`); footing detection (train truth 126 exact foots/13 pages,
+IBM prior art expired, chunk-9 backlog, flag-first default off); fixspace
+smallest-gap-first enumeration (`bc364df`); ISRI 1995's 0.5%-flagged bar
+catching 20-45% of errors, and train truth EUR-sign share 6,692/986,633 =
+0.68% (`ba8919e`); column-type numeric-run prior, 4,095/8,628 numeric-run
+cells single-digit (`e668c63`); superscript re-read train truth (7
+attached-digit markers + 76 † in 161,146 tokens, not queued, `e8c93b5`/
+`474ff7d`); cross-line hyphen carry-over (all 18 train line-end hyphens
+are compounds, not queued, `d75e6ac`); reverse-video/`invert_threshold`
+addendum (train count 3/427 pages, ~0.015% of glyph-sized components,
+`51a7408`); n-gram order reading (bits/char 5.225/3.800/3.060/2.694 for
+uni/bi/tri/4-gram; look-alike preference in OOL letter words
+88.78%→96.18%→98.52%, flat ~99.5% where a digit is present) and the
+odd/even-split 4-gram leak (up to 0.27 bits/char inflation from adjacent-
+page boilerplate, `eaf3a13`+`12d630d`); a style-consistent field
+classification probe dispatched against Sarkar & Nagy PAMI 2005 (singlet
+19.8%→LS 16.5%/14.9%→font-oracle 14.2%), branch `style-probe`, still
+running as of this filing.
+
+**Post-campaign runbook recorded, as amended (`ROADMAP.md` now carries
+the full 9-step text — not restated here).** Amendments since the first
+write-up: the `xh-desc` train gate moves to step 2, immediately after 12b
+closes; the style-probe and reverse-video candidates are parked with
+explicit triggers (CAD dev set / pdfcer report / census counter-fragment
+insertions) rather than queued; `--user-patterns` (Tesseract-style CAD
+callout bonus, e.g. `M8x1.25`) is parked until the CAD dev set exists.
+
+**Not independently re-verified by this filing.** No shell in this
+dispatch (per standing rule, see `feedback_no_shell_label_unverified` in
+this agent's memory) — every commit hash, branch state and measured
+figure above is filed as reported by `queue.md`, `ARCHITECTURE.md` §11 and
+`docs/measurements/`, not re-run or re-grepped independently.
+
+**Open, carried forward:** the `conf-tools` manifest-based split-refusal
+fix (blocking bug found this window, follow-up running); the `xh-desc`
+amended-cap-reference follow-up (running); the `style-probe` decision
+(L=4 relative glyph-error cut ≥10% → candidate, <5% → park, 5-10% → weak-
+park); tier-2's required end-of-campaign ablation; the chunk 14 val-split
+pick; `ROADMAP.md`'s now-current branch inventory and merge order; the
+`/usage` calibration, still outstanding.
+
+---
+
+## 2026-09-25 — Batch 2 (03:08–03:37): merge-train branches accepted, style-probe verdict lands, campaign cost knobs, research addenda
+
+**Request.** File the architect's 03:08–03:37 findings into `ROADMAP.md`
+and this log: branch follow-ups accepted and awaiting merge, the
+style-probe verdict, campaign cost-knob progress, three research addenda,
+a clippy regression, and queued follow-up work for `ocrcer-bench` and
+`ocrcer-exporter`. No shell in this dispatch — nothing below is
+independently re-run or re-grepped; it is filed as reported.
+
+**Delivered, as bullets (full detail in `ROADMAP.md`'s Unmerged branches
+and Backlog sections, not restated here):**
+
+- `xh-desc` (`aab93b2`), `conf-tools` (`0ca2863`, `ce2a5f9`), and
+  `chunk14` (`62f3ee5`, `ae150d9`, `fce1e01`) follow-ups all **accepted in
+  review, awaiting merge**. `chunk14`'s grid point is still unpicked
+  (waits on chunk 12b, runbook step 8); `xh-desc`'s train gate waits for
+  the heavy slot (runbook step 2).
+- New branch `pivot-index` (worktree `wt-pivot`, exact pivot bounds per
+  §11 `9064842`) opened; agent still running. Merge order now ends
+  `... → rescore (rebased) → pivot-index`, all after chunk 12b closes.
+- **Style-probe verdict measured and merged** (`13fcca9`, `6342fc8`, merge
+  `79cc056`, verdict `b9f8920`): label-style classification loses to 1-NN
+  at every field length; leave-one-face-out at L=4, glyph error
+  **+21.8%** (18 faces) / **+38.8%** (40 faces). Moved from "parked with
+  trigger" to **parked, measured**.
+- CAD park trigger reworded: reverse-video and `--user-patterns` now
+  require **CAD dev set exists AND chunk 10 is active** — the dev set
+  alone (150 lines, 0 collisions) would have satisfied the old wording,
+  but chunk 10 stays deferred behind chunk 9.
+- Campaign cost knobs (train, measured): `top_k` 3/5/8 = CER
+  20.963/21.010/21.170 (`bab0a88`); campaign adopts `top_k=3`.
+  `beam_width` {14, 24, 36} launched ~03:37, ~25 min/run;
+  `campaign_post.py` queued next. **Chunk 12b stays open** pending vector
+  pick, val confirm, one scoring pass, params fold-in, `fit-12b` merge,
+  §11 close entry.
+- Three research addenda filed to
+  `docs/measurements/2026-09-22_research_classical_techniques.md`
+  (pointers only, not restated): OCR-B/OCR-A licence-clean and
+  charset-covered, MICR out of v1 (`950e1bd`); boxed slips anchor on the
+  printed box number, not a form template (`e33f4a7`); Tesseract cuts
+  candidates by distance, not count, feeding the `top_k` reading above
+  (`bab0a88`).
+- Clippy regressed from warnings-only to failing:
+  `cargo clippy -p ocrcer-core --all-targets -- -D warnings` fails on
+  master (~10 lib errors + test-target errors); pdfcer excludes vendored
+  `ocrcer-core` from its own lint, so this project is the only linter.
+  Queued: an `ocrcer-runtime` clippy-clean pass after the merge train,
+  then a clippy gate in `ARCHITECTURE.md`.
+- Queued for `ocrcer-bench` (after `conf-margin`+`conf-tools` merge):
+  census buckets (m) rank/`d_c`/`d1`, (n) lexicon-word output-length
+  errors, (o) spurious numeric-token spaces, (p) missing inter-word
+  spaces.
+- Queued for `ocrcer-exporter` (after the merge train): a no-flag
+  `relanguage` run is content-identical but not byte-identical to its
+  base (rebuilt tables appended rather than kept in place) — fix and add
+  a base-sha256 reproduction test.
+
+**Not independently verified by this filing** — no shell in this
+dispatch; every commit hash, branch state, and measured figure above is
+filed as reported by the architect's 03:08–03:37 findings.
+
+**Open, carried forward, none duplicated here:** everything already in
+`ROADMAP.md`'s Open questions section (stray `target-case` dir, merged
+worktrees `wt-speed`/`wt-pdfcer`/`wt-dpi`, per-push approval, SROIE
+licence, `fit-12b` resume) — all pre-existing items, checked against and
+left as-is rather than restated.
+
+---
+
+## 2026-09-25 — Batch 3 (early hours): chunk 12b's vector-choice order corrected, `top_k` folds at 3, chunk 9 structure-layer spec (part 1), GriTS/ReMine scoring addenda
+
+**Request.** File six more architect commits into `ROADMAP.md`: the fitted
+feature-weight research addendum (waits for chunk 13), the §11 decision
+fixing chunk 12b's vector-choice order ahead of the ablations report, two
+scoring-methodology addenda (GriTS table structure; ReMine statement row
+hierarchy) plus a wording-fix commit to them, and part 1 of the chunk 9
+structure-layer spec. Correct three `ROADMAP.md` passages the vector-choice
+decision supersedes. No shell available in this dispatch — `git show` was
+not run; commit content was verified by reading the current text of
+`ARCHITECTURE.md`, `PLAN.md` and
+`docs/measurements/2026-09-22_research_classical_techniques.md` directly.
+
+**Delivered:**
+
+- **`d90daea` — chunk 12b's vector-choice order, fixed before the
+  ablations report exists.** Corrected two passages in the chunk 12
+  `ROADMAP.md` entry that had the fold order wrong or stale: `top_k` now
+  reads "12b folds 3 outright, an LLM mode needing more candidates carries
+  its own opt-in k, re-read at 5 after chunk 14's grid point"; the
+  "picks the final vector..." line now reads in the §11-specified order —
+  choice rule (A vs. B tier-2 revert, C `w_lex` 0.35, a combined stride-2
+  confirm if both change, must beat control D) → val once against
+  `Params::DEFAULT` (fail = no fold, diagnose on train) → fold
+  `params.tsv`/`Params::DEFAULT` together, rows labelled `fitted` → merge
+  `fit-12b` → score once (finfilings, pages-cov; chooses nothing) → closing
+  §11 entry. The backlog's matching "Final top_k is settled together with
+  the n-best ceiling figures" line was corrected the same way.
+- **`bab0a88`** — already partly filed (backlog "Candidate shortlist
+  width" bullet); amended in place to the corrected fold rather than
+  duplicated.
+- **`2a58702` — fitted feature-weight research addendum.** NCA (Goldberger
+  et al. 2004) and LMNN (Weinberger & Saul 2009) prior art for the matcher's
+  seven block weights; a diagonal fit maps onto the existing
+  `feature_weights` table with no format change. Explicitly waits for
+  chunk 13's forced-aligned glyph samples — fitting now would force a 12b
+  and calibration refit, and synthetic glyphs are the wrong training data
+  for it. Filed as a candidate with its own stated precondition, not as an
+  open question.
+- **`1c084aa` — scoring table structure (DAR, TEDS, GriTS).** Chunk 9's
+  benchmark reports `GriTS_Top` and `GriTS_Con` side by side (Smock et al.
+  2022); boxed forms score as field exact match, not a grid metric.
+  FinTabNet named an uncleared scoring-only candidate.
+- **`eb84fec` — financial-statement row hierarchy (ReMine, Chen et al.,
+  ICDAR 2017).** Transitive parent-child F1 87.90 vs. an SVM pair
+  classifier's 60.89 on their 72 tables; the row tree decides which cells
+  should foot; OCRcer has three signals their HTML-derived input lacked
+  (rules above totals, real pixel indent, stroke weight). Their 72-table
+  set carries no stated licence — scoring-only if cleared.
+- **`6ea346c`** — wording fixes to the footing and row-hierarchy addenda
+  (flag attribution, the French "sous-total" total-label case); confirmed
+  already reflected in the current addenda text read for this filing, not
+  restated.
+- **`01042a8` — candidate chunk 9 spec, part 1.** Filed into the existing
+  chunk 9 roadmap entry, not a new section: the structure layer (9a
+  substrate — rules, ruled cells, word-to-cell assignment, region list; 9b
+  boxed forms, following 9a directly; 9c tables; 9d statements; 9e prose),
+  structure never changes recognised text so every sub-chunk's gate is a
+  structure gate. Candidate only — chunk 9 starts after the current
+  runbook. Same commit corrects the boxed-slips addendum's box-number
+  format: two or three digits then an optional capital letter, leading
+  zero part of the key (T4 10-56 plus 16A/17A; T4A 014-211).
+- **Open questions:** added item 16, FinTabNet and the ReMine 72-table set
+  as scoring-only candidates pending Ken's clearance; existing items 1-15
+  left untouched.
+- **Campaign status, 03:59 (train stride 6, measured):** tier 4 accepted,
+  CER 21.010; `top_k` 3/5/8 read (20.963/21.010/21.170); `beam_width`
+  {14, 24, 36} sweep at `top_k=3` in progress; post chain queued behind
+  it. No wall-clock figure is filed as a speed reading — the machine is
+  shared.
+
+**Not independently verified by this filing** — no shell in this
+dispatch; commit hashes and the campaign status above are filed as given
+in the dispatch brief, cross-checked only against the current text of
+`ARCHITECTURE.md`, `PLAN.md` and the research-addenda file, not against
+`git show` output.
+
+**Open, carried forward, none duplicated here:** everything already in
+`ROADMAP.md`'s Open questions section and the post-campaign runbook /
+unmerged-branch inventory, unchanged by this filing except the
+`top_k`/vector-order corrections and the new FinTabNet/ReMine item.
+
+---
+
+## 2026-09-25 — Batch 4: chunk 9a's two spec amendments plus a 9c addendum, campaign cost-knob results and a tie revert, pivot-index measured and accepted pending gate 3, reordered early-abandon research
+
+**Request.** File six more items into `ROADMAP.md`: two chunk 9a spec
+amendments (cell enumeration, the rule detector) plus a 9c research
+addendum and the 9a-i dispatch status; the campaign's `beam_width`
+cost-knob results and its `seg_split_penalty` tie-revert decision; the
+measured pivot-index branch with the architect's review verdict; and a
+research addendum on reordering early abandonment. No shell available in
+this dispatch — commit content was verified by reading `ARCHITECTURE.md`
+§11 and `docs/measurements/2026-09-22_research_classical_techniques.md`
+directly, not by `git show`.
+
+**Delivered:**
+
+- **Chunk 9a spec amended twice (`5530430`, `43e18dc`).** Cells are now
+  enumerated in Tabula's `findCells` order with a defined grid span
+  (`rows`/`cols`) for 9c's `GriTS_Top`; stubs never split a cell; there is
+  no joint-count minimum (a single closed box is a valid cell, gated only
+  by 9b's `form.min_boxes`). The rule detector's length floor is fixed to
+  `lines.rule_run_heights`, **5.4209, measured** — twice the longest
+  straight ink run any bank glyph makes — and can never exceed it, so
+  every band the underline strip erases is a detected rule by
+  construction; a short run still counts as a rule when both ends touch a
+  floor-passing rule of the other orientation, closing a one-line text
+  box's sides without ever letting a lone glyph qualify; 1-px breaks join
+  with no new parameter. Thickness cap `structure.rule_max_thick_h` starts
+  at **0.8, a guess**. Tesseract's own text-density rejection test is
+  counted on finfilings-train stride 6, not adopted, because adopting it
+  in the detector alone would disagree with the strip. Nine new fixtures
+  total across `structure` and `rules`.
+- **9c research addendum (`03ffb68`), train-truth counted.** Camelot's
+  stream/Nurminen text-edge method picks one text alignment per page,
+  wrong for a statement's left-aligned labels and right-aligned numbers;
+  Excel's accounting number format reserves a parenthesis-width space
+  after positives, so ink edges and typeset edges disagree and alignment
+  needs recognised text; a lone dash reads as zero. **Train count,
+  finfilings-train, all 427 pages: 104 pages/295 lines carry 2+ number
+  tokens; 47 parenthesised negatives on 13 pages; 7 lone dashes on 6
+  pages** — table-shaped text is a minority of the corpus, so 9c's
+  benchmark cannot come from finfilings alone. 9c's own spec still waits
+  on these 9a readings.
+- **9a-i dispatched, in progress, no result yet.** `ocrcer-runtime`,
+  worktree `wt-struct`, branch `structure-9a`, pure `structure::build` on
+  authored input. 9a-ii (the detector, wired into the pipeline, plus its
+  params rows) waits for the 12b fold and the merge train.
+- **Campaign `beam_width` results in (train, stride 6, measured):** 14 =
+  CER 20.966 / LM-metric 23.211 / F1 70.782; 24 = CER 20.963 / LM-metric
+  23.209 / F1 70.786 — identical to the `top_k=3` run, read as a
+  determinism check, not a new finding. 36 still running as of this
+  filing.
+- **Tier 1's `seg_split_penalty` tie-move reverted before the ablations
+  (§11, "a move made on a tie is reverted").** The campaign's tie rule
+  changed mid-run on the 2026-09-24 resume (beat by more than `EPS`, not
+  first found); `seg_split_penalty` (0.75→0.5, inner CER 22.318 identical
+  both sides) was the one other tier-1 move made under the old rule. **A
+  now starts at 0.75** — decided before any post-chain number exists, so
+  this is the rule the campaign already ran under, not a new choice;
+  tiers 2-4 and the cost knobs stand as train readings with 0.5 in the
+  base. The fold's merge will also commit the fitting scripts
+  (`tools/fit12b/`) and campaign logs
+  (`docs/measurements/2026-09-25_fit12b/`) — every later fit commits its
+  script before running.
+- **Pivot-index branch measured and reviewed, ACCEPTED pending gate 3**
+  (worktree `wt-pivot`, commits `ce32a96`/`3c03111`/`05e1f76`, architect
+  edit `73eb957`). Exact LAESA-style per-class pivot bounds in the
+  matcher. **Measured:** 29,989 captured queries, 0 mismatches,
+  byte-identical output on 3 pages; dims summed per query down ~29%,
+  prototypes visited down ~40%; model load 38.6→51.3 ms; wall time down
+  3–7% (indicative, shared machine). The report's own explanation for the
+  wall-time shortfall was relabelled **not measured** in the same review.
+  Gate 3 (stride-6 train byte identity) is the architect's own, run after
+  the campaign closes.
+- **Research addendum: reordering early abandonment (`e657d2b`,
+  `52e2edb`).** The matcher's last early-abandon checkpoint lands at
+  dimension 95 of 107, so the hole count, six crossings and four geometry
+  dimensions (geometry weighted 6.0, the only block separating case pairs)
+  never help abandon a candidate. Reading (pivot counters, arithmetic not
+  measurement): dims per visited prototype ~50→59 and `match()` ns/dim
+  ~2.8→3.8 under the pivot branch; the per-query pivot pass itself
+  (~20,000 dimension ops) is small against ~0.93 M dims summed per query
+  (dims over captured query count — corrected from an earlier ~1.5 M
+  estimate), so it doesn't explain the rise; cause not measured. Candidate
+  follow-up, not measured, queued after the merge train on top of
+  pivot-index: reorder summation, with any surviving candidate re-summed
+  in file order so output stays byte-identical by construction.
+
+**Not independently verified by this filing.** No shell in this dispatch;
+every commit hash and measured figure above is filed as reported in the
+dispatch brief, cross-checked only against the current text of
+`ARCHITECTURE.md` §11 and the research-addenda file, not against `git
+show` output.
+
+**Open, carried forward, none duplicated here:** everything already in
+`ROADMAP.md`'s Open questions section and the post-campaign runbook /
+unmerged-branch inventory, unchanged by this filing except the chunk 9
+amendments, the campaign status, and the pivot-index verdict above.
+
+---
+
+## 2026-09-25 — Batch 5: architect session, continued
+
+**Request.** A librarian filing for research and status landed on `master`
+and on the `fit-12b` branch since the last batch, covering commits,
+chunk 12b's post-campaign status, a chunk 9a-i acceptance, the merge-train
+dry run, the operator's accounting-first priority, two pdfcer hand-off
+candidates, and a set of queued-not-specced measurement arms. Scope for
+this filing was `ROADMAP.md` and `SESSION_LOG.md` only; `ARCHITECTURE.md`
+was not touched (its §11 entries were already written by
+`ocrcer-architect`).
+
+**Commits landed on `master` since the last batch, all research or
+decision-log entries — none change the engine.** `c1f5b37` whole pages
+scanned sideways or upside down: a Tesseract-OSD-plus-Leptonica-flip test
+was proposed; the train check found no landscape images. `6804e98` and
+`9bd08e9` CUSIP/ISIN check digits: 1,763 of 1,773 CUSIP-shaped tokens pass
+on 52 train pages (measured, train); flag-only for now; a summariser error
+in an earlier count was corrected. `88a1b86` and `020faf2` PDX format:
+dimension-major prototype blocks must keep each distance's summation
+order; layout gets measured before any reordering. `3af14a9` decision-log
+entry: chunk 9a-i (table cells from ruling lines) reviewed. `f3a2759`
+GD&T/hole-callout symbols: 27 codepoints, none in the charset; a probe
+runs before any charset change. `d33d40f` stacked tolerances on drawings:
+likely interleaved by line grouping; a probe runs before any spec.
+`c321418` tabular digits: an ink-gap space test cannot separate "11" from
+"1 1" in five bank faces, but a centre-distance test separates them in all
+53 (measured, font metrics, `tools/digit_pitch.py`). `62fd2b9` GD&T font
+census: all 27 drawing symbols have at least two licence-clean faces
+(Noto Sans Symbols family, STIX Two Math, already in the bank) —
+coverage only, no class added, the probe stays on hold. `f3687dc` faxed
+pages: a source with unequal axis resolutions (standard fax ≈204×98 dpi)
+is squared at the larger resolution and magnified smoothly (§8.1
+clarified, a §11 entry, a research addendum); pdfcer's own renderer
+repeats fax rows at or above the fax's horizontal dpi (read from pdfcer
+source, not run). `0cce2e2` red stamps over invoice text: pdfcer passes
+luma, which keeps a stamp as ink, as does Tesseract's per-channel union;
+a max-channel dropout would remove the stamp but also erases red negative
+amounts, so no default is set; a synthetic train-only reading is queued.
+`2b36d9b` highlighter and shaded rows: Sauvola marks the edge of a
+mid-grey band as ink — measured on synthetic lines, pink turns "00417"
+into "OOÿ17", grey 150 and darker merges words; finfilings-train shading
+(grey 191, measured train) is lighter than that onset; three candidate
+fixes were drafted, none chosen; the generator is committed as
+`tools/highlight_lines.py`. On branch `fit-12b`, not `master`: `cff5a92`
+adds a column-key description of the `fitted` provenance to `params.tsv`.
+
+**Chunk 12b post-campaign status — all readings TRAIN, stride 35 unless
+stated, no val or score yet.** The campaign proper finished about 04:43 (log-file time):
+`beam_width=36` (train, stride 6, measured) read the same as 24 — CER
+20.963, line-matched CER 23.209 at the campaign's confirm stride — so
+beam width is read as saturated. The post chain (edge-parameter walks,
+then a stride-6 confirm, then four stride-2 A/B/C/D ablations) started at
+04:44 and is still running as of this filing. Edge walks so far, train,
+measured: `decode.w_seg` 0.475→0.55 accepted; `segment.max_merge_x_heights`
+walked 1.5→1.35→1.2→1.05, taking CER 21.298→19.941, line-matched CER
+19.841→18.593, word F1 74.059→81.731 — the largest single move in 12b so
+far, still improving at the walk's last step, edge not closed. No other
+walked parameter moved. A risk check on the `max_merge_x_heights` move,
+measured on synthetic clean lines (10 shippable Regular faces × 2 sizes):
+1.8/1.5/1.05 all emitted '%' 116 of 120 times, identical — the concern
+that a wider merge would start eating '%' is retired on synthetic text.
+Whether broken glyphs on real scans suffer the same way is unmeasured and
+will only show up in the `pages-cov` score, which must be reported
+prominently when it runs. Outcome, val and score are deferred to batch 6.
+
+**Chunk 9a-i follow-up accepted.** It merges last in the merge train, as
+`structure-9a`. One nit carries into the 9a-ii dispatch: a comment in
+`cells.rs` uses history-referencing wording ("no longer matters") that
+gets reworded per the documentation rule against writing history into
+source comments.
+
+**Merge-train dry run.** After the 12b close and fold, the planned order
+is `llm-speed`, `nbest`, `case-geom`, `conf-margin` (+`conf-tools`),
+`width-weight`, `chunk14`, `rescore` (rebased), `pivot-index`, with
+`structure-9a` last. The dry run found only mechanical union conflicts:
+the `viterbi.rs` test tail; `ocrcer-build`'s `main.rs` module `use` list;
+`ocrcer-bench`'s `lib.rs`/`ocr.rs` (`dumpread`+`dump`, `char_dump`+`llm`);
+and `ocrcer-bench`'s `Cargo.toml` `[[bin]]` entries.
+
+**Operator priority, restated (Ken, 2026-09-21, verbatim): "we need to
+support everything that an accounting firm would need before we continue
+with supporting drawings."** The drawing-callout probes (GD&T symbols,
+stacked tolerances) stay on hold under this. This session's research was
+redirected to accounting-paper degradation instead: fax resolution,
+stamp overprint, highlighter/shading damage.
+
+**Two candidate hand-offs to pdfcer, for Ken to relay** (OCRcer never
+edits pdfcer's tree directly). Fax: pdfcer's image renderer picks one
+resampling filter per image and uses Nearest unless either axis
+minifies, so a standard-mode fax page rendered at or above roughly its
+own dpi has each row repeated; per the §8.1 clarification, the fix is to
+square at the larger resolution and smooth-magnify the other axis; this
+was read from pdfcer's source, not run, and is ready to relay. Stamps and
+highlighter: a pdfcer colour-mode option (luma default, an opt-in
+max-channel dropout) is a candidate, but it is **not** ready to hand off
+— it waits on the queued train readings below.
+
+**Queued measurements, all on finfilings-train only, all behind the 12b
+fold and the 16b runs — queued, not specced.** A nearest-neighbour
+upsampling reading plus fax arms F0–F4. Stamp arms S0–S3 plus a
+red-negative collateral arm. Highlighter arms H0/H1 (bands at luma 230,
+195, 182, 168 over amounts). A candidate bench probe bin — the
+highlighter/grey ladder — that every future binarization change must
+pass, for `ocrcer-bench` after the merge train.
+
+**Delivered.** This entry; the corresponding `ROADMAP.md` updates to the
+chunk 12 in-progress section, the research-leads backlog, and two new
+Open questions items (17: the fax hand-off plus the not-yet-ready
+stamps/highlighter note; 18: an LLM preview build off `rescore`, flagged
+with no further detail given in this filing's brief). The `ARCHITECTURE.md`
+§11 entries themselves are not restated here — they are the record;
+see §11 directly. `tools/digit_pitch.py` and `tools/highlight_lines.py`
+are pointed to, not reproduced.
+
+**Not independently verified by this filing.** No shell in this dispatch;
+every commit hash, branch name and measured figure above is filed as
+given in the dispatch brief, not cross-checked against `git show`,
+`git branch`, or `/usage` output.
+
+**Token spend.** Not measured this session — no `/usage` reading was taken
+and none was supplied in the dispatch brief. This is calibration debt
+carried forward, not a filed figure; do not treat its absence as zero
+spend.
+
+**Open, carried forward, none duplicated here:** everything already in
+`ROADMAP.md`'s Open questions section, including the two items added by
+this filing, and the merge-train order and 9a-i status lines in
+`ROADMAP.md`'s chunk sections, which this filing's scope did not extend
+to updating (see this batch's report for the resulting staleness).
+
+---
+
+## 2026-09-25 — Batch 6: architect session, continued (~05:50-07:10, wrap-up before an operator PC restart)
+
+**Request.** A librarian filing at session wrap-up, dispatched because the
+operator was about to restart his PC. Scope was `ROADMAP.md` and
+`SESSION_LOG.md` only, `SESSION_LOG.md` append-only; `ARCHITECTURE.md` was
+not touched, its §11 entries already written by `ocrcer-architect`. Source:
+`D:/Dev/ExcludedPrivate/ocrcer/handoff_2026-09-25/queue.md`, read in full.
+
+**Commits landed since Batch 5, all research addenda or a §11 decision —
+none change the engine.** `f15277d` dot-matrix print: separated dots break
+layout (4 lines read as 8/3/9 at 0.6-pitch dots), no fixed join works
+across dot pitches, the best join tracks the inter-dot gap — measured on
+synthetic lines only, generator `tools/dotmatrix_lines.py`. `e2ba601` faded
+ink: text lighter than about grey 175 on white (160 on off-white) returns
+zero words, a silent loss that looks like a blank page — measured on
+synthetic lines only, generator `tools/faded_lines.py`. `c3d65f5`
+show-through: the shipped Sauvola `k` ignores mirrored back-side print
+down to grey 185, but every faded-ink recovery lever reads it too —
+measured on synthetic lines only, generator `tools/showthrough_lines.py`.
+`9f15013` pen marks: a hand underline or circle whose column range covers
+a figure glues the figure and the mark into one glyph and the figure is
+lost, touching or not — measured on synthetic lines only, generator
+`tools/pen_marks_lines.py`; this commit also corrects an earlier
+show-through sentence (`o0417` is the baseline read on a clean page, not a
+local-stretch side effect). `535f913` §11 decision: show-through handling
+has four modes (auto-detect default, auto contrast, manual contrast, off),
+stage 1 a page flag, stage 2 a mirror-test recovery, each behind its own
+gate — plus a research addendum on the mirror cue itself, measured on
+synthetic crops only.
+
+**Chunk 9 staleness fixed.** `ROADMAP.md`'s "9a-i dispatched, in progress"
+line was stale — the follow-up (`a44d24e`, 05:13) was accepted: all four
+changes from the `3af14a9` review entry landed, 5 fixtures hand-checked,
+11 old fixtures unchanged, `ocrcer-core` 211 pass, bench structure 9 pass,
+wasm32 exit 0. One nit (a history-referencing comment in `cells.rs`)
+carries into the 9a-ii dispatch. The merge-order line now has
+`structure-9a` appended last, per a 05:05 dry run that found the same four
+mechanical union conflicts already on record from Batch 5 (no new
+conflicts).
+
+**Chunk 12b post-chain status at the ~07:10 restart.** Phase 1
+(edge-parameter walks), stride 6: baseline CER 20.978 → tentative 19.631,
+main mover `segment.max_merge_x_heights` 1.8→1.05, edge not closed — a
+different stride from the stride-35 figures already filed in Batch 5, not
+in disagreement with them. Phase 2 (stride-2 A/B/C/D ablation) completed
+only `A_final`: CER 21.418, LM-metric 24.119, F1 77.705, **not comparable
+to any stride-6 or stride-35 figure on file.** `B_tier2_reverted`,
+`C_wlex_035` and `D_control` were interrupted by the restart before
+running. Val, fold, merge, the §11 close and the score all remain undone.
+`campaign_post.py` has no resume flag; a resume script needs writing
+before the reruns, loading `A_vector` from `fitlogs/post_status.json`. One
+heavy `ocr.exe` process at a time, roughly 53 minutes per run.
+
+**Campaign-finish-time correction, confirmed still correct.** Batch 5
+already corrected the campaign's finish time from an earlier 04:49 report
+to ~04:43 (`campaign_stdout.log` mtime) before that entry was committed;
+this filing re-checked both `ROADMAP.md` and the Batch 5 entry above and
+found 04:43 throughout, no stale 04:49 anywhere in either file. No further
+correction needed.
+
+**Leading-zero finding and its diagnosis.** `00417-229` reads as
+`o0417-229` on every black (non-degraded) page, found incidentally during
+this research family, not itself a pen-marks or show-through artefact.
+Diagnosed via a dispatched agent (`diag-zero`, worktree `wt-zero`, branch
+`diag-zero` off `c3d65f5`) that stopped before recording a result; the
+worktree is clean. Redispatch is queued, not done this filing.
+
+**Backlog gained an extensive queue of research-family arms**, filed to
+`ROADMAP.md`'s Backlog as a new "Queued measurements, research family"
+subsection: fax arms F0-F4, stamp arms S0-S3 plus a red-negative
+collateral arm, highlighter arms H0/H1, a bench probe bin, a dot-matrix
+census spec, a dot-grid licence check, a synthetic noise arm, a
+"no words over non-blank grey" diagnostic, an edge-sharpness count, a
+pen-marks-into-negative-family spec, an atoms-bound count, per-word
+mirror scores (probe already run, not analysed —
+`probe_data/pw_k34.tsv`, `pw_k10.tsv`, harness in `hl_probe_src/`, all
+under the private handoff directory), a show-through-overlap measurement,
+and a mirror false-fire count. None run yet; all behind the 12b fold.
+
+**Open questions 13-16 unchanged.** Question 17 (pdfcer hand-offs) gained
+a third candidate note: the show-through four-modes design has a
+page-level flag pdfcer would need to surface, but this is **not** ready to
+relay until stage 1 (the page flag) ships and passes its own gate.
+Question 18 (LLM preview build) is clarified: it means a build of the LLM
+re-reading path off `rescore`, offered to Ken this session; still awaiting
+his own scope and go, not yet a yes.
+
+**`ROADMAP.md`'s *In progress* section gained a "Resume after restart"
+block** at its top, five ordered points: rerun Phase 2's B/C/D ablations
+(needs a resume script first); then `decide_12b.py` → val → fold → merge
+→ close §11 → score with the `pages-cov` delta prominent; redispatch
+`diag-zero`; run the branch merge train with `structure-9a` last; analyse
+the per-word mirror probe. Session state for all of this lives at
+`D:/Dev/ExcludedPrivate/ocrcer/handoff_2026-09-25/`, private, never
+committed.
+
+**RAG escalation, this role's own remit.** Four findings generalizing
+beyond OCRcer were written to `C:\personal_rag\ocr\` (subject already
+existed, no bootstrap needed): geometric-mean word confidence hides one
+garbage glyph inside an otherwise-fine-scoring word; the shipped Sauvola
+`k` ignores show-through but every faded-ink recovery lever reads it; a
+mirror-flip test separates whole mirrored show-through from real text by
+confidence but not at fragment granularity; and the i-dot
+column-range-containment merge rule also glues a pen mark to the figure
+it covers. All four labelled "measured, synthetic lines/crops, one face."
+`C:\personal_rag\ocr\index.md` and the master `C:\personal_rag\index.md`
+both got one-line pointers. No `C:\Users\Ken\.claude\CLAUDE.md` flag
+needed — `personal_rag/ocr` is already listed there as a current subject.
+
+**Not independently verified by this filing.** No shell in this dispatch;
+every commit hash, branch name, agent name and measured figure above is
+filed as given in `queue.md`, cross-checked only against the current text
+of `ROADMAP.md`, `SESSION_LOG.md`'s own prior entries and (for §11
+pointers only) `ARCHITECTURE.md`'s section headers — not against `git
+show`, `git branch`, or `/usage` output.
+
+**Token spend.** Not measured this session — no `/usage` reading was taken
+or supplied in the dispatch brief. Calibration debt carried forward, same
+as Batch 5; do not treat its absence as zero spend.
+
+**Delivered.** The `ROADMAP.md` edits listed above (Resume-after-restart
+block, chunk 9 and merge-order staleness fixes, the chunk 12b Batch 6
+bullet, the leading-zero and five addenda entries, the new queued-arms
+Backlog subsection, and the question 17/18 updates); this entry; four new
+`C:\personal_rag\ocr\` lesson files plus their two index pointers.
+
+**Open, carried into the next session:** everything under *Resume after
+restart* above — none of it is done, all of it is queued for the first
+session after the restart.
+
+---

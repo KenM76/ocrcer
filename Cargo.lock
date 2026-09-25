@@ -158,11 +158,16 @@ name = "ocrcer-build"
 version = "0.1.0"
 dependencies = [
  "ocrcer-core",
+ "ocrcer-llm",
  "ttf-parser",
 ]
 
 [[package]]
 name = "ocrcer-core"
+version = "0.1.0"
+
+[[package]]
+name = "ocrcer-llm"
 version = "0.1.0"
 
 [[package]]
