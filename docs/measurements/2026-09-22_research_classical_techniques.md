@@ -1340,3 +1340,68 @@ among the 8, no λ or β recovers it.
 - Also report the share of selected lines whose best-of-32 candidate
   changes an identifier-shaped word. It should be 0 by construction; a
   non-zero share is a bug.
+
+## Addendum 2026-09-25: columns that add up ("footing") — prior art, and how often train pages have them
+
+**Source.** US 5,872,730 (IBM; Shevach & Zlotnick), *Computerized
+correction of numeric data*. Filed 1996, priority October 1995, issued
+February 1999, **expired 2003** (Google Patents record). Read 2026-09-25:
+abstract and claims.
+
+**What it does.** When a form's digits must satisfy an arithmetic
+relation (addends and a total), it runs a Viterbi pass over the digit
+columns. Each state is the running total so far. Each step is weighted by
+the OCR's own per-digit likelihood. The pass returns the most likely
+digits that satisfy the relation, and substitutes them.
+
+US 5,625,721 (Matsushita) was also checked. It needs a checksum embedded
+in the document, so it does not apply to financial statements.
+
+**How it fits OCRcer.**
+- *Evidence, then flagging.* A column whose top-1 digits foot is
+  independent evidence that those digits are right. A column that does not
+  foot marks its cells for review. Neither changes any text.
+- *Selection, only under rule 6.* Picking another reading means choosing
+  among OCRcer's own candidates for those cells. It never generates a
+  digit. It is allowed only when the table structure is certain.
+- *Risks* (why selection is not the first step):
+  - rounding ("may not add due to rounding");
+  - header cells such as years and note numbers;
+  - negatives shown in parentheses;
+  - subtotals nested inside totals;
+  - totals carried to another page.
+
+**Reading: finfilings-train truth only, text only, no OCR run.**
+- **Scan:**
+  - The i-th number from the right in each truth line was taken, for
+    i < 4.
+  - For every such cell with a magnitude of at least 10, the scan checked
+    whether a run of 2–24 immediately preceding non-zero cells in the same
+    position summed to it exactly.
+  - Parentheses counted as negative, and thousands separators were
+    stripped.
+- **Result:** 126 exact foots on **13 of 427 pages (3%)**. The chance
+  baseline, which drew totals from other pages, gave 12.
+- **Coverage:** 491 of 83,537 numeric cells (**0.59%**) sit inside a
+  footing run. Every sampled hit was on a statement-style page, where
+  truth lines are single cells stacked vertically.
+- **Limits:** the scan misses:
+  - totals of subtotals;
+  - cross-footing across rows;
+  - runs broken by text;
+  - totals on a later page.
+
+  So it is a floor, not a ceiling.
+
+**Verdict.**
+- On this corpus footing reaches under 1% of numeric cells, so it is **not
+  a priority for finfilings CER**.
+- It belongs on the chunk-9 accounting backlog as a flag-first feature,
+  default off:
+  - a "does not foot" review flag;
+  - a confidence boost for columns that do foot.
+- Its value must be measured on a statement-heavy corpus before any build
+  is specced, and no such licence-clean corpus is in hand.
+- Candidate selection under rule 6 comes after flagging has been measured,
+  if at all.
+- The IBM method is expired prior art, so it is free to use.
