@@ -2753,3 +2753,100 @@ two open-source detectors before that follow-up is specified.
 
 **Not measured:** the check's accuracy or cost on OCRcer, and how many
 real pdfcer scans arrive sideways or upside down.
+
+## Addendum 2026-09-25: identifiers that carry their own check digit — CUSIP and ISIN (standards read, and a train count)
+
+**Why.** PLAN.md chunk 9d uses a page's own arithmetic as a free check on
+its digits. Some identifiers carry a smaller check of the same kind inside
+one token. A US or Canadian security's CUSIP is one. Holdings tables in
+filings list one per row.
+
+**The checks** (read 2026-09-25):
+- **CUSIP** (9 characters).
+  - Characters 1–6 are the issuer, 7–8 the issue, and 9 the check digit.
+  - Digits are worth their value, A–Z are worth 10–35, and `*`, `@`, `#`
+    are worth 36–38.
+  - Double the value at positions 2, 4, 6 and 8. Add the decimal digits of
+    each of the eight values. The check is `(10 − sum mod 10) mod 10`.
+  - The letters I and O are not issued, "since they might be mistaken for
+    the digits 1 and 0".
+  - Wikipedia's summary page gets the doubled positions wrong. The rule
+    above is confirmed on `037833100` (Apple) and `921908844`, and by the
+    train pass rate below.
+- **ISIN** (12 characters).
+  - Two letters for the country, a 9-character national number, then a
+    check digit.
+  - Turn letters into two-digit numbers (A = 10), then apply Luhn to the
+    digit string.
+  - A US ISIN wraps the CUSIP: `US0378331005`.
+  - Wikipedia notes that it misses some swapped adjacent letters.
+
+**What the CUSIP check catches, computed** (not read):
+- Every single-digit substitution. Doubling followed by the digit sum maps
+  0–9 onto 0–9 one-to-one, which is the Luhn property.
+- An adjacent swap is missed only for 0 and 9.
+- Insertions, deletions, splits and merges change the length, so the
+  token no longer has the CUSIP shape.
+- Twenty letter/digit pairs were tested, covering every digit/letter row in
+  `model/confusions.tsv` plus common digit/digit misreads. Every pair is
+  caught at every position, except 5/S at an even position.
+  - O/0 and I/1 need no check at all, because the standard excludes the
+    letters.
+
+**Train count** (finfilings-train truth text, 427 pages, 2026-09-25):
+- Tokens of CUSIP shape were counted: 8 characters from the CUSIP alphabet
+  plus a final digit, with at least 5 digits.
+  - 936 contain a letter, and 933 pass the check.
+  - 837 are all digits, and 830 pass. A random 9-digit number passes one
+    time in ten, so these are CUSIPs too.
+- They sit on 52 pages. Those pages hold a median of 41 such tokens and a
+  maximum of 50.
+- **None of the 52 pages contains the word "CUSIP".** They are
+  continuation pages of holdings tables, whose headers are elsewhere. A
+  header cannot be the cue.
+- ISIN shape: 75 tokens on 2 pages, and only 10 pass. Most are other
+  codes, so ISIN is not worth a mechanism on this corpus.
+- The 10 failing CUSIP-shaped tokens include `000000079` and `CMS040105`.
+  Some are not CUSIPs at all; the rest were not checked.
+
+**What this means for OCRcer.**
+1. **The column is the cue.** A random 9-character column passes one time
+   in ten per token. Three passing tokens out of three in one column is a
+   one-in-a-thousand chance.
+   - So a column of CUSIP-shaped tokens where nearly all pass is a CUSIP
+     column. That is decided from recognised text, which structure may
+     read. This is the same column-type idea as the "lone digit in a
+     number column" addendum.
+   - Chunk 9 supplies the columns. The vote threshold is fitted on train.
+2. **First use: flag and confidence only.** In a CUSIP column, a token that
+   fails its check gets its confidence capped and is flagged. A token
+   that passes keeps its confidence.
+   - This is PLAN.md chunk 9's rule for arithmetic, applied to one token:
+     a failed check is reported and never silently repaired.
+   - It also fits rule 5, because a failed check is exactly the case a
+     reviewer should be told about.
+3. **Choosing among the n-best is a separate decision, and it waits.**
+   - A failing token has about nine single-substitution repairs that pass,
+     one per position. The check alone cannot say which is right.
+   - Only the recogniser's own alternatives can, so a repair picks a
+     passing n-best path. That can still pick the wrong position, and the
+     result would be a wrong CUSIP that passes its check at high
+     confidence. That is rule 6's expensive failure.
+   - Before any repair is adopted, a train reading must show how often the
+     best passing alternative is the truth. It needs its own §11 entry.
+4. **Cost.** A 9-character sum per token. It needs no model data, only an
+   authored table of character values.
+
+**Next reading, when the machine is free.** Run the current engine on the
+52 train pages. Count the CUSIPs it misreads, how many of those the check
+catches, and how many correct reads sit in a column the vote would miss.
+Nothing is built before that ceiling is known.
+
+**Sources.**
+- "CUSIP" and "International Securities Identification Number",
+  Wikipedia, read 2026-09-25. The CUSIP positions were checked by
+  computation against known CUSIPs, as above.
+
+**Not measured:** OCRcer's error rate on CUSIPs. Also not measured: the
+SIN's Luhn check (third-party sources only) and any check digit on the
+CRA business number (none found in an official source).
