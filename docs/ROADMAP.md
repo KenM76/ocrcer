@@ -672,6 +672,23 @@ carried forward again, now across seven sessions; the next session with
 shell access should treat reading `/usage` as priority, not optional,
 given how long this has been outstanding.
 
+**Candidate spec landed 2026-09-25 — not scheduled.** `ARCHITECTURE.md`
+§11, "Candidate chunk 9 spec, part 1: the structure layer, ruled cells,
+and slip boxes" (`01042a8`), fixes the shape the whole of chunk 9 builds
+on and specifies its first two sub-chunks: **9a** (the structure
+substrate — rule detection, ruled cells, word-to-cell assignment, region
+list) and **9b** (boxed forms — box number to value, per-field
+confidence, following 9a directly per `PLAN.md` §2a), with **9c** (tables),
+**9d** (statements) and **9e** (prose) staged behind them once 9a has
+readings. The structure layer never changes recognised text — every
+sub-chunk's gate is a structure gate, so none of 9a-9e can move CER on any
+corpus. **Chunk 9 starts after the current runbook** (see *Post-campaign
+runbook* below); this is a written spec, not a scheduling decision. The
+same commit corrects the boxed-slips addendum's box-number format: two or
+three digits then an optional capital letter, kept exactly as printed (T4
+10-56 plus 16A/17A; T4A 014-211); a leading zero is part of the key, never
+normalised.
+
 ---
 
 ### Chunk 7 — pdfcer binding: merged; published; vendored by pdfcer (2026-09-24)
@@ -750,17 +767,33 @@ decision log and no others.
   1.08, LM-metric 23.211, F1 70.797). Post-campaign chain (edge-parameter
   walks + a stride-2 A/B/C/D ablation) launched detached; a reading (not a
   decision) found `match.top_k=3` gives CER 20.963, cheaper than tier-4's
-  `top_k=5` — not walked into the post-chain, it would cut headroom chunk
-  14/16b still need. **Not yet merged to master.** See *Unmerged branches*
-  below for full branch state.
+  `top_k=5`. **Superseded 2026-09-25** (§11, "How chunk 12b's vector is
+  chosen"): the campaign adopted `top_k=3` for the beam runs and 12b folds
+  3 outright — it does not wait on headroom chunk 14/16b need. An LLM mode
+  needing more candidates carries its own `top_k` as an opt-in setting;
+  `top_k` is re-read at 5, one stride-6 run, after chunk 14's grid point is
+  picked. **Not yet merged to master.** See *Unmerged branches* below for
+  full branch state.
   **Cost-knob sweep, continued 03:37 (train, measured):** `top_k` reading
   above adopted — the campaign runs the beam sweep at `top_k=3`.
   `beam_width` {14, 24, 36} launched ~03:37, ~25 min per run;
   `campaign_post.py`'s edge-parameter walks and stride-2 A/B/C/D ablation
-  queued to follow. **Chunk 12b stays open** until the architect picks
-  the final vector, confirms it on val, scores once, folds the result
-  into `model/params.tsv`/`Params::DEFAULT`, merges `fit-12b`, and writes
-  the closing §11 entry.
+  queued to follow. **Chunk 12b stays open until the vector-choice rule
+  runs in full** (§11, "How chunk 12b's vector is chosen"): apply the
+  choice rule (A the post chain's vector; keep tier 2 only if it beats B,
+  tier 2 reverted; take `w_lex` 0.35 as C only if C beats A; if both
+  change, one more stride-2 run of B+C must beat A; the result must beat
+  control D or 12b closes with no fold) — then val once against
+  `Params::DEFAULT` (a val failure means no fold, diagnosis on train, not
+  another val try) — then fold `params.tsv`/`Params::DEFAULT` together,
+  every moved row labelled `fitted` — then merge `fit-12b` — then score
+  once (finfilings, pages-cov; they choose nothing) — then the closing §11
+  entry.
+  **Status as of 03:59 (train stride 6, measured):** tier 4 accepted, CER
+  21.010; `top_k` 3/5/8 read (20.963/21.010/21.170); `beam_width`
+  {14, 24, 36} sweep at `top_k=3` in progress; `campaign_post.py`'s post
+  chain queued behind it. No wall-clock figure here is a speed reading —
+  the machine is shared.
 - **Chunk 12c — width-weighted decoder.** Built and reviewed on branch
   `width-weight` (off `case-geom`), ACCEPTED (a `Params::get` probe bug
   found and fixed in review). Verified against Tesseract's
@@ -1136,15 +1169,21 @@ only, full text not restated here):
   customised slips) — issuers may omit boxes but keep numeric order; box
   numbers can carry letters (16A); "Other information" codes are data;
   SIN and account number are identifier fields. Input to chunk 9's slip
-  spec, not yet acted on.
+  spec, not yet acted on. **Box-number format corrected 2026-09-25**
+  (`01042a8`, folded into the 9b spec above): two or three digits then an
+  optional capital letter, leading zero part of the key — the addendum
+  originally said two digits; T4A's `014`-`211` needed three.
 - **Candidate shortlist width** (`bab0a88`): Tesseract cuts its candidate
   shortlist by distance (`RemoveBadMatches`, pad 0.15), not by a fixed
   count. Train reading, finfilings-train stride 6: `top_k` 3/5/8 = CER
   20.963/21.010/21.170, line-matched 23.209/23.211/23.44 — the campaign
   adopts `top_k=3` for the beam runs (see the chunk 12 cost-knob update
   above). Candidate `match.cand_pad` (default off) is gated on census
-  bucket (m). Final `top_k` is settled together with the n-best ceiling
-  figures (a shorter list is what LLM rescoring works from).
+  bucket (m). **12b folds `top_k=3` outright** (§11 2026-09-25, "How
+  chunk 12b's vector is chosen") — the default path's best measured
+  1-best accuracy; an LLM mode needing more candidates carries its own
+  `top_k` as an opt-in setting; `top_k` is re-read at 5, one stride-6 run,
+  after chunk 14's grid point is picked.
 
 **Queued after the merge train, added 2026-09-25** (from the architect's
 03:08–03:37 report; none of this independently verified — no shell this
@@ -1428,6 +1467,15 @@ ground-truth normalisation that has to be declared in the report. See
     other unmerged worktrees (`wt-conftools`, `wt-xhdesc`, `wt-c14`,
     `wt-width`, `wt-style`, `fit-12b`'s own worktree) must **not** be
     touched, since they hold uncommitted or unmerged work.
+
+16. **Two scoring-only table corpora, raised 2026-09-25** (`ARCHITECTURE.md`
+    §11's GriTS and ReMine research addenda, `1c084aa`/`eb84fec`): (a)
+    FinTabNet (CDLA-Permissive; the FinTabNet.c Hugging Face re-release
+    CDLA-Permissive-2.0) — the copyright of the underlying S&P 500 report
+    pages is unstated by either README; (b) the ReMine 72-table financial
+    dataset (Chen et al., ICDAR 2017) — no licence stated anywhere on the
+    author's own page. Both would be scoring-only under rule 1's firewall
+    if cleared. Neither is downloaded until Ken answers.
 
 ---
 

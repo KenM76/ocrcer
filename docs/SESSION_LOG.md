@@ -1332,3 +1332,87 @@ licence, `fit-12b` resume) — all pre-existing items, checked against and
 left as-is rather than restated.
 
 ---
+
+## 2026-09-25 — Batch 3 (early hours): chunk 12b's vector-choice order corrected, `top_k` folds at 3, chunk 9 structure-layer spec (part 1), GriTS/ReMine scoring addenda
+
+**Request.** File six more architect commits into `ROADMAP.md`: the fitted
+feature-weight research addendum (waits for chunk 13), the §11 decision
+fixing chunk 12b's vector-choice order ahead of the ablations report, two
+scoring-methodology addenda (GriTS table structure; ReMine statement row
+hierarchy) plus a wording-fix commit to them, and part 1 of the chunk 9
+structure-layer spec. Correct three `ROADMAP.md` passages the vector-choice
+decision supersedes. No shell available in this dispatch — `git show` was
+not run; commit content was verified by reading the current text of
+`ARCHITECTURE.md`, `PLAN.md` and
+`docs/measurements/2026-09-22_research_classical_techniques.md` directly.
+
+**Delivered:**
+
+- **`d90daea` — chunk 12b's vector-choice order, fixed before the
+  ablations report exists.** Corrected two passages in the chunk 12
+  `ROADMAP.md` entry that had the fold order wrong or stale: `top_k` now
+  reads "12b folds 3 outright, an LLM mode needing more candidates carries
+  its own opt-in k, re-read at 5 after chunk 14's grid point"; the
+  "picks the final vector..." line now reads in the §11-specified order —
+  choice rule (A vs. B tier-2 revert, C `w_lex` 0.35, a combined stride-2
+  confirm if both change, must beat control D) → val once against
+  `Params::DEFAULT` (fail = no fold, diagnose on train) → fold
+  `params.tsv`/`Params::DEFAULT` together, rows labelled `fitted` → merge
+  `fit-12b` → score once (finfilings, pages-cov; chooses nothing) → closing
+  §11 entry. The backlog's matching "Final top_k is settled together with
+  the n-best ceiling figures" line was corrected the same way.
+- **`bab0a88`** — already partly filed (backlog "Candidate shortlist
+  width" bullet); amended in place to the corrected fold rather than
+  duplicated.
+- **`2a58702` — fitted feature-weight research addendum.** NCA (Goldberger
+  et al. 2004) and LMNN (Weinberger & Saul 2009) prior art for the matcher's
+  seven block weights; a diagonal fit maps onto the existing
+  `feature_weights` table with no format change. Explicitly waits for
+  chunk 13's forced-aligned glyph samples — fitting now would force a 12b
+  and calibration refit, and synthetic glyphs are the wrong training data
+  for it. Filed as a candidate with its own stated precondition, not as an
+  open question.
+- **`1c084aa` — scoring table structure (DAR, TEDS, GriTS).** Chunk 9's
+  benchmark reports `GriTS_Top` and `GriTS_Con` side by side (Smock et al.
+  2022); boxed forms score as field exact match, not a grid metric.
+  FinTabNet named an uncleared scoring-only candidate.
+- **`eb84fec` — financial-statement row hierarchy (ReMine, Chen et al.,
+  ICDAR 2017).** Transitive parent-child F1 87.90 vs. an SVM pair
+  classifier's 60.89 on their 72 tables; the row tree decides which cells
+  should foot; OCRcer has three signals their HTML-derived input lacked
+  (rules above totals, real pixel indent, stroke weight). Their 72-table
+  set carries no stated licence — scoring-only if cleared.
+- **`6ea346c`** — wording fixes to the footing and row-hierarchy addenda
+  (flag attribution, the French "sous-total" total-label case); confirmed
+  already reflected in the current addenda text read for this filing, not
+  restated.
+- **`01042a8` — candidate chunk 9 spec, part 1.** Filed into the existing
+  chunk 9 roadmap entry, not a new section: the structure layer (9a
+  substrate — rules, ruled cells, word-to-cell assignment, region list; 9b
+  boxed forms, following 9a directly; 9c tables; 9d statements; 9e prose),
+  structure never changes recognised text so every sub-chunk's gate is a
+  structure gate. Candidate only — chunk 9 starts after the current
+  runbook. Same commit corrects the boxed-slips addendum's box-number
+  format: two or three digits then an optional capital letter, leading
+  zero part of the key (T4 10-56 plus 16A/17A; T4A 014-211).
+- **Open questions:** added item 16, FinTabNet and the ReMine 72-table set
+  as scoring-only candidates pending Ken's clearance; existing items 1-15
+  left untouched.
+- **Campaign status, 03:59 (train stride 6, measured):** tier 4 accepted,
+  CER 21.010; `top_k` 3/5/8 read (20.963/21.010/21.170); `beam_width`
+  {14, 24, 36} sweep at `top_k=3` in progress; post chain queued behind
+  it. No wall-clock figure is filed as a speed reading — the machine is
+  shared.
+
+**Not independently verified by this filing** — no shell in this
+dispatch; commit hashes and the campaign status above are filed as given
+in the dispatch brief, cross-checked only against the current text of
+`ARCHITECTURE.md`, `PLAN.md` and the research-addenda file, not against
+`git show` output.
+
+**Open, carried forward, none duplicated here:** everything already in
+`ROADMAP.md`'s Open questions section and the post-campaign runbook /
+unmerged-branch inventory, unchanged by this filing except the
+`top_k`/vector-order corrections and the new FinTabNet/ReMine item.
+
+---
