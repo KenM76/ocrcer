@@ -7591,3 +7591,55 @@ reproducible from the repo alone (rule 1). `NOTICE` and `meta` gain the
 `multifinben-englishocr` entry in the same commit, as the measurement
 already noted. The raw text and the per-document `sources.tsv` stay out of
 the repo, per the existing convention for derived corpus artifacts.
+
+
+### 2026-09-25 — Chunk 13 and 13b specs, reconciled with the 2026-09-24 research addenda
+
+The two spec entries above did not cite the research addenda that
+`docs/measurements/2026-09-22_research_classical_techniques.md` already
+carries for these chunks. Both addenda are dated 2026-09-24: "forced
+alignment for real-scan glyph samples" and "per-page adaptive prototypes".
+This entry decides where they differ.
+
+**Chunk 13: the addendum's acceptance tests are adopted, and they tighten
+the spec.**
+- *Fold before align.* Ground truth passes through the charset's own
+  folding (ligatures, quotes, dashes) before alignment. Only a character
+  still outside the charset after folding skips its word. Without this,
+  normalised transcriptions produce mislabelled crops.
+- *Per-glyph bound computed, not guessed.* A crop is kept only if its
+  distance to its truth class lies within that class's spread in the
+  rendered bank. This replaces the spec's `guess` bound on mean word
+  distance. The line-CER bound stays.
+- *Neighbour agreement.* The unconstrained decode must agree with the truth
+  on the word's neighbours. This catches alignment errors at word edges.
+
+Wilson editing, Hart condensing and the caps then apply as specified.
+
+**Chunk 13b: the spec's selection rule stands over the addendum's.** The
+addendum harvested on calibrated confidence plus a lexicon hit, or a clean
+identifier shape. It had read Kae et al. from the abstract only. The spec
+entry is based on the full paper, whose confidence-threshold baseline gained
+9.5% and made 21 of 56 documents worse. The clean-list rule gained 34.1% and
+made 10 of 56 worse. So confidence is not a harvest criterion.
+
+The addendum's identifier-shape route for digits is the same weak
+selection. Digits stay deferred, as the spec says.
+
+**Adopted from the addendum into 13b:**
+- *The cost cap as a fallback.* If re-reading every word that was not
+  promoted fails the wall-time report, pass 2 narrows to words holding at
+  least one glyph below a margin threshold. That threshold is fitted.
+- *Lee & Smith's cluster check (ICDAR 2011) as a named follow-up.* It
+  flags a pass-1 glyph that sits closer to a large page cluster of another
+  class. It also clusters glyph pairs, which repairs `rn`/`m` without
+  re-segmenting. It is purely image-side, so it is safe in identifiers. It
+  is not in the first 13b build, so the first measurement stays
+  attributable.
+- *No document-cache lexicon.* The two agree: it reinforces a consistent
+  misread with high confidence, which is the failure rule 6 exists to
+  prevent.
+
+**Not adopted:** the addendum's fitted distance discount for page rows.
+Page rows are plain rows in the first build. A discount can join the
+fitting list if the measurement asks for one.
