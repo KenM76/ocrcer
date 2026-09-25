@@ -878,6 +878,25 @@ decision log and no others.
   metrics only, no page text). Every later fit commits its script before
   it runs; a rule change mid-run gets its own §11 entry before the next
   number.
+- **Batch 5 update (this filing): the beam-width sweep finished about 04:43;
+  the post chain is still running.** `beam_width=36` (train, stride 6,
+  measured) read the same as 24 — CER 20.963, line-matched CER 23.209 at
+  the campaign's confirm stride — so beam width is read as saturated at
+  this setting. The post chain (edge-parameter walks, then a stride-6
+  confirm, then four stride-2 A/B/C/D ablations) started 04:44 and had not
+  finished as of this filing. Edge walks so far, train, measured:
+  `decode.w_seg` 0.475→0.55 accepted; `segment.max_merge_x_heights` walked
+  1.5→1.35→1.2→1.05, taking CER 21.298→19.941, line-matched CER
+  19.841→18.593, word F1 74.059→81.731 — the largest single move in chunk
+  12b to date, still improving at the walk's last step, so this edge is
+  not yet closed. No other walked parameter moved. A risk check on the
+  `max_merge_x_heights` move, measured on synthetic clean lines (10
+  shippable Regular faces × 2 sizes): 1.8/1.5/1.05 gave identical glyph
+  counts ('%' emitted 116 of 120 at all three), so the concern that a
+  wider merge would start eating '%' is retired on synthetic text; whether
+  broken glyphs on real scans behave the same way is unmeasured and will
+  only surface in the `pages-cov` score, to be reported prominently once
+  it runs. Outcome, val and the score are deferred to the next filing.
 - **Chunk 12c — width-weighted decoder.** Built and reviewed on branch
   `width-weight` (off `case-geom`), ACCEPTED (a `Params::get` probe bug
   found and fixed in review). Verified against Tesseract's
@@ -1254,6 +1273,14 @@ not commitments; none scheduled as a chunk by this filing:**
   measured gain comes in under its own gates — already named in
   `ARCHITECTURE.md`'s 16b spec entry as the fallback, not a new idea, but
   not started, per that entry's own condition.
+- GD&T/hole-callout symbols and stacked-tolerance line-grouping — two
+  candidate chunk-10 (CAD drawings) probes run this session (see
+  `SESSION_LOG.md`, 2026-09-25 Batch 5): 27 GD&T codepoints have no
+  charset slot yet, and all 27 gain at least two licence-clean faces once
+  added (Noto Sans Symbols family, STIX Two Math); stacked tolerances read
+  as likely interleaved by line grouping. Both are probe-only — no
+  charset or spec change — and both stay parked behind the 2026-09-21
+  accounting-first priority above until chunk 10 is active.
 
 **Research addenda landed 2026-09-25**, filed to
 `docs/measurements/2026-09-22_research_classical_techniques.md` (pointers
@@ -1590,6 +1617,29 @@ ground-truth normalisation that has to be declared in the report. See
     dataset (Chen et al., ICDAR 2017) — no licence stated anywhere on the
     author's own page. Both would be scoring-only under rule 1's firewall
     if cleared. Neither is downloaded until Ken answers.
+
+17. **A fax-rendering fix for pdfcer, to relay — raised this filing.** Read
+    from pdfcer's own source, not run: its image renderer picks one
+    resampling filter per image and uses Nearest unless either axis
+    minifies, so a standard-mode fax page (~204×98 dpi) rendered at or
+    above roughly 203 dpi has each row repeated rather than smoothly
+    scaled. Per `ARCHITECTURE.md` §8.1's clarification (an
+    unequal-resolution source is squared at the larger resolution, the
+    other axis magnified smoothly), the fix belongs in pdfcer — square at
+    the larger axis, smooth-magnify the other, never repeat rows. This is
+    a hand-off for Ken to relay to a pdfcer session; OCRcer does not edit
+    pdfcer's tree. A second, related pdfcer candidate — a colour mode
+    (luma default, an opt-in max-channel dropout) for stamp and
+    highlighter damage — is **not** ready to hand off; it waits on the
+    queued train readings recorded in `SESSION_LOG.md`'s 2026-09-25 Batch
+    5 entry (arms S0–S3, H0/H1) and is not being handed off yet.
+
+18. **An LLM preview build off the `rescore` branch, flagged this filing
+    with no further detail given.** Recorded as a placeholder so the item
+    has somewhere to be checked against later — the brief that produced
+    this filing named it as an open item but did not say what "preview
+    build" means beyond the branch reference. Needs Ken's own scope and go
+    before anything is built or published.
 
 ---
 

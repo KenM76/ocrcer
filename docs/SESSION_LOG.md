@@ -1515,3 +1515,135 @@ unmerged-branch inventory, unchanged by this filing except the chunk 9
 amendments, the campaign status, and the pivot-index verdict above.
 
 ---
+
+## 2026-09-25 — Batch 5: architect session, continued
+
+**Request.** A librarian filing for research and status landed on `master`
+and on the `fit-12b` branch since the last batch, covering commits,
+chunk 12b's post-campaign status, a chunk 9a-i acceptance, the merge-train
+dry run, the operator's accounting-first priority, two pdfcer hand-off
+candidates, and a set of queued-not-specced measurement arms. Scope for
+this filing was `ROADMAP.md` and `SESSION_LOG.md` only; `ARCHITECTURE.md`
+was not touched (its §11 entries were already written by
+`ocrcer-architect`).
+
+**Commits landed on `master` since the last batch, all research or
+decision-log entries — none change the engine.** `c1f5b37` whole pages
+scanned sideways or upside down: a Tesseract-OSD-plus-Leptonica-flip test
+was proposed; the train check found no landscape images. `6804e98` and
+`9bd08e9` CUSIP/ISIN check digits: 1,763 of 1,773 CUSIP-shaped tokens pass
+on 52 train pages (measured, train); flag-only for now; a summariser error
+in an earlier count was corrected. `88a1b86` and `020faf2` PDX format:
+dimension-major prototype blocks must keep each distance's summation
+order; layout gets measured before any reordering. `3af14a9` decision-log
+entry: chunk 9a-i (table cells from ruling lines) reviewed. `f3a2759`
+GD&T/hole-callout symbols: 27 codepoints, none in the charset; a probe
+runs before any charset change. `d33d40f` stacked tolerances on drawings:
+likely interleaved by line grouping; a probe runs before any spec.
+`c321418` tabular digits: an ink-gap space test cannot separate "11" from
+"1 1" in five bank faces, but a centre-distance test separates them in all
+53 (measured, font metrics, `tools/digit_pitch.py`). `62fd2b9` GD&T font
+census: all 27 drawing symbols have at least two licence-clean faces
+(Noto Sans Symbols family, STIX Two Math, already in the bank) —
+coverage only, no class added, the probe stays on hold. `f3687dc` faxed
+pages: a source with unequal axis resolutions (standard fax ≈204×98 dpi)
+is squared at the larger resolution and magnified smoothly (§8.1
+clarified, a §11 entry, a research addendum); pdfcer's own renderer
+repeats fax rows at or above the fax's horizontal dpi (read from pdfcer
+source, not run). `0cce2e2` red stamps over invoice text: pdfcer passes
+luma, which keeps a stamp as ink, as does Tesseract's per-channel union;
+a max-channel dropout would remove the stamp but also erases red negative
+amounts, so no default is set; a synthetic train-only reading is queued.
+`2b36d9b` highlighter and shaded rows: Sauvola marks the edge of a
+mid-grey band as ink — measured on synthetic lines, pink turns "00417"
+into "OOÿ17", grey 150 and darker merges words; finfilings-train shading
+(grey 191, measured train) is lighter than that onset; three candidate
+fixes were drafted, none chosen; the generator is committed as
+`tools/highlight_lines.py`. On branch `fit-12b`, not `master`: `cff5a92`
+adds a column-key description of the `fitted` provenance to `params.tsv`.
+
+**Chunk 12b post-campaign status — all readings TRAIN, stride 35 unless
+stated, no val or score yet.** The campaign proper finished about 04:43 (log-file time):
+`beam_width=36` (train, stride 6, measured) read the same as 24 — CER
+20.963, line-matched CER 23.209 at the campaign's confirm stride — so
+beam width is read as saturated. The post chain (edge-parameter walks,
+then a stride-6 confirm, then four stride-2 A/B/C/D ablations) started at
+04:44 and is still running as of this filing. Edge walks so far, train,
+measured: `decode.w_seg` 0.475→0.55 accepted; `segment.max_merge_x_heights`
+walked 1.5→1.35→1.2→1.05, taking CER 21.298→19.941, line-matched CER
+19.841→18.593, word F1 74.059→81.731 — the largest single move in 12b so
+far, still improving at the walk's last step, edge not closed. No other
+walked parameter moved. A risk check on the `max_merge_x_heights` move,
+measured on synthetic clean lines (10 shippable Regular faces × 2 sizes):
+1.8/1.5/1.05 all emitted '%' 116 of 120 times, identical — the concern
+that a wider merge would start eating '%' is retired on synthetic text.
+Whether broken glyphs on real scans suffer the same way is unmeasured and
+will only show up in the `pages-cov` score, which must be reported
+prominently when it runs. Outcome, val and score are deferred to batch 6.
+
+**Chunk 9a-i follow-up accepted.** It merges last in the merge train, as
+`structure-9a`. One nit carries into the 9a-ii dispatch: a comment in
+`cells.rs` uses history-referencing wording ("no longer matters") that
+gets reworded per the documentation rule against writing history into
+source comments.
+
+**Merge-train dry run.** After the 12b close and fold, the planned order
+is `llm-speed`, `nbest`, `case-geom`, `conf-margin` (+`conf-tools`),
+`width-weight`, `chunk14`, `rescore` (rebased), `pivot-index`, with
+`structure-9a` last. The dry run found only mechanical union conflicts:
+the `viterbi.rs` test tail; `ocrcer-build`'s `main.rs` module `use` list;
+`ocrcer-bench`'s `lib.rs`/`ocr.rs` (`dumpread`+`dump`, `char_dump`+`llm`);
+and `ocrcer-bench`'s `Cargo.toml` `[[bin]]` entries.
+
+**Operator priority, restated (Ken, 2026-09-21, verbatim): "we need to
+support everything that an accounting firm would need before we continue
+with supporting drawings."** The drawing-callout probes (GD&T symbols,
+stacked tolerances) stay on hold under this. This session's research was
+redirected to accounting-paper degradation instead: fax resolution,
+stamp overprint, highlighter/shading damage.
+
+**Two candidate hand-offs to pdfcer, for Ken to relay** (OCRcer never
+edits pdfcer's tree directly). Fax: pdfcer's image renderer picks one
+resampling filter per image and uses Nearest unless either axis
+minifies, so a standard-mode fax page rendered at or above roughly its
+own dpi has each row repeated; per the §8.1 clarification, the fix is to
+square at the larger resolution and smooth-magnify the other axis; this
+was read from pdfcer's source, not run, and is ready to relay. Stamps and
+highlighter: a pdfcer colour-mode option (luma default, an opt-in
+max-channel dropout) is a candidate, but it is **not** ready to hand off
+— it waits on the queued train readings below.
+
+**Queued measurements, all on finfilings-train only, all behind the 12b
+fold and the 16b runs — queued, not specced.** A nearest-neighbour
+upsampling reading plus fax arms F0–F4. Stamp arms S0–S3 plus a
+red-negative collateral arm. Highlighter arms H0/H1 (bands at luma 230,
+195, 182, 168 over amounts). A candidate bench probe bin — the
+highlighter/grey ladder — that every future binarization change must
+pass, for `ocrcer-bench` after the merge train.
+
+**Delivered.** This entry; the corresponding `ROADMAP.md` updates to the
+chunk 12 in-progress section, the research-leads backlog, and two new
+Open questions items (17: the fax hand-off plus the not-yet-ready
+stamps/highlighter note; 18: an LLM preview build off `rescore`, flagged
+with no further detail given in this filing's brief). The `ARCHITECTURE.md`
+§11 entries themselves are not restated here — they are the record;
+see §11 directly. `tools/digit_pitch.py` and `tools/highlight_lines.py`
+are pointed to, not reproduced.
+
+**Not independently verified by this filing.** No shell in this dispatch;
+every commit hash, branch name and measured figure above is filed as
+given in the dispatch brief, not cross-checked against `git show`,
+`git branch`, or `/usage` output.
+
+**Token spend.** Not measured this session — no `/usage` reading was taken
+and none was supplied in the dispatch brief. This is calibration debt
+carried forward, not a filed figure; do not treat its absence as zero
+spend.
+
+**Open, carried forward, none duplicated here:** everything already in
+`ROADMAP.md`'s Open questions section, including the two items added by
+this filing, and the merge-train order and 9a-i status lines in
+`ROADMAP.md`'s chunk sections, which this filing's scope did not extend
+to updating (see this batch's report for the resulting staleness).
+
+---
