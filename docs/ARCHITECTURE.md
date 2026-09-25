@@ -7362,3 +7362,89 @@ promoted. Wall time is reported for both corpora.
 - Also reported, as prominently as the mean: the count of val pages whose
   CER got worse. The paper's own result shows that a mean gain can hide a
   fifth of documents getting worse.
+
+
+### 2026-09-25 — Candidate chunk 13c spec: text rotated ±90° on drawings
+
+This is a spec for the ROADMAP candidate, and it is in scope (rule 7: CAD
+drawing text). It is not a schedule. Today a rotated string reaches line
+grouping as a stack of one-glyph lines and is read as noise.
+
+**Why not the textbook methods.**
+- Tesseract chooses vertical mode for a whole page, when the fraction of
+  lines it deems vertical passes `textord_tabfind_vertical_text_ratio`
+  (0.5). A drawing is mostly horizontal with a few rotated strings, so the
+  page never qualifies.
+- Fletcher and Kasturi (PAMI 1988), revisited by Tombre et al. (GREC
+  2002), group component centres with a Hough transform over all
+  orientations. Tombre reports two problems: the Hough sampling step is
+  hard to set stably, and "short strings are not reliably detected".
+  Dimension text such as `25.4` is exactly the short string.
+
+**v1 scope.** Only the two orientations that aligned dimensions use: 90°
+and 270°. Arbitrary angles, upside-down text, and upright letters stacked
+vertically are follow-ups.
+
+**Mechanism: rotate the pixels, not the engine.** A quarter turn is an
+exact transpose-and-flip. Nothing is resampled, so a rotated crop becomes
+the same pixels as upright text. The existing pipeline then reads it
+unchanged: no new prototypes, no second extractor (rule 4).
+
+This relies on binarization commuting with the quarter turn. Sauvola's
+square window and its border handling must be symmetric in x and y. A
+property test asserts that reading a rendered page, and reading the same
+page rotated through this path, produce identical words and features.
+
+**Detection: nearest-neighbour chaining, not Hough.** This is in
+Docstrum's spirit (O'Gorman 1993).
+- Candidates are the components that line grouping already treats as
+  text-sized. That filter is shared with line grouping, not copied.
+- Two candidates link when all of these hold:
+  - they are stacked: x-overlap ≥ 0.5 of the narrower;
+  - the vertical gap is ≤ τ times the larger width;
+  - their widths agree within a ratio bound. After the turn, width is the
+    text height.
+- A chain of at least two components is a candidate region.
+- τ and the width-ratio bound are `guess`.
+
+**Arbitration: a rotated reading must beat the horizontal one.** The normal
+horizontal pass runs first, as today. A chain is eligible only if every
+horizontal word touching its components lies wholly inside it. Rotated text
+in a paragraph or table fails this, because its horizontal words run past
+the chain.
+
+For each eligible chain:
+1. Read the crop at 90° and at 270°.
+2. Keep the orientation with the higher mean calibrated character
+   confidence. Ties go to 90°, which reads bottom to top; that tie-break is
+   `authored`.
+3. Replace the horizontal words only if the rotated reading's mean
+   confidence beats theirs by `rotate.margin` (`guess`).
+
+Horizontal is the default, and a rotated reading has to win.
+
+**Output.** Rotated words carry page coordinates plus a per-line rotation
+of 0, 90 or 270. That is an additive public API change. `ocrcer-runtime`
+checks it against the pdfcer adapter, whose signatures are a public
+contract, before it lands. `layout.rotated_text` defaults to off until the
+gates pass.
+
+**Data.**
+- The fitting set is synthetic: drawing-like pages with rotated strings,
+  rendered by `ocrcer-build` from licence-clean faces, so it is
+  deterministic and has exact ground truth. It is split into a fit half
+  and a fixture half.
+- finfilings-train measures false alarms.
+- Before build, a census of pages-cov drawings counts the rotated strings
+  and their share of drawing CER, so the ceiling on the gain is known in
+  advance. The census counts and diagnoses only. No threshold is chosen
+  from scoring pages.
+
+**Gates.**
+- On the synthetic held-out half: rotated-string recall and CER, reported.
+- pages-cov ≤ control + 0.05, with drawing Δ ≤ 0, reported against the
+  census ceiling.
+- finfilings-val no worse than control by more than 0.02 on either
+  metric. This is the false-alarm guard.
+- The identifier test, the wasm build, workspace tests, and wall time on
+  both corpora.
