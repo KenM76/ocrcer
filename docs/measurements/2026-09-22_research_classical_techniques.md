@@ -1088,3 +1088,50 @@ aggregate across pages.
 - The ISRI report has no layout buckets. OCRcer's census adds them from
   the gap between the end-to-end and line-matched CER: missing lines,
   merged lines, and reading order.
+
+## Addendum 2026-09-25: letters inside numbers — Tesseract's char-type consistency and number DAWG (read from source)
+
+**What Tesseract does** (`src/wordrec/lm_consistency.h`, `language_model.{h,cpp}`,
+`src/dict/dict.h`, main branch, read 2026-09-25):
+- `LMConsistencyInfo` counts `num_alphas`, `num_digits`, `num_punc`,
+  `num_other` along the path. `NumInconsistentChartype()` =
+  inconsistent punc + `num_other` + `min(num_alphas, num_digits)`.
+- A non-dictionary path costs `ratings_sum × (1 + adjustment)`. The
+  adjustment sums `ComputeAdjustment(n, penalty)` per kind: 0 if n = 0,
+  `penalty` if n = 1, else `penalty + 0.01·(n−1)`. Defaults: chartype 0.3,
+  punc 0.2, case 0.1, script 0.5, spacing 0.05, non-dict 0.15, non-freq
+  0.1. Dictionary paths get only the case and script terms.
+- The number DAWG maps every digit to one pattern id (`char_for_dawg`, type
+  `DAWG_TYPE_NUMBER`). A number is "in the dictionary" when its *shape*
+  (`#,###.##`) is, whichever digits it holds.
+
+**What OCRcer already has.**
+- Pairwise, local version of the chartype term: 11 `digit_neighbour` rules
+  in `model/confusions.tsv` (l/I/|/†→1, O→0, S→5, B→8, Z→2, G→6, g→9, T→7).
+- The lexicon cannot reward a particular number. Checked 2026-09-25:
+  `word_counts.tsv` holds 0 digit-bearing rows, because lexicon candidates
+  must trim to an all-letter remainder (`2026-09-24_chunk14_counts.md`).
+  So `2019` can never pull `2018` toward it.
+
+**Two things Tesseract has that OCRcer does not.**
+1. *Word-majority char type.* `min(a, d)` pushes a word toward its majority
+   type, which a neighbour rule cannot do (`1O1O`). It is dangerous for
+   short codes: `M8` scores 1 and `MB` scores 0, so it pushes a real part
+   code toward letters. If built, it must be suppressed inside
+   identifier-shaped words, as the case term is. In practice that leaves
+   only pure-number runs, where the neighbour rules already fire.
+2. *Number-shape lexicon.* Collapse digits to `#` and give a bonus to
+   well-formed shapes counted from finfilings-train (`(#,###)`, `$#.##`,
+   `##/##/####`). Every digit is equal under the collapse, so it can reward
+   well-formedness but can never flip `8`↔`9`. That is compatible with
+   CLAUDE.md rule 6 as a bonus that is never a penalty. It is the stronger
+   of the two, because financial columns are where the weak blocks are
+   (§11, word F1 by block type).
+
+**Decision rule, not a decision.** Neither goes in before the whole-train
+census (ISRI shape) shows a residual of letter-for-digit or
+punctuation-in-number substitutions inside numeric tokens that the
+`digit_neighbour` rules leave behind. If the census shows one, (2) is
+specified first: fitted from train counts in chunk 14's machinery, and
+gated by the identifier test and a CAD dev set, where `Ø12`, `R3` and
+`M8x1.25` must be unchanged.
