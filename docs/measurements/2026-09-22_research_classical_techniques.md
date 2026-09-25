@@ -2551,3 +2551,99 @@ structure is tuned on our own rendered dev set.
 
 **Not measured:** any column-detection accuracy, for Camelot or OCRcer, on
 any page.
+
+## Addendum 2026-09-25: abandon a losing distance sooner — sum the telling dimensions first (partial distance search, and the UCR Suite's reordering)
+
+**Why.** Matching is about 95% of page time (`2026-09-24_dense_page_speed.md`).
+The pivot-index branch cut dimensions summed by about 29%, but wall time by
+only 3–7%. Where the matcher spends its dimensions decides the next speed
+step.
+
+**Prior art.**
+
+- **Partial distance search** (Bei & Gray, 1985). Stop summing a
+  candidate's squared differences once the partial sum passes the best so
+  far. Their abstract reports up to 70% fewer multiplications for a
+  full-search vector quantiser. OCRcer already does this, checking every
+  16 dimensions.
+- **Reordering early abandoning** (Rakthanmanon et al., the UCR Suite, KDD
+  2012; IJCAI 2013 summary, read 2026-09-25). The order of the terms
+  decides how soon the sum crosses the bound. Their figure abandons after 5
+  of 32 terms instead of 9. For z-normalised series they sort the indices by
+  the query's own absolute standardised value: a term is likely to be large
+  where the query sits far from the mean.
+
+**What the code does** (read from `match.rs`, `feature.rs` and
+`model/feature_weights.tsv`):
+
+- Dimensions are summed in feature order, 0 to 106. The checkpoint fires
+  when `i % 16 == 15`, and the last one is at `i = 95`.
+- Dimensions 96 to 106 are summed after the last checkpoint: the hole
+  count, the six crossings and the four geometry dimensions. They never
+  help abandon a candidate.
+- Geometry is the only block weighted above 1 (6.0, measured), because it
+  is the only block that separates case pairs. So the dimensions most likely
+  to be large against a wrong class are the ones never checked.
+
+**Readings.** These are from the pivot report's own counters; the
+arithmetic is mine. Wall time is indicative, because the machine is shared.
+
+| Page | dims per visited prototype, before → after | ns of `match()` per dim, before → after |
+|---|---|---|
+| s0 r000830 | 50.1 → 59.4 | 2.74 → 3.75 |
+| s3 r000276 | 49.5 → 59.1 | 2.86 → 3.80 |
+| s0 r000917 | 49.9 → 59.3 | 2.87 → 3.75 |
+
+- The pivot walk removes far-off prototypes, which were abandoned early.
+  The ones it still visits take about 59 dimensions to abandon.
+- Time per dimension rose by about a third. The per-query pivot pass is
+  about 20,000 dimension operations (187 pivots × 107). That is small next
+  to the roughly 1.5 million dimensions summed per query, so it cannot
+  explain the rise.
+- The cause is not measured. Visit order in memory and per-call overhead
+  are the candidates.
+
+**What this suggests.** These are candidates; none is measured.
+
+1. **A fixed order, heaviest first.** Sum by descending `w_i · σ_i²`, with
+   σ the bank's per-dimension spread, and checkpoint after the first four
+   dimensions as well as every 16.
+   - If the bank is standardised on itself, σ is about 1 and this puts
+     geometry first.
+   - The order is computed at load. There is no format change, and
+     `Model.prototypes` keeps file order and meaning.
+2. **A per-query order: the UCR rule, weighted.** Sort dimensions by
+   `w_i · ((q_i − μ_i)² + σ_i²)`. That is a term's expected size against a
+   random prototype, with μ and σ the bank's per-dimension mean and spread.
+   - Cost: a 107-element sort per query.
+   - Reads within each 428-byte row then land out of order.
+3. **Exactness.** A different summation order rounds differently in f64,
+   so the reordered sum only decides abandonment.
+   - It tests against the pivot branch's slack.
+   - A candidate that survives is re-summed in file order, and only that
+     sum is recorded, so output is byte-identical by construction.
+   - Survivors were 2–4% of visits before the pivot branch (abandon rate
+     96–98%, dense-page report), so the re-sum should cost little. The rate
+     after the pivot branch is not read.
+4. **Measure time per dimension apart from the dimension count.** Run the
+   captured queries single-threaded, with the process pinned to one core.
+   This is still indicative on a busy machine, but it separates the two
+   things the pivot report could not.
+
+**Gate:** the pivot index's four gates.
+- Identity on the captured queries.
+- Byte-identical pages.
+- Train stride-6 byte identity.
+- A cut in dimensions summed, with wall time reported as indicative.
+
+**Sources.**
+- C.-D. Bei and R. M. Gray, "An improvement of the minimum distortion
+  encoding algorithm for vector quantization", *IEEE Trans. Commun.*
+  33(10):1132–1133, 1985 (abstract only).
+- T. Rakthanmanon et al., "Searching and mining trillions of time series
+  subsequences under dynamic time warping", KDD 2012.
+- The IJCAI 2013 summary, "Data mining a trillion time series subsequences
+  under dynamic time warping", section "Reordering Early Abandoning", read
+  2026-09-25.
+
+**Not measured:** any speed-up from reordering on OCRcer.
