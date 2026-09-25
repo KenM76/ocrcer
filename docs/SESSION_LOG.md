@@ -1647,3 +1647,135 @@ this filing, and the merge-train order and 9a-i status lines in
 to updating (see this batch's report for the resulting staleness).
 
 ---
+
+## 2026-09-25 — Batch 6: architect session, continued (~05:50-07:10, wrap-up before an operator PC restart)
+
+**Request.** A librarian filing at session wrap-up, dispatched because the
+operator was about to restart his PC. Scope was `ROADMAP.md` and
+`SESSION_LOG.md` only, `SESSION_LOG.md` append-only; `ARCHITECTURE.md` was
+not touched, its §11 entries already written by `ocrcer-architect`. Source:
+`D:/Dev/ExcludedPrivate/ocrcer/handoff_2026-09-25/queue.md`, read in full.
+
+**Commits landed since Batch 5, all research addenda or a §11 decision —
+none change the engine.** `f15277d` dot-matrix print: separated dots break
+layout (4 lines read as 8/3/9 at 0.6-pitch dots), no fixed join works
+across dot pitches, the best join tracks the inter-dot gap — measured on
+synthetic lines only, generator `tools/dotmatrix_lines.py`. `e2ba601` faded
+ink: text lighter than about grey 175 on white (160 on off-white) returns
+zero words, a silent loss that looks like a blank page — measured on
+synthetic lines only, generator `tools/faded_lines.py`. `c3d65f5`
+show-through: the shipped Sauvola `k` ignores mirrored back-side print
+down to grey 185, but every faded-ink recovery lever reads it too —
+measured on synthetic lines only, generator `tools/showthrough_lines.py`.
+`9f15013` pen marks: a hand underline or circle whose column range covers
+a figure glues the figure and the mark into one glyph and the figure is
+lost, touching or not — measured on synthetic lines only, generator
+`tools/pen_marks_lines.py`; this commit also corrects an earlier
+show-through sentence (`o0417` is the baseline read on a clean page, not a
+local-stretch side effect). `535f913` §11 decision: show-through handling
+has four modes (auto-detect default, auto contrast, manual contrast, off),
+stage 1 a page flag, stage 2 a mirror-test recovery, each behind its own
+gate — plus a research addendum on the mirror cue itself, measured on
+synthetic crops only.
+
+**Chunk 9 staleness fixed.** `ROADMAP.md`'s "9a-i dispatched, in progress"
+line was stale — the follow-up (`a44d24e`, 05:13) was accepted: all four
+changes from the `3af14a9` review entry landed, 5 fixtures hand-checked,
+11 old fixtures unchanged, `ocrcer-core` 211 pass, bench structure 9 pass,
+wasm32 exit 0. One nit (a history-referencing comment in `cells.rs`)
+carries into the 9a-ii dispatch. The merge-order line now has
+`structure-9a` appended last, per a 05:05 dry run that found the same four
+mechanical union conflicts already on record from Batch 5 (no new
+conflicts).
+
+**Chunk 12b post-chain status at the ~07:10 restart.** Phase 1
+(edge-parameter walks), stride 6: baseline CER 20.978 → tentative 19.631,
+main mover `segment.max_merge_x_heights` 1.8→1.05, edge not closed — a
+different stride from the stride-35 figures already filed in Batch 5, not
+in disagreement with them. Phase 2 (stride-2 A/B/C/D ablation) completed
+only `A_final`: CER 21.418, LM-metric 24.119, F1 77.705, **not comparable
+to any stride-6 or stride-35 figure on file.** `B_tier2_reverted`,
+`C_wlex_035` and `D_control` were interrupted by the restart before
+running. Val, fold, merge, the §11 close and the score all remain undone.
+`campaign_post.py` has no resume flag; a resume script needs writing
+before the reruns, loading `A_vector` from `fitlogs/post_status.json`. One
+heavy `ocr.exe` process at a time, roughly 53 minutes per run.
+
+**Campaign-finish-time correction, confirmed still correct.** Batch 5
+already corrected the campaign's finish time from an earlier 04:49 report
+to ~04:43 (`campaign_stdout.log` mtime) before that entry was committed;
+this filing re-checked both `ROADMAP.md` and the Batch 5 entry above and
+found 04:43 throughout, no stale 04:49 anywhere in either file. No further
+correction needed.
+
+**Leading-zero finding and its diagnosis.** `00417-229` reads as
+`o0417-229` on every black (non-degraded) page, found incidentally during
+this research family, not itself a pen-marks or show-through artefact.
+Diagnosed via a dispatched agent (`diag-zero`, worktree `wt-zero`, branch
+`diag-zero` off `c3d65f5`) that stopped before recording a result; the
+worktree is clean. Redispatch is queued, not done this filing.
+
+**Backlog gained an extensive queue of research-family arms**, filed to
+`ROADMAP.md`'s Backlog as a new "Queued measurements, research family"
+subsection: fax arms F0-F4, stamp arms S0-S3 plus a red-negative
+collateral arm, highlighter arms H0/H1, a bench probe bin, a dot-matrix
+census spec, a dot-grid licence check, a synthetic noise arm, a
+"no words over non-blank grey" diagnostic, an edge-sharpness count, a
+pen-marks-into-negative-family spec, an atoms-bound count, per-word
+mirror scores (probe already run, not analysed —
+`probe_data/pw_k34.tsv`, `pw_k10.tsv`, harness in `hl_probe_src/`, all
+under the private handoff directory), a show-through-overlap measurement,
+and a mirror false-fire count. None run yet; all behind the 12b fold.
+
+**Open questions 13-16 unchanged.** Question 17 (pdfcer hand-offs) gained
+a third candidate note: the show-through four-modes design has a
+page-level flag pdfcer would need to surface, but this is **not** ready to
+relay until stage 1 (the page flag) ships and passes its own gate.
+Question 18 (LLM preview build) is clarified: it means a build of the LLM
+re-reading path off `rescore`, offered to Ken this session; still awaiting
+his own scope and go, not yet a yes.
+
+**`ROADMAP.md`'s *In progress* section gained a "Resume after restart"
+block** at its top, five ordered points: rerun Phase 2's B/C/D ablations
+(needs a resume script first); then `decide_12b.py` → val → fold → merge
+→ close §11 → score with the `pages-cov` delta prominent; redispatch
+`diag-zero`; run the branch merge train with `structure-9a` last; analyse
+the per-word mirror probe. Session state for all of this lives at
+`D:/Dev/ExcludedPrivate/ocrcer/handoff_2026-09-25/`, private, never
+committed.
+
+**RAG escalation, this role's own remit.** Four findings generalizing
+beyond OCRcer were written to `C:\personal_rag\ocr\` (subject already
+existed, no bootstrap needed): geometric-mean word confidence hides one
+garbage glyph inside an otherwise-fine-scoring word; the shipped Sauvola
+`k` ignores show-through but every faded-ink recovery lever reads it; a
+mirror-flip test separates whole mirrored show-through from real text by
+confidence but not at fragment granularity; and the i-dot
+column-range-containment merge rule also glues a pen mark to the figure
+it covers. All four labelled "measured, synthetic lines/crops, one face."
+`C:\personal_rag\ocr\index.md` and the master `C:\personal_rag\index.md`
+both got one-line pointers. No `C:\Users\Ken\.claude\CLAUDE.md` flag
+needed — `personal_rag/ocr` is already listed there as a current subject.
+
+**Not independently verified by this filing.** No shell in this dispatch;
+every commit hash, branch name, agent name and measured figure above is
+filed as given in `queue.md`, cross-checked only against the current text
+of `ROADMAP.md`, `SESSION_LOG.md`'s own prior entries and (for §11
+pointers only) `ARCHITECTURE.md`'s section headers — not against `git
+show`, `git branch`, or `/usage` output.
+
+**Token spend.** Not measured this session — no `/usage` reading was taken
+or supplied in the dispatch brief. Calibration debt carried forward, same
+as Batch 5; do not treat its absence as zero spend.
+
+**Delivered.** The `ROADMAP.md` edits listed above (Resume-after-restart
+block, chunk 9 and merge-order staleness fixes, the chunk 12b Batch 6
+bullet, the leading-zero and five addenda entries, the new queued-arms
+Backlog subsection, and the question 17/18 updates); this entry; four new
+`C:\personal_rag\ocr\` lesson files plus their two index pointers.
+
+**Open, carried into the next session:** everything under *Resume after
+restart* above — none of it is done, all of it is queued for the first
+session after the restart.
+
+---

@@ -106,6 +106,31 @@ here.
 
 ## In progress
 
+**Resume after restart (filed 2026-09-25 at wrap-up, ~07:10, ahead of an
+operator PC restart).** Session state lives at
+`D:/Dev/ExcludedPrivate/ocrcer/handoff_2026-09-25/`, private, never
+committed. Five ordered points:
+
+1. Chunk 12b Phase 2's stride-2 ablations `B_tier2_reverted`,
+   `C_wlex_035` and `D_control` were interrupted by the restart before
+   they ran; only `A_final` completed. `campaign_post.py` has no resume
+   flag — a resume script (in the shape of `campaign_resume*.py`) needs
+   writing first, loading `A_vector` from `fitlogs/post_status.json`. Run
+   one heavy `ocr.exe` process at a time; each run is roughly 53 minutes.
+2. After B/C/D land: `decide_12b.py` → val once → fold → merge → close
+   the §11 entry → score once, with the `pages-cov` delta reported prominently
+   (rule 8) once it runs.
+3. Redispatch the leading-zero diagnosis (`ocrcer-runtime`, worktree
+   `wt-zero`, branch `diag-zero` off `c3d65f5`) — it stopped before
+   recording a result; the worktree is clean.
+4. Run the branch merge train with `structure-9a` appended last (see
+   *Unmerged branches* below for the merge order and the known
+   mechanical union conflicts).
+5. The per-word mirror probe ran but was not analysed
+   (`probe_data/pw_k34.tsv`, `pw_k10.tsv`, harness in `hl_probe_src/`,
+   under the handoff directory above). The filed mirror-cue numbers are
+   crop means; analyse this before any per-word threshold is proposed.
+
 ### Chunk 3 — Prototype bank construction and the `.ocrw` writer
 
 Owner this session: `ocrcer-glyphs`. Exit gate not yet met — no report this
@@ -742,9 +767,16 @@ Table-shaped text is a minority of finfilings-train — 9c's benchmark
 cannot come from finfilings alone, consistent with 9a's own dev-set
 staging.
 
-**9a-i dispatched, in progress — no result yet.** `ocrcer-runtime`,
-worktree `wt-struct`, branch `structure-9a`: pure `structure::build` on
-authored input only, hand-derived fixtures, no pipeline change. 9a-ii (the
+**9a-i ACCEPTED, follow-up merged into the branch (`a44d24e`, 05:13).**
+`ocrcer-runtime`, worktree `wt-struct`, branch `structure-9a`: pure
+`structure::build` on authored input only, hand-derived fixtures, no
+pipeline change. The follow-up carries all four changes from the review
+entry (`3af14a9`); 5 fixtures hand-checked, 11 old fixtures unchanged (no
+re-bless needed), `ocrcer-core` 211 pass, bench structure 9 pass, wasm32
+exit 0. One nit carries into the 9a-ii dispatch: a `cells.rs` comment uses
+history-referencing wording ("no longer matters"), to be reworded per the
+documentation rule against writing history into source comments. Branch
+merges last in the train — see *Unmerged branches* below. 9a-ii (the
 detector above, wired into the pipeline, plus its params-table rows)
 waits for both the 12b fold and the branch merge train.
 
@@ -897,6 +929,19 @@ decision log and no others.
   broken glyphs on real scans behave the same way is unmeasured and will
   only surface in the `pages-cov` score, to be reported prominently once
   it runs. Outcome, val and the score are deferred to the next filing.
+- **Batch 6 update (this filing, ~07:10 wrap-up ahead of an operator PC
+  restart).** Phase 1 (edge-parameter walks) accepted at **stride 6**:
+  baseline CER 20.978 → tentative 19.631, main mover
+  `segment.max_merge_x_heights` 1.8→1.05, edge not yet closed — a
+  different sampling stride from the stride-35 figures in the Batch 5
+  bullet above; the two are not to be read as disagreeing. Phase 2
+  (stride-2 A/B/C/D ablation) completed only **A_final**: CER 21.418,
+  LM-metric 24.119, F1 77.705 — **stride 2, not comparable to any
+  stride-6 or stride-35 figure in this document.** `B_tier2_reverted`,
+  `C_wlex_035` and `D_control` were interrupted by the restart before
+  running and must be rerun (see *Resume after restart* at the top of
+  this section). Val, fold, merge, the §11 close and the score all remain
+  undone.
 - **Chunk 12c — width-weighted decoder.** Built and reviewed on branch
   `width-weight` (off `case-geom`), ACCEPTED (a `Params::get` probe bug
   found and fixed in review). Verified against Tesseract's
@@ -1138,8 +1183,13 @@ unchanged from the 03:08–03:37 report above.
 
 **Merge order:** `llm-speed` → `nbest` → `case-geom` → `conf-margin`
 (+`conf-tools`) → `width-weight` → `chunk14` → `rescore` (rebased) →
-`pivot-index`. Merges happen after chunk 12b closes. The `xh-desc` train
-gate runs right after chunk 12b closes (runbook step 2).
+`pivot-index` → **`structure-9a` last**. Merges happen after chunk 12b
+closes. The `xh-desc` train gate runs right after chunk 12b closes
+(runbook step 2). A 05:05 merge dry run found the same four mechanical
+union conflicts already recorded in `SESSION_LOG.md`'s 2026-09-25 Batch 5
+entry (`width-weight`'s test-module tail, `chunk14`'s `main.rs` `use`
+line, `rescore`'s bench `lib.rs`/`ocr.rs`, `pivot-index`'s bench
+`Cargo.toml` `[[bin]]` entries) — not restated here, unchanged.
 
 **Standing rule, still in force:** run LLM oracle tests with
 `--test-threads=1` and never alongside a fitting campaign — the
@@ -1325,6 +1375,58 @@ only, full text not restated here):
   heaviest-first order, or a per-query UCR-Suite-style order), with any
   candidate surviving reordered abandonment re-summed in file order before
   being recorded, so output stays byte-identical by construction.
+- **Dot-matrix print** (`f15277d`): separated dots break layout (4 lines
+  read as 8/3/9 at 0.6-pitch dots); the raw failure is low-confidence, and
+  no fixed join works across dot pitches — the best join tracks the gap
+  between dots — **measured on synthetic lines only.** Two patents and
+  one abstract were read as real-world reference text. Generator
+  committed as `tools/dotmatrix_lines.py`.
+- **Faded ink** (`e2ba601`): text lighter than about grey 175 on white
+  (160 on off-white) returns zero words, a silent loss that looks like a
+  blank page — **measured on synthetic lines only.** A global stretch or
+  Wolf-Jolion fixes uniformly faded pages but fails once a black line
+  shares the page; a lower Sauvola `k` or a local stretch reads through,
+  noise cost unmeasured. Train pages show no fading. Generator committed
+  as `tools/faded_lines.py`.
+- **Show-through** (`c3d65f5`): the shipped Sauvola `k` ignores mirrored
+  back-side print down to grey 185, but every faded-ink lever reads it —
+  **measured on synthetic lines only.** `k=0.1` reads it at grey 215 and
+  darker (145 extra lines, high-confidence fragments); a local stretch
+  reads it at grey 230; a global stretch applied for a faded front reads
+  it regardless of its own darkness; `k=0.2` keeps a partial window.
+  Full findings:
+  `C:\personal_rag\ocr\lesson_20260925_sauvola_shipped_k_ignores_show_through_but_faded_ink_levers_read_it.md`.
+  Generator committed as `tools/showthrough_lines.py`.
+- **Pen marks** (`9f15013`): a hand underline or circle whose column
+  range covers a figure glues the figure and the mark into one glyph and
+  the figure is lost, touching or not — **measured on synthetic lines
+  only.** The word around it still reports 0.60-0.84 confidence under the
+  geometric mean; a character floor cannot separate this from ordinary
+  l/I ambiguity, glyph size does. Five candidate designs drafted, none
+  chosen. Full findings:
+  `C:\personal_rag\ocr\lesson_20260925_i_dot_containment_merge_swallows_figure_under_pen_mark.md`
+  and
+  `C:\personal_rag\ocr\lesson_20260925_geometric_mean_word_confidence_hides_one_garbage_glyph.md`.
+  Generator committed as `tools/pen_marks_lines.py`. This commit also
+  corrects the show-through addendum's leading-zero sentence — see the
+  next entry.
+- **Leading zero read as "o"** (`00417-229`→`o0417-229`), found on every
+  black (non-degraded) page during this research family — not itself a
+  pen-marks or show-through artefact. **Corrects the show-through
+  addendum above: `o0417` is the baseline read on a clean page, not a
+  local-contrast-stretch side effect**, as an earlier note said.
+  Diagnosis dispatched to agent `diag-zero` (worktree `wt-zero`, branch
+  `diag-zero` off `c3d65f5`); the agent stopped before recording a
+  result, worktree clean. Redispatch queued — see *Resume after restart*
+  at the top of *In progress*.
+- **The mirror cue** (`535f913`, research addendum alongside the §11
+  decision): a crop's confidence drops 0.40-0.46 when flipped
+  left-to-right if it is real text, and rises 0.10-0.20 if it is a whole
+  mirrored show-through word — **measured on synthetic crops only**;
+  fragments do not separate on this cue either way. Full findings:
+  `C:\personal_rag\ocr\lesson_20260925_mirror_flip_separates_whole_show_through_not_fragments.md`.
+  The §11 decision itself (show-through handling's four modes) is not
+  restated here — see `ARCHITECTURE.md` §11 directly.
 
 **Queued after the merge train, added 2026-09-25** (from the architect's
 03:08–03:37 report; none of this independently verified — no shell this
@@ -1349,6 +1451,60 @@ dispatch):
   rather than kept in place (table order, 64-byte padding, blob CRC
   move). Fix: keep the original table order; add a test asserting the
   base sha256 reproduces.
+
+**Queued measurements, research family, added 2026-09-25 — none run yet,
+all behind the 12b fold, finfilings-train unless stated:**
+
+- Fax arms **F0–F4** (a nearest-neighbour upsampling reading plus four
+  resampling variants) and stamp arms **S0–S3** plus a **red-negative
+  collateral arm** (whether a max-channel dropout also erases red
+  negative amounts) and highlighter arms **H0/H1** (bands at luma 230,
+  195, 182, 168 over amounts) — carried from `SESSION_LOG.md`'s
+  2026-09-25 Batch 5 entry, still queued, not specced.
+- A candidate **bench probe bin** (the highlighter/grey ladder) that
+  every future binarization change must pass, for `ocrcer-bench` after
+  the merge train.
+- A **dot-matrix census spec**: no fixed join across dot pitches worked
+  in the dot-matrix research (`f15277d`); the best join tracks the gap
+  between dots, which needs a per-page dot-pitch census before a join
+  rule can be specced.
+- A **dot-grid licence check**: the dot-matrix generator used in this
+  research is synthetic, not a licensed dot-matrix font — a licence
+  check is needed before any dot-matrix face enters the shipped bank.
+- A **synthetic noise arm**: general salt-and-pepper/scan-noise
+  robustness has not been measured against the faded-ink or
+  show-through recovery levers above; queued as its own arm so a lever
+  chosen for one degradation is not silently assumed safe for another.
+- A **"no words over non-blank grey" diagnostic**: the faded-ink finding
+  means a uniformly grey (non-blank) region can return zero words,
+  indistinguishable from an actually blank region without a diagnostic
+  flagging "non-blank input, zero output" as its own condition.
+- An **edge-sharpness count**: checked once as a show-through/faded-ink
+  discriminator and found not to separate the two populations except by
+  construction of the synthetic generator (see
+  `C:\personal_rag\ocr\lesson_20260925_sauvola_shipped_k_ignores_show_through_but_faded_ink_levers_read_it.md`);
+  a proper train-page count is queued to confirm this before ruling the
+  cue out for good.
+- A **pen-marks-into-negative-family spec**: pen marks, underlines and
+  circles need their own detection family alongside the show-through and
+  stamp negative-space work, rather than being handled ad hoc inside the
+  atoms merge rule.
+- An **atoms-bound count**: how often the i-dot containment merge rule
+  fires on real (not synthetic) train pages, to size the pen-marks
+  problem before choosing among the five candidate designs drafted and
+  not yet chosen (`9f15013`).
+- **Per-word mirror scores**: the mirror-cue probe was run
+  (`probe_data/pw_k34.tsv`, `pw_k10.tsv`, harness in `hl_probe_src/`,
+  under the private handoff directory) but not analysed before the
+  2026-09-25 restart — see *Resume after restart* under *In progress*.
+- A **show-through-overlap** measurement: how often show-through and
+  real faint text co-occur in the same crop on train pages — load-bearing
+  for whether stage 1's page-level flag and stage 2's per-word mirror
+  test can gate sequentially or must run together.
+- A **mirror false-fire count**: how often the mirror cue would flag a
+  real (non-show-through) word as show-through on train pages. The
+  measured 0.40-0.46 confidence drop for real text is a mean, not a
+  false-positive rate, and the two are not the same number.
 
 ---
 
@@ -1632,14 +1788,21 @@ ground-truth normalisation that has to be declared in the report. See
     (luma default, an opt-in max-channel dropout) for stamp and
     highlighter damage — is **not** ready to hand off; it waits on the
     queued train readings recorded in `SESSION_LOG.md`'s 2026-09-25 Batch
-    5 entry (arms S0–S3, H0/H1) and is not being handed off yet.
+    5 entry (arms S0–S3, H0/H1) and is not being handed off yet. **A
+    third candidate, raised 2026-09-25:** the show-through handling
+    design (`ARCHITECTURE.md` §11, "show-through handling has four
+    modes" — auto-detect default, auto contrast, manual contrast, off)
+    has a page-level flag pdfcer would need to surface if it wants to
+    expose the mode choice to its own users. **Not ready to relay** —
+    stage 1 (the page flag itself) has not shipped or passed its own
+    gate yet; relay to pdfcer only once stage 1 exists, not now.
 
-18. **An LLM preview build off the `rescore` branch, flagged this filing
-    with no further detail given.** Recorded as a placeholder so the item
-    has somewhere to be checked against later — the brief that produced
-    this filing named it as an open item but did not say what "preview
-    build" means beyond the branch reference. Needs Ken's own scope and go
-    before anything is built or published.
+18. **An LLM preview build off the `rescore` branch — clarified
+    2026-09-25, still awaiting Ken's go.** "Preview build" means a build
+    of the LLM re-reading path off the `rescore` branch, offered to Ken
+    this session as a candidate; it has not been built. This resolves the
+    prior filing's placeholder to a reading, not yet to a yes — still
+    needs Ken's own scope and go before anything is built or published.
 
 ---
 
