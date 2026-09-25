@@ -903,7 +903,7 @@ our vertical-only cuts cannot express. A slanted or kerned pair (`Te`,
 Whether that error class is common enough to pay for polygonal outlines in
 `ocrcer-core` is exactly the census question. No chunk is proposed here.
 
-## Addendum 2026-09-25: characters touching drawing lines (Tombre et al., GREC 2001)
+## Addendum 2026-09-25: characters touching drawing lines (Tombre et al., DAS 2002)
 
 Read, not measured. Source: Tombre, Tabbone, Pélissier, Lamiroy, Dosch,
 "Text/Graphics Separation Revisited", DAS 2002, §4.
