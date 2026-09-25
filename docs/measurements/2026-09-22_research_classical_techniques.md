@@ -1405,3 +1405,75 @@ in the document, so it does not apply to financial statements.
 - Candidate selection under rule 6 comes after flagging has been measured,
   if at all.
 - The IBM method is expired prior art, so it is free to use.
+
+## Addendum 2026-09-25: a line that only "descends" is often a capitals line — Tesseract checks it against the page (read from source, and a train reading)
+
+**Source.** Tesseract `main`, `src/textord/makerow.cpp` and `makerow.h`:
+`compute_row_descdrop`, `compute_xheight_from_modes`, `correct_row_xheight`,
+`get_row_category`, `compute_block_xheight`. Read 2026-09-25.
+
+**What Tesseract does.**
+- **Where a descender counts.** A descender counts only if its drop is
+  0.25–0.6 of the row's x-height (`textord_descx_ratio_min`, `_max`).
+  The descender pile, plus the potential ascenders, must also reach 0.16 of
+  the x-height pile (0.08 + 0.08).
+- **How rows are categorised.** A row is `ROW_ASCENDERS_FOUND` when it has
+  an ascender rise. It is `ROW_DESCENDERS_FOUND` when it has a descender
+  drop but no rise, and `ROW_UNKNOWN` when it has neither.
+- **Where the block values come from.** The block x-height is the median
+  over ascender rows first, then descender rows, then the rest.
+- **How a descender-only row is corrected.** `correct_row_xheight` checks a
+  `ROW_DESCENDERS_FOUND` row whose x-height is within 10%
+  (`textord_xheight_error_margin`) of either:
+  - the block x-height; or
+  - the block **cap height** (x-height + ascrise).
+
+  Such a row takes the block's values. So "something hangs below the
+  baseline" is not taken as proof that the band is lowercase when its
+  height matches the page's capitals.
+- **How the x mode is found.** `compute_xheight_from_modes` finds the
+  x-height as the lower of a pair of modes whose ratio is 1.25–1.8. It need
+  not be the tallest pile, so a line whose capitals dominate still finds
+  its x-height band below them.
+
+**OCRcer, from `measure` in `layout/lines.rs`.**
+- **How the band is read.**
+  - The x-height candidate is the width-weighted mode of the line's tops.
+  - It looks only for a band 15% *above* that mode.
+  - Failing that, if any body member hangs below the baseline by more than
+    `lines.descender_fraction` of it, the mode is taken as the x-height and
+    labelled `Observed`.
+- **What that misses.**
+  - A capitals-dominated line never looks below its mode.
+  - `(`, `)` and `$` hang below the baseline.
+  - `inherit_x_heights` skips `Observed` lines, and counts them in the
+    page vote.
+
+**Reading.**
+- **How it was taken:**
+  - finfilings-train, every 10th page (43 pages), layout only;
+  - `ocr --layout --no-decode`, the campaign's binary, default params.
+- **How the descender branch was identified:** it is the `Observed` line
+  whose cap height equals x-height / `x_height_per_cap`. That value was
+  inferred from the `FromCapHeight` lines as 0.7431.
+- **Page reference:** the width-weighted median x-height of the page's
+  cap-band `Observed` lines. 24 pages have one.
+- **Result:**
+  - 197 of 1,834 lines took the descender branch.
+  - 186 of them have an x-height 1.25–1.6 times the page reference, with a
+    peak at 1.3 (152 lines). That is the page's cap height
+    (1 / 0.7431 = 1.346).
+  - Only 7 sit near 1.0.
+  - On the 24 pages with a reference, 8.2% of components lie on such
+    lines, and 13 of the 24 pages have at least one.
+- **One line checked by eye** (`filing__s4__r000782`):
+  - The line is `COMMON STOCKS - 44.0% - (continued)`.
+  - The page x-height is 9 px; the line is read as 12 px.
+  - The bold capitals are the width mode, nothing sits 15% above them, and
+    the parentheses hang below.
+- **Not observed:** which component tripped the test on each line, and the
+  CER effect. The per-line truth shown by `--layout` is by index, so it is
+  not aligned.
+
+The decision is recorded in `ARCHITECTURE.md` §11, 2026-09-25 ("A one-band
+line that only descends is checked against the page's cap height").

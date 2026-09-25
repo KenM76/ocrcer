@@ -7864,3 +7864,83 @@ non-characters (research addendum of 2026-09-25).
 Not adopted: string-level discriminative training (GTN). It needs
 gradients through the decoder, which chunk 15 leaves unchanged. It can be
 revisited only if the junk output measurably fails.
+
+### 2026-09-25 — A one-band line that only descends is checked against the page's cap height
+
+**The defect, from a reading on train.** When `measure` finds one top band
+with ink hanging below the baseline, it reads that band as the x-height and
+labels it `Observed`.
+
+On finfilings-train (every 10th page, layout only):
+- 197 of 1,834 lines took that branch.
+- 186 of them sit at 1.25–1.6 times the page's x-height, peaking at the
+  cap ratio (1.346).
+- That is 8.2% of components on the pages that have a reference.
+
+Checked by eye on one line, `COMMON STOCKS - 44.0% - (continued)`:
+- the page x-height is 9 px, and the line is read as 12;
+- the bold capitals are the width mode, and the parentheses hang below.
+
+These lines are wrong in two ways:
+- their x-height is about 1.35 times too large;
+- `inherit_x_heights` skips them, and they vote for the page value.
+
+The error reaches everything that divides by x-height:
+- features 103–107;
+- the segmentation prior;
+- `case-geom`;
+- `width_weighting`.
+
+Details and method: research addendum 2026-09-25 ("a line that only
+'descends' is often a capitals line"). Tesseract resolves the same case in
+`correct_row_xheight`.
+
+**Rule, for `ocrcer-runtime`, behind `lines.descender_cap_check`
+(u32 0/1, default 0).** At 0, every output and fixture is byte-identical.
+
+1. `measure` records which lines came from the descender branch. This is
+   carried as a flag on `TextLine`, not as a new `XHeightSource` value, so
+   the dumps and fixtures do not change at 0.
+2. At 1, `inherit_x_heights` works as follows:
+   - **The page vote.** The page x-height is voted from `Observed` lines
+     that are not from the descender branch. If there are none, the
+     current vote is used.
+   - **The re-read.** A descender-branch line is re-read as a cap band
+     when its x-height is within `lines.cap_match_margin` of the page cap
+     height (page / `x_height_per_cap`), and *not* within it of the page
+     x-height. The re-read line gets
+     `x_height = x × x_height_per_cap`, `cap = x`, and `FromCapHeight`.
+   - **Everything else.** All other lines are unchanged.
+3. `lines.cap_match_margin` is 0.1, labelled `authored`, with its source
+   given as Tesseract's `textord_xheight_error_margin`.
+
+**Tests.**
+- The traced shape (a capitals-dominated line with parentheses, at the page
+  cap height) is re-read.
+- A lowercase line with descenders and no ascenders, at the page
+  x-height, is untouched.
+- A page with no cap-band lines is untouched.
+- At 0, the fixture suite passes unchanged.
+
+**Diagnostic, on the same train sample.** For each descender-branch line,
+record which component set the deepest drop: `(`/`)`, `$`, a letter
+(`J`, `Q`, `g`…), or other.
+
+**Gate.**
+- On train, compare 1 against 0 with the same binary:
+  - at inner stride 35, then confirm at stride 6;
+  - report end-to-end and line-matched CER.
+- Then on val, as part of 12c.
+- The change lands after 12b closes, so 12b's vector is not moved during
+  the campaign.
+- 12c refits `lines.descender_fraction` and tier 2 with the check on.
+
+**Supporting reading only.** In tier 2's inner sweep, `descender_fraction`
+improved at each step, 0.08 → 0.12 → 0.17 (22.365 → 22.348 → 22.315), with
+the optimum at the edge. That fits the defect, but it does not prove it.
+
+**Named alternative, not specced.** A within-line search for an x-height
+band *below* the mode, pairing modes at a 1.25–1.8 ratio as Tesseract's
+`compute_xheight_from_modes` does. It needs no page context. It is
+considered if the page rule leaves misses on pages with no cap-band lines:
+19 of the 43 sampled pages had none.
