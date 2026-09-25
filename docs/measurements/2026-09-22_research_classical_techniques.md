@@ -1653,3 +1653,81 @@ markers are not a visible share of this corpus.
   the hyphen in the output.
 - It is a bonus under rule 6 either way, so the cost of not having it is
   a missed bonus, never a rewrite.
+
+## Addendum 2026-09-25: how much a longer character context would help — a train-only reading
+
+**Question.** The decoder's language term is a character bigram, and chunk
+14 counts it from train text. Would a trigram, with the decoder's beam
+carrying the last two characters, add enough to be worth a table?
+No source was read. This is a measurement.
+
+**Method.** Held-out, finfilings-train truth only, text only, no OCR run.
+- **Split.** Train was split into two halves by blocks of 100 consecutive
+  record numbers within each shard. That gives 194 and 233 pages, and
+  75,368 and 85,778 tokens. Adjacent pages of one filing fall in the same
+  half. An odd/even page split gave nearly identical numbers, within 0.13
+  bits/char and 0.1 points.
+- **Model.** Fitted on one half, measured on the other, then swapped and
+  averaged. It interpolates absolute discounting with a computed D per
+  order, the same estimator as chunk 14, and puts boundary marks on each
+  token.
+- **Look-alike test.** For every occurrence of a character in 15
+  look-alike pairs (`0/O 1/l 1/I 5/S 8/B 2/Z 6/G e/c n/h i/l u/n m/n a/o
+  t/f r/t`), score the true token against the token with that one
+  character swapped for its twin. Record whether context alone prefers
+  the truth, with the visual evidence taken as equal.
+
+**Result: held-out bits per character.**
+
+| Tokens | unigram | bigram | trigram | 4-gram |
+|---|---|---|---|---|
+| all | 5.225 | 3.800 | 3.060 | 2.694 |
+| with a digit | 3.934 | 3.408 | 2.905 | 2.759 |
+| letters only | 4.657 | 3.550 | 2.798 | 2.278 |
+
+**Result: context prefers the true character over its look-alike.**
+
+| Tokens | sites | unigram | bigram | trigram | 4-gram |
+|---|---|---|---|---|---|
+| with a digit | 240,872 | 99.48% | 99.42% | 99.63% | 99.60% |
+| letters only | 435,973 | 63.36% | 89.51% | 96.98% | 99.10% |
+| letters only, not in the base lexicon | 189,152 | 59.44% | 88.78% | 96.18% | 98.52% |
+
+**Reading.**
+- In tokens with a digit, a longer context adds nothing. The bigram, and
+  the `digit_neighbour` rules, already carry what there is.
+- In letter tokens the lexicon does not cover, a trigram cuts the rate at
+  which context prefers the wrong look-alike from 11.2% to 3.8%, about
+  two thirds. A 4-gram gets it to 1.5%.
+- Those are the words where the lexicon gives no help at all: names,
+  terms, and words outside the authored list. So this is the one place
+  where the language model is the only contextual evidence.
+- "Base lexicon" means the authored base forms, not the expanded
+  inflections, so the out-of-lexicon share is an overestimate.
+
+**What it is not.**
+- It is not an error rate. It says how often context would prefer the
+  truth if the shapes tied. It does not say how often OCRcer's shapes
+  tie, or how often the decoder errs today. That is the census's job.
+- It is finance text scored against finance text. On drawings a
+  finance-trained trigram carries the same leak risk that chunk 14's μ
+  and CAD dev set exist to check.
+- The 15 pairs are chosen by hand as common look-alikes, not measured
+  from OCRcer's confusions. The census's substitution table would supply
+  measured pairs.
+
+**Candidate (chunk 14b), decision rule, not a decision.**
+- *Trigger:* the census shows letter substitutions inside out-of-lexicon
+  letter words as a material bucket.
+- *Build, if triggered:* chunk 14's machinery at order 3, fitted on train
+  and mixed with μ times the authored evidence. It goes in a new
+  **optional** table: an old runtime ignores it and a new runtime without
+  it falls back to the bigram. That is additive, as `prototype_face` was,
+  so there is no `.ocrw` version bump, provided §7's unknown-table rule
+  still holds when it is specified. The decoder's beam carries two
+  characters of history.
+- *Gates:*
+  - chunk 14's gates;
+  - the CAD dev set not worse;
+  - the identifier test;
+  - the table size and the decode wall time, both reported.
