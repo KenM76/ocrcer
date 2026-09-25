@@ -9171,3 +9171,44 @@ always overridden. The clusters go to their owners:
 - the hyphen, `X`/`x` and `0`/`O` clusters to `ocrcer-linguist`;
 - the leading-digit drop to `ocrcer-runtime`;
 - `0`/`O` also to chunk 15, whose probe read the digit `0` at about 98%.
+
+### 2026-09-25 — Chunk 12c: three targeted reverts, decided on train by a rule fixed here
+
+**Measured, diagnosis.** Source: `docs/measurements/2026-09-25_12b_regressions.md`.
+Each chunk 12b regression traces to one fitted row:
+- **i → í/î/ñ:** `match.top_k` 3. On train at stride 4, fitted has 64
+  events. Reverting `top_k` to 5 alone leaves 22.
+- **Word fusion:** `words.pitch_tolerance` 0.22. It lets a proportional
+  line of short tokens pass the fixed-pitch test. Deleted spaces on train:
+  fitted 1,294, revert alone 1,123.
+- **M → IV1:** `segment.valley_fraction` 0.65. It is possibly helped along
+  by `min_piece_x_heights`, which was reverted together with it. This
+  revert was not isolated.
+
+**Candidates.** All start from master's fitted vector F:
+- A: `top_k` 5;
+- B: `pitch_tolerance` 0.15;
+- C: `valley_fraction` 0.5.
+
+**The rule, fixed before any number is run.**
+1. **Train, stride 2** (the 12b ablation setting). Run F, F+A, F+B, F+C
+   and F+A+B+C, and record end-to-end CER, line-matched CER and wall time.
+2. **Keep each revert unless it costs more than EPS = 0.02** against F on
+   either measure. A tie goes to the revert, because each one removes a
+   measured regression that CER underweights.
+3. **The combined set must pass the same test against F.** If it does
+   not, drop C, then B, until it passes.
+4. **Val, once:** the chosen set against F. It folds only if it is no
+   worse than EPS on either measure.
+5. **Gates after the fold:**
+   - the identifier gates;
+   - the three synthetic repros read correctly;
+   - `cargo test`.
+6. **Score once.** finfilings and pages-cov run once; the run chooses
+   nothing.
+
+**Latency, measured and not investigated.** finfilings-train pages take
+10.7–14.2 s each, single-threaded. §4.1's "well under a second per page"
+was a projection, and this reading falsifies it. Performance becomes a
+tracked item, and chunk 15's wall-time gate matters more. Step 1 records
+wall time because `top_k` and the beam width are both cost levers.
