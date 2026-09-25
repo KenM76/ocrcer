@@ -1567,3 +1567,54 @@ Assistant: Learning Parsers for Technical Drawings*, arXiv 1909.08552
 **Decision rule, not a decision.** Add a census bucket: *errors in cells
 of one or two glyphs whose layout column is numeric*. Nothing is specced
 until that bucket has a number.
+
+## Addendum 2026-09-25: raised and lowered characters at word edges — Tesseract's re-read, and why it waits (read from source, and a train count)
+
+**Source.** `src/ccmain/superscript.cpp` and the parameter block in
+`tesseractclass.cpp`, tesseract-ocr/tesseract `main`. Read 2026-09-25.
+
+**What Tesseract does (`SubAndSuperscriptFix`).**
+- **Detect.** A blob at the start or end of a word is a candidate when
+  both of these hold:
+  - it sits out of position: its bottom is at least
+    `superscript_min_y_bottom` (0.3) x-heights above the baseline, or its
+    top is at most `subscript_max_y_top` (0.5) x-heights above it;
+  - it matched badly: its certainty is at most `superscript_worse_certainty`
+    (2.0) times the word's average certainty.
+- **Re-read.** The word is split into prefix, core and suffix. The edge
+  pieces are classified again with the y-position penalties switched off:
+  `classify_class_pruner_multiplier` and
+  `classify_integer_matcher_multiplier` are set to 0.
+- **Accept.** The re-read is kept only if all of these hold for every
+  character:
+  - it is not punctuation;
+  - it is not italic;
+  - it is at least `superscript_scaledown_ratio` (0.4) of the line's font
+    size;
+  - its certainty beats `superscript_bettered_certainty` (0.97) times the
+    old certainty.
+
+  The characters are then tagged superscript or subscript.
+
+**Why it would matter to OCRcer.** Features 103–107 measure a glyph against
+the line's baseline and x-height. A raised footnote `1` therefore looks
+nothing like any bank `1` in those dimensions. It may match `'` or `°`
+instead. The equivalent here would be to re-match edge glyphs that are out
+of position with those dimensions masked.
+
+**Reading: finfilings-train truth, text only, no OCR run.** Out of 161,146
+tokens:
+- 7 are a lowercase word with 1–2 digits attached (`reserves1`,
+  `Distributions1`, `slide13`);
+- 76 are `†` (already a `digit_neighbour` source);
+- the 43 `word(x)` tokens are all `(s)` plurals such as `Document(s)`,
+  not markers.
+
+Truth may drop or detach some markers, so this is a floor. Even so, raised
+markers are not a visible share of this corpus.
+
+**Verdict: recorded, not queued.**
+- The census's substitution table would show it if it matters: digits
+  read as `'`, `°` or `"` at word ends.
+- For drawings, stacked tolerances and `mm²` are the cases. The drawing
+  census for 13c counts them before anything is specced.
