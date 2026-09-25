@@ -1620,3 +1620,36 @@ markers are not a visible share of this corpus.
   drawing census counts only rotated strings today. Adding a count of
   raised or stacked text to it is the proposed way to price this, and is
   not yet in any spec.
+
+## Addendum 2026-09-25: words broken across lines by a hyphen — Tesseract carries the dictionary state over (read from source, and a train count)
+
+**Source.** `src/dict/hyphen.cpp` and `dict.h` in tesseract-ocr/tesseract
+`main`. Read 2026-09-25.
+
+**What Tesseract does.**
+- When the last word on a line ends in a hyphen, `set_hyphen_word` stores
+  that word without the hyphen, plus its live dictionary positions
+  (`hyphen_active_dawgs_`).
+- The first word of the next line resumes the dictionary walk from those
+  positions, so `invest-` + `ment` is scored as `investment`.
+- `reset_hyphen_vars` drops the stored state unless the pair really is
+  last-on-line followed by first-on-line.
+
+**Reading: finfilings-train truth, text only, no OCR run.**
+- 64,132 truth lines; 18 end in `letters-` with a lowercase word opening
+  the next line, on 17 pages.
+- **All 18 are real compound hyphens**, not syllable breaks:
+  `employer-sponsored`, `wholly-owned`, `broker-dealer`, `three-month`,
+  `attorney-client`.
+- None of the joined forms (hyphen removed) is in the lexicon, and 15
+  have a fragment that is.
+
+**Verdict: not queued.**
+- This corpus does not break words at syllables, so there is nothing for
+  a carry-over to recover.
+- Removing the hyphen would be wrong for every observed case.
+- If a scanned-book or justified-prose corpus is ever added, the design
+  is Tesseract's: carry the lexicon position over the line end and keep
+  the hyphen in the output.
+- It is a bonus under rule 6 either way, so the cost of not having it is
+  a missed bonus, never a rewrite.
