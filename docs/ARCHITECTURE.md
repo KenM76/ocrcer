@@ -8222,3 +8222,295 @@ add-on, gets its best measured 1-best accuracy.
 **Not decided here:** the `xh-desc` gate (its own train, then val, run);
 `match.cand_pad` (gated on census bucket (m)); any wall-clock claim (the
 machine is shared, so no timing from this campaign is a speed reading).
+
+### 2026-09-25 — Candidate chunk 9 spec, part 1: the structure layer, ruled cells, and slip boxes
+
+Candidate spec. It is not a schedule: chunk 9 starts after the current
+runbook. It fixes the shape the whole of chunk 9 builds on, and specifies
+its first two sub-chunks. Tables, statements and prose each get their own
+entry once 9a has readings.
+
+It rests on:
+
+- a read-only survey of the code (file and line citations below);
+- these research addenda: boxed slips, footing, table scoring (GriTS),
+  and statement row trees (ReMine).
+
+**What exists today.**
+
+- `strip_underlines` records a `RuleSegment` for each horizontal band it
+  erases (`layout/underline.rs:16-32`). `pipeline.rs:234-236` keeps only
+  the labels and components, so that record is discarded.
+- The strip sees only bands at least two rows thick, inside components at
+  least `lines.rule_run_heights` page heights wide. A one-pixel rule, or a
+  rule too short for the floor, is neither erased nor recorded.
+- Vertical rules are not detected.
+  - A box side left behind by the strip is erased from the mask as debris
+    when it is tall (`lines.debris_heights`, `lines.thin_debris_heights`,
+    `underline.rs:118-146`).
+  - A shorter side survives as a component and reaches line grouping.
+  - A standalone rule taller than `furniture_fraction` of the page is
+    dropped by `is_glyphish` (`layout/lines.rs:1041-1057`; `rule_aspect`
+    ships at 0).
+  - None of these is recorded.
+- The column cut is one-dimensional, per band (`lines.rs:1339`). Nothing
+  links a fragment to "the same column" in the next band.
+- The checkbox drop deletes box furniture and records nothing
+  (`lines.rs:1059-1176`).
+- The only public types are `Line`, `Word` and `CharBox`. pdfcer's
+  `OcrEngine` carries flat `RecognizedWord`s only
+  (`pdfcer-core/src/ocr/mod.rs:174-206`). Its OCRcer adapter calls
+  `recognize_bytes`, so even `Line.band` never reaches pdfcer.
+
+**The safety property: structure never changes text.** The layer reads
+lines, words, character confidences and rule geometry, and it only writes
+new objects. `recognize_lines` and `recognize` return byte-identical
+results whether the layer runs or not. So no part of 9a–9e can move CER on
+any corpus, and every chunk 9 gate is a structure gate.
+
+A change that alters recognition for structure's sake is not part of this
+layer. The obvious one is erasing vertical-rule pixels, so box sides stop
+being read as `|` or `1`. That is a recognition change, specified
+separately, with the usual finfilings and pages-cov gates. 9a measures
+whether it is worth doing (below).
+
+**Staging.** Each sub-chunk has its own gate, and each ships default-off
+until that gate passes.
+
+| Sub-chunk | Delivers | Needs |
+|---|---|---|
+| 9a | The `Page` result, rule geometry (horizontal kept, vertical detected), ruled cells, word-to-cell assignment, region list, stage fixtures | — |
+| 9b | Boxed forms: box number → value, per-field confidence | 9a |
+| 9c | Tables: columns aligned across rows, ruled and unruled grids, GriTS scoring | 9a |
+| 9d | Statements: row tree, rules above totals, negatives, comparative columns, footing flags | 9c |
+| 9e | Prose: paragraphs, headings, region reading order | 9a |
+
+9b comes first after 9a. `PLAN.md` §2a calls the box-to-value mapping the
+highest-value output of the chunk, and it needs only 9a's cells.
+
+**Where it runs.**
+
+- A new module, `ocrcer_core::structure`. The three core invariants hold:
+  it is pure integer geometry plus f64 ratios, with no dependencies.
+- It runs inside the pipeline, in deskewed space, before the un-shear at
+  `pipeline.rs:330-346`. Every containment test is decided there, so it
+  cannot disagree with itself.
+- Reported geometry follows `Line.rect`'s convention: `x` unchanged, `y`
+  un-sheared at `x0`. A rule is reported as its two endpoints, each
+  un-sheared.
+- The layer is written once; `ocrcer-bench` only scores it.
+
+**9a — the substrate.**
+
+*API, additive.* `Engine::recognize_page` returns
+`Page { lines, rules, cells, regions, fields, flags }`:
+
+- `lines` equals `recognize_lines`' output exactly;
+- `rules` are `RuleSegment`s with an orientation;
+- `cells` are `Cell { rect, sides }`;
+- `regions` are `Region { kind, rect, cells, lines }`. 9a emits only
+  `Unclassified`;
+- `fields` stays empty until 9b;
+- `flags` are typed diagnostics, never text changes.
+
+The existing entry points are untouched. So is pdfcer's adapter.
+
+*Rules: one detector, read-only, before the strip erases anything.*
+
+- The strip erases tall box sides as debris, so rules are found on the
+  mask before that happens. The detector reads the mask and writes
+  nothing, so recognition is unchanged.
+- Lengths are in `h`, the median glyphish-component height the strip
+  already computes. Where the detector sits (inside the strip's
+  pre-erasure phase, or beside it when `lines.underline_strip` is 0) is
+  the implementer's choice.
+- One run rule serves both orientations:
+  - a straight run of continuous ink at least `structure.rule_min_h`
+    long (`guess`);
+  - at most `structure.rule_max_thick_h` thick (`guess`);
+  - with the ends of adjacent rows (or columns) agreeing within 2 px, as
+    the strip's bands do.
+- Dot leaders and dashed rules are not rules, because the ink must be
+  continuous. A double rule is two rules.
+- The strip's `rule_segments` stay the record of what was erased, kept
+  for underline formatting later. A `rules` fixture asserts that every
+  band the strip erased lies inside a detected horizontal rule. If the two
+  ever disagree, a test says so.
+
+*Cells.*
+
+- Rule endpoints within `structure.join_tol_h` (`guess`, in `h`) of a
+  crossing rule snap to the crossing.
+- A cell is a minimal rectangle each of whose four sides is covered by
+  rule segments over at least `structure.side_cover` of its length
+  (`guess`). So a small gap in a printed rule does not open the cell.
+- A spanning cell is the rectangle; the grid it spans is 9c's concern.
+- Three-sided boxes are not cells in 9a, and a fixture asserts that.
+- Cells are enumerated in `(y0, x0, y1, x1)` order.
+
+*Assignment.*
+
+- Each word belongs to the smallest cell containing its rectangle's
+  centre, or to none.
+- A line whose words fall in different cells raises
+  `Flag::LineCrossesCell`. On finfilings-train that count, reported not
+  gated, sizes the vertical-rule erasure question above.
+
+*Regions.* One region per connected component of the rule graph, plus one
+for the lines outside all of them. The reading order stays the existing
+line order.
+
+*Parameters.* Rows are added to `params.tsv` and `Params::DEFAULT` the way
+every layout parameter has been (for example `lines.cell_pairing`). All
+are `guess` until tuned. They are tuned on a **structure dev set**: pages
+laid out and rendered by our own script, disjoint from the fixtures. Rule
+1's firewall applies unchanged:
+
+- fixtures, pages-cov and finfilings score pages stay scoring-only;
+- finfilings-train may be counted but never used to tune a structure
+  threshold, because its truth has no structure.
+
+*Fixtures (§8.2), two new stage boundaries.*
+
+- `rules`: a rendered synthetic page to rule segments. It covers:
+  - single and double rules;
+  - a one-pixel rule;
+  - underlined words;
+  - dot leaders, which must not be rules;
+  - a box whose rule touches digits;
+  - a tall box, whose sides the strip erases as debris.
+- `structure`: authored lines, words and rules, as JSON with no
+  recognition involved, to cells, assignment, regions and flags. It
+  covers:
+  - a spanning cell;
+  - a gapped side under `side_cover`;
+  - a three-sided box;
+  - a line crossing a vertical rule.
+
+Because `structure` fixtures take authored input, they check the layer
+against its own ground truth, independent of recognition accuracy. The
+bench agent adds both stages to `bless`.
+
+*9a gate.*
+
+1. `recognize_page().lines` is byte-identical to `recognize_lines()` on
+   every fixture and on finfilings-train stride 6.
+2. All `rules` and `structure` fixtures pass.
+3. The added wall time on train stride 6 is reported. It is a reading,
+   not a speed claim, while the machine is shared.
+4. wasm32 builds, `forbid(unsafe_code)` holds, no dependencies are added,
+   and the new code is clippy-clean.
+
+**9b — boxed forms.**
+
+*Box-number token.* Two or three digits, then an optional capital letter,
+kept exactly as printed. The T4 uses 10–56 plus `16A` and `17A`, and the
+T4A uses `014`–`211` (`C:/tax_rag/rag/form__t4_slip.md`,
+`form__t4a_slip.md`). A leading zero is part of the key, never normalised.
+This corrects the boxed-slips addendum, which said two digits.
+
+A letter in a box number must survive the numeric-context rules. `16A`
+turning into `164` is a rule 6 failure, and a fixture carries `16A`,
+`17A` and `014`.
+
+*Label and value inside a cell.*
+
+- The cell's lines, top-down, split into:
+  - a label: the top run of lines whose x-height is at most
+    `form.label_xh_ratio` of the cell's largest (`guess`);
+  - a value: the rest.
+- When every line is the same size, a line that starts with a box-number
+  token is the label.
+- The box number is the first box-number token in the label, in reading
+  order.
+
+*Field.* `Field { box, source, value_text, value_words, confidence, cell }`.
+
+- `source` is `Printed`, or `Read` (see below).
+- `value_text` is the recognised words joined as read, never rewritten.
+- A printed box with no value is a field with an empty value. "Not
+  filled" is data.
+- `confidence` is rule 5's geometric mean over the value's characters. It
+  adds no curve and reuses the existing calibration, which is what
+  `PLAN.md` §2a's per-field requirement asks.
+
+*Region.* A connected rule-graph component holding at least
+`form.min_boxes` fields (`guess`) becomes `Region::BoxedForm`. Two slips
+on one page are two components, so they are two forms.
+
+*Read box numbers.* This covers the T4's "Other information" pairs. A cell
+whose **value** is box-number-shaped, next to a cell on its right in the
+same rule row whose value is numeric, forms a field with
+`source: Read`. Its box is the left cell's value. The pairing is purely
+geometric; no caption strings are authored.
+
+*Order check: specified, off by default.* IC97-2R20 says paper slips keep
+"the same numerical order as the boxes on the CRA slip". What is not
+established is which traversal of a slip that order runs in (row-major,
+column-major, or mixed). So `form.order_check` ships at 0. A violation
+would only ever raise `Flag::BoxOrder`, never reorder. It turns on only
+when a fixture built from the real slip's box order shows which traversal
+is meant.
+
+*Plain-paper fallback, specified, off by default.*
+
+- A box-number token set in label-sized type, outside any cell, pairs with
+  the nearest value line to its right or below, within `form.pair_reach_h`
+  (`guess`, in `h`).
+- It has its own fixture set.
+- Its false-positive reading is `BoxedForm` regions found on the
+  structure dev set's prose and statement pages. The target is zero.
+
+*9b gate.*
+
+1. Boxed-form fixtures in our own layouts carry CRA box numbers, which are
+   facts. They cover:
+   - a full slip;
+   - boxes omitted;
+   - boxes moved but kept in order;
+   - two slips per page;
+   - `16A`, `17A` and a three-digit box;
+   - a blank box;
+   - read pairs.
+
+   Each asserts the exact box → value mapping.
+2. `value_text` is byte-equal to the words' text, and `confidence` equals
+   the geometric mean recomputed from `CharBox` confidences.
+3. Deliberate alteration: a fixture whose value is misread must report the
+   misread value. The harness fails loudly if anything in the layer
+   "corrects" it.
+4. On the rendered slip dev set, field exact-match precision and recall
+   are reported. They are not gated in 9b, because the dev set tunes the
+   thresholds.
+
+**Scoring, for the later sub-chunks** (from the addenda, recorded here so
+it is fixed before any reading):
+
+- tables use `GriTS_Top` and `GriTS_Con` side by side;
+- statement row trees use transitive parent-child F1;
+- boxes use field exact match;
+- all of it runs in `ocrcer-bench`, in f64.
+
+**pdfcer.** The API is additive and pdfcer's current path is unchanged.
+Taking structure across its boundary would need a wider type on pdfcer's
+side. That is pdfcer's decision, and OCRcer does not edit pdfcer.
+
+**Operator questions this raises** (not blocking 9a or 9b):
+
+1. FinTabNet (CDLA-Permissive) as a scoring-only table corpus. The
+   copyright of the underlying report pages is unstated.
+2. The ReMine financial-table set (72 tables) as scoring-only. No licence
+   is stated.
+
+Both would be scoring-only. Neither is downloaded until the operator
+answers.
+
+**Not decided here:**
+
+- 9c–9e mechanisms;
+- vertical-rule erasure (a recognition change, sized by 9a's count);
+- any export format writer (PAGE XML, ALTO or hOCR). The `Page` tree maps
+  onto page → region → cell → line → word, which all three share. A
+  writer is built when a consumer asks for one.
+- the chunk's token estimate, which is re-estimated at chunk start per
+  `PLAN.md` §2a.

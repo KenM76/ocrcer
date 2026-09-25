@@ -1964,8 +1964,10 @@ decisions.
    box numbers read in reading order must not decrease on a paper-filed
    slip. A slip that breaks the order is flagged, never reordered.
 2. **Box numbers are not all digits.** The T4 has boxes 16A and 17A
-   (`C:/tax_rag/rag/form__t4_slip.md`). A box-number token is two digits
-   with an optional capital letter, and the letter must survive the
+   (`C:/tax_rag/rag/form__t4_slip.md`), and the T4A numbers its boxes with
+   three digits, 014 to 211 (`form__t4a_slip.md`). A box-number token is two
+   or three digits with an optional capital letter, and a leading zero is
+   part of the key. The letter must survive the
    numeric-context rules (char-type consistency, the number DAWG
    addendum). Otherwise `16A` is "corrected" into a number, which is
    exactly the rule 6 failure.

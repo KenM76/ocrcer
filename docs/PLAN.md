@@ -402,6 +402,21 @@ scope and is flagged as likely stale rather than silently revised without
 a basis — re-estimating is chunk-start work for whoever picks up chunk 9,
 not done here.
 
+**Staging** (`ARCHITECTURE.md` section 11, 2026-09-25, "Candidate chunk 9
+spec, part 1"). Chunk 9 is built as five sub-chunks, each with its own gate
+and each default-off until that gate passes:
+
+- 9a: the structure substrate (rules, ruled cells, word-to-cell assignment,
+  regions);
+- 9b: boxed forms;
+- 9c: tables;
+- 9d: statements;
+- 9e: prose.
+
+9b follows 9a directly. The structure layer never changes recognised text,
+so every sub-chunk's gate is a structure gate. The exit gate above is the
+union of the five.
+
 ## 2b. Chunk 10 detail — drawing primitives
 
 **Deferred behind chunk 9, operator priority, 2026-09-21** — see section
