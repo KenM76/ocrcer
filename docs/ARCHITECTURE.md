@@ -7177,3 +7177,100 @@ threshold ship labelled `guess` until they are fitted on finfilings-train.
 invariants intact. `ocrcer-llm` keeps no dependency on `ocrcer-core`. The
 pdfcer-facing adapter is added in `integration/pdfcer/` beside the existing
 one. Its arrival is the hand-off signal from the pdfcer-vendoring entry.
+
+
+### 2026-09-25 — Chunk 13 spec: real-scan prototypes by forced alignment
+
+Fixes how PLAN.md chunk 13 is built. Nothing earlier is withdrawn. Starts
+only after chunk 12's fitted params are merged, because alignment runs
+through the fitted segmenter.
+
+**Source.** The pages are the finfilings-train rows of
+`bench/splits/manifest.tsv` and nothing else: MultiFinBen EnglishOCR,
+Apache-2.0. Attribution goes in `meta` and `NOTICE`.
+- The aligner refuses any page not labelled `train` in the manifest, and a
+  test asserts that refusal.
+- Val, score, pages-cov and fixtures never feed a row.
+- The derived rows live under `D:/Dev/ExcludedPrivate/ocrcer` and are never
+  committed. They are reproducible from the script, the manifest and the
+  model version.
+
+**Alignment: forced, not agreement-only.** Keeping only glyphs the engine
+already reads correctly teaches it nothing. The glyphs it misreads or
+mis-cuts are the ones worth having.
+1. Run `ocrcer-core`'s pipeline to lines and words.
+2. Pair OCR lines to ground-truth lines by the same claim-cheapest-first
+   rule `line_matched_score` uses. The rule is factored out and shared,
+   never copied.
+3. Align words within a matched line by edit distance over word sequences.
+4. For each matched word pair, run a constrained search over that word's
+   segmentation lattice (the same `segment::build`):
+   - a path must consume the ground-truth string exactly, one class per
+     edge;
+   - an edge's cost is the matcher's standardised distance from the crop
+     to the nearest prototype of the required class;
+   - the path with the least total cost wins;
+   - ties go to the earliest cut, the section 8.2 rule.
+5. Crops and features come only from core's own `crop` and `extract`
+   (rule 4).
+
+The constrained search is a build-time algorithm, not a second decoder. It
+lives with the aligner in `ocrcer-bench` and calls core for every crop,
+distance and lattice.
+
+A ground-truth character outside the charset skips its whole word. A word
+with no path skips.
+
+**Filtering: mislabels poison kNN.** A wrong label is worse than a missing
+row, so there are three filters, in this order:
+- *Word gate.* The word's mean per-glyph aligned distance must be within a
+  bound. Its line's line-matched CER must be at most a bound. Both bounds
+  are `guess` and are fitted on train.
+- *Editing, after Wilson (1972).* Drop a candidate row when most of its k
+  nearest neighbours carry another label. The neighbours are drawn from
+  all candidate rows plus the rendered bank. This removes isolated
+  mislabels, but keeps a consistent cluster of real `e` crops that the
+  rendered bank would call `c`. Its neighbours are other real `e` crops,
+  and that cluster is the thing this chunk exists to add.
+- *Condensing, after Hart (1968).* Keep a surviving row only if the bank
+  as it stands, rendered rows plus rows already kept, misclassifies it or
+  matches it with a margin below a threshold. Rows are visited in manifest
+  order, then reading order.
+
+Hard caps apply: per class per page, and per class in total. Both are
+`guess` and must be stated in the measurement.
+
+Survey context: García, Derrac, Cano and Herrera (2012), *Prototype
+Selection for Nearest Neighbor Classification*, IEEE TPAMI.
+
+**Standardisation is frozen at the rendered rows.** `bank::build` today
+computes mean and SD from every row. Under this chunk, the moments come
+from the rendered rows only, and real rows are standardised with those
+constants. Why:
+- every existing distance stays exactly what it was;
+- chunk 12's fitted params and the calibration curve keep meaning what
+  they meant;
+- the A/B measures the new rows alone, not a re-scaled bank.
+
+`meta` records which rows fed the moments. This does not change the feature
+definition, so there is no `.ocrw` version bump.
+
+**Provenance.** Real rows carry a pseudo-face, "real-scan: MultiFinBen
+EnglishOCR train", with its licence. They also carry a source record (page
+key, bbox) in the build's side manifest. The `.ocrw` format is unchanged:
+rows are rows. `ocrcer-exporter` confirms that the face field and the
+`meta.faces` list carry the pseudo-face as they are.
+
+**Gates.**
+- finfilings-val beats the chunk-12 control on end-to-end and on
+  line-matched CER.
+- pages-cov ≤ control + 0.05, and the drawing Δ ≤ 0. Finance scans must
+  not cost the CAD pages.
+- The identifier-preservation test passes.
+- Confidence calibration (ECE) is re-measured on val, because new
+  neighbours move margins. If it is worse, the calibration curve is re-fit
+  on train before shipping.
+- Reported, not gated: bank rows added per class, file size, and wall time
+  on both corpora.
+
+The score set is read once, at the end.
