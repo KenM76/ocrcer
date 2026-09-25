@@ -704,8 +704,8 @@ fn run_write(build_sizes: &str, eval_sizes: &str, out: &str, local: bool) -> Res
     // guesses it shipped has labelled them nowhere anyone reads.
     match ocrcer_build::params::load(&dir) {
         Ok(ps) => {
-            let (m, a, g) = ocrcer_build::params::census(&ps);
-            println!("params  {} rows: {a} authored, {m} measured, {g} guess", ps.len());
+            let (m, a, g, ft) = ocrcer_build::params::census(&ps);
+            println!("params  {} rows: {a} authored, {m} measured, {ft} fitted, {g} guess", ps.len());
         }
         Err(e) => eprintln!("params census unavailable: {e}"),
     }

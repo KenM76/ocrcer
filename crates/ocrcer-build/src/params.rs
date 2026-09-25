@@ -21,6 +21,10 @@ pub enum Provenance {
     Authored,
     /// A plausible starting value and nothing more.
     Guess,
+    /// Chosen by a committed, deterministic script on a named training
+    /// split and confirmed on a disjoint validation split; the row's
+    /// description names both.
+    Fitted,
 }
 
 impl Provenance {
@@ -29,6 +33,7 @@ impl Provenance {
             "measured" => Provenance::Measured,
             "authored" => Provenance::Authored,
             "guess" => Provenance::Guess,
+            "fitted" => Provenance::Fitted,
             _ => return None,
         })
     }
@@ -38,6 +43,7 @@ impl Provenance {
             Provenance::Measured => "measured",
             Provenance::Authored => "authored",
             Provenance::Guess => "guess",
+            Provenance::Fitted => "fitted",
         }
     }
 }
@@ -148,9 +154,14 @@ pub fn build(params: &[Param]) -> Result<Table, String> {
 ///
 /// The number a report quotes when it says what fraction of the pipeline is
 /// still guessed. Reporting it is the point of the provenance column.
-pub fn census(params: &[Param]) -> (usize, usize, usize) {
+pub fn census(params: &[Param]) -> (usize, usize, usize, usize) {
     let count = |p: Provenance| params.iter().filter(|q| q.provenance == p).count();
-    (count(Provenance::Measured), count(Provenance::Authored), count(Provenance::Guess))
+    (
+        count(Provenance::Measured),
+        count(Provenance::Authored),
+        count(Provenance::Guess),
+        count(Provenance::Fitted),
+    )
 }
 
 /// Fails when the file and the compiled-in defaults disagree.
@@ -199,8 +210,8 @@ mod tests {
     fn the_authored_file_parses() {
         let p = load(&tables::model_dir()).expect("params.tsv parses");
         assert!(p.len() >= 30, "only {} rows", p.len());
-        let (measured, authored, guess) = census(&p);
-        assert_eq!(measured + authored + guess, p.len());
+        let (measured, authored, guess, fitted) = census(&p);
+        assert_eq!(measured + authored + guess + fitted, p.len());
         // Not an assertion about the right proportion — only that the column
         // is being used, so a report of it means something.
         assert!(guess > 0 && authored > 0);
