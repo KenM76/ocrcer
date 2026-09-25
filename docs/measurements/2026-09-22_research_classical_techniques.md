@@ -3266,3 +3266,90 @@ reads px per em from the recovered x-height.
 
 **Recorded now:** the §8.1 clarification above (a §11 entry the same day).
 The change on the call side belongs to pdfcer, in pdfcer's own session.
+
+## Addendum 2026-09-25: red stamps over invoice text — the engine sees luma, which keeps a stamp as ink (Tesseract and pdfcer source read, scanner practice read; nothing measured)
+
+Accounting paper carries rubber stamps: PAID, RECEIVED, POSTED, ENTERED,
+usually red or blue, often across the total. This addendum asks what a
+stamp becomes by the time the engine sees it.
+
+**What reaches the engine (pdfcer read, not run).** pdfcer converts each
+rendered RGBA page to Rec.601 luma, `(r*299 + g*587 + b*114) / 1000`,
+before calling `recognize` (`pdfcer-cli`, around line 14744). The
+`OcrEngine` input is 8-bit grey. The engine never sees colour, so any
+colour decision is the caller's.
+
+**What luma does to a stamp (reasoned from §6's Sauvola, window 25,
+k 0.34, R 128).**
+- A stamp red of (200, 30, 40) has luma 82. A blue stamp of (40, 60, 180)
+  has luma 68. Both are ink by any threshold, so the stamp enters
+  segmentation as large, rotated components, and text it touches merges
+  into them.
+- On flat white paper, Sauvola's threshold is m(1 − k) ≈ 168. A grey
+  above about 0.66 of the local mean becomes paper.
+
+**What Tesseract does (`src/ccstruct/otsuthr.cpp` and
+`src/ccmain/thresholder.cpp`, read 2026-09-25).**
+- The default method (legacy Otsu) thresholds each colour channel
+  separately.
+- A pixel is black if any informative channel is on its foreground side.
+  That is a union: coloured ink of any hue is kept, stamps included.
+- The Leptonica Otsu and Sauvola methods convert to grey first. Tesseract
+  does not drop stamps either.
+
+**Colour dropout (read: drop-out ink practice, scanner dropout settings,
+patent US7853074B2).** Forms and invoice scanners remove a chosen ink
+colour at capture. The patent keeps dark neutral text by setting a
+pixel's grey to max(R, G, B). Two transforms, both reasoned:
+- max(R, G, B). Stamp red (200, 30, 40) becomes 200 and the blue stamp
+  becomes 180. Both are above 168, so both become paper. A dark stamp,
+  such as (150, 0, 0), stays ink. Black text survives. Where it overlaps
+  the stamp, the inks mix subtractively and stay dark in every channel,
+  so the overlapped text survives too.
+- The red channel alone. This drops red, orange and pink, and keeps blue
+  as ink.
+
+**Why dropout cannot be a default: red negatives.** Spreadsheet number
+formats print negative amounts in red.
+- Under max(R, G, B) or the red channel, (255, 0, 0) becomes 255. The
+  number is erased, not misread.
+- A missing amount on a financial page is invisible and costly, the same
+  class of failure as rule 6. Coloured headings and logos are also at
+  risk. Navy text (max about 90) survives.
+
+**Three designs, none chosen.**
+1. pdfcer offers a colour mode: luma by default, dropout as an opt-in for
+   a batch known to carry stamps, with the red-negative warning. No
+   engine change. This is pdfcer's call.
+2. The engine takes colour and decides per component. A text-sized
+   coloured component on a text line is content; one that is large,
+   rotated or off-line is a stamp. This changes the binding's input and
+   adds a stage, an architecture decision this addendum does not make.
+3. Read both luma and dropout, and keep the better line by confidence. It
+   costs twice the time.
+
+**Queued, not specced.**
+- A synthetic reading on finfilings-train pages only. None of our scored
+  corpora has stamps with truth.
+- Render each page in RGB. Overlay a stamp: a clean face, the word PAID
+  or RECEIVED, rotated ±15°, multiply blend, a seeded position over the
+  page's lower half. Stamp colours (200, 30, 40), (150, 0, 0) and
+  (40, 60, 180) are guesses.
+- Arms:
+  - S0: no stamp, luma (the control);
+  - S1: stamp, luma;
+  - S2: stamp, max(R, G, B);
+  - S3: stamp, red channel.
+- A collateral arm with no stamp: recolour the negative amounts
+  (parenthesised or minus-signed tokens) to (255, 0, 0). Count the
+  characters lost under each transform.
+- Order: behind the 12b fold, 16b and the nearest-neighbour and fax arms.
+- If S1 is close to S0, stamps cost little and nothing changes.
+- If S2 recovers most of S1's loss, design 1 goes to pdfcer as an opt-in,
+  with the collateral figure as its warning, and design 2 becomes a §11
+  candidate.
+
+Sources: https://github.com/tesseract-ocr/tesseract/blob/main/src/ccstruct/otsuthr.cpp,
+https://github.com/tesseract-ocr/tesseract/blob/main/src/ccmain/thresholder.cpp,
+https://patents.google.com/patent/US7853074B2/en,
+https://en.wikipedia.org/wiki/Drop-out_ink.
