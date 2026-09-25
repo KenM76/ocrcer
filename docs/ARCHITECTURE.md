@@ -7274,3 +7274,91 @@ rows are rows. `ocrcer-exporter` confirms that the face field and the
   on both corpora.
 
 The score set is read once, at the end.
+
+
+### 2026-09-25 — Candidate chunk 13b spec: per-page adaptive prototypes
+
+This is a spec for the ROADMAP candidate. It is not a schedule. It starts
+only after chunk 13 has been measured, because both chunks attack the same
+errors and must be measured one at a time to keep attribution.
+
+**The idea.** Recognise the page once. Promote the glyphs of words that are
+almost certainly correct into a per-page set of prototype rows, then read
+the remaining words again against the bank plus those rows. This is
+Tesseract's two-pass adaptive classifier (Smith, ICDAR 2007, §7). Smith
+notes that it uses "the same features and classifier as the static
+classifier". That is also rule 4's requirement here: the same extractor,
+the same matcher, the same standardised distance, and a row set that is
+only longer.
+
+**Selection is the whole design.** Kae, Huang, Doersch and Learned-Miller
+(CVPR 2010) measured the alternative directly. Training on words picked by
+thresholding Tesseract's confidence cut character error by 9.5% and made 21
+of 56 documents worse. Their "clean list" cut it by 34.1% and made 10 of 56
+worse. So a word is promoted only if it passes all of the following:
+1. Its pass-1 reading is a lexicon word, and it is not identifier-shaped.
+2. No lexicon word at Hamming distance 1 from it appears elsewhere on the
+   page. This is their "aggressive" list: about 18% of words, with at most
+   one error per document in their data.
+3. Every glyph in the word passes the consistency check:
+   - Take the glyph's M nearest glyphs on the same page, using the
+     matcher's distance and pass-1 labels. Break ties by distance, then by
+     reading order.
+   - Walk them nearest first. The glyph is dominated by class c once
+     count(c)/(i+1) > θ at the i-th neighbour.
+   - The glyph passes only if it is dominated by its own pass-1 label.
+
+M = 20 and θ = 0.66 are taken from the paper, labelled `authored`, and go
+on the fitting list.
+
+Calibrated confidence is not a selection criterion. The measurement above
+is the reason.
+
+**Rule 6 holds.** The lexicon only decides which glyphs are trusted as
+samples. It never touches how a word is read in either pass. Words outside
+the lexicon, and every identifier, are read against the enlarged row set
+exactly like any other word.
+
+The price is that digits and identifier glyphs never enter through this
+route, and that matters for CAD pages. A selection rule for them, such as
+the consistency check alone with a stricter θ, is a follow-up with its own
+measurement. It is not part of 13b.
+
+**Known failure.** A font in which one letter is always misread as another
+passes the consistency check, because the misreadings agree with each
+other. The paper names this case. Rules 1 and 2 are what catch it, since a
+word with a systematic substitution is rarely a lexicon word. That is why
+they are not optional.
+
+**Mechanics.**
+- Page rows live in a per-page overlay that the matcher searches alongside
+  the bank. They are standardised with the bank's frozen moments (see the
+  chunk 13 entry), so bank distances do not move.
+- A class's page rows are consulted only once it has at least
+  `adapt.min_class_samples` of them.
+- Each class holds at most `adapt.max_rows_per_class` page rows, kept in
+  reading order. Both limits are `guess`.
+- Pass 2 re-reads every word not promoted. Promoted words keep their
+  pass-1 reading.
+- Page rows join the nearest-rival margin like any other row.
+- The overlay is discarded at the end of the page. Nothing persists between
+  pages or calls.
+
+The stage lives in `ocrcer-core`: deterministic, allocation-bounded, with
+no new dependencies, and wasm-clean. `adapt.enabled` defaults to false
+until the gates pass, so fixtures and pdfcer are unchanged until then. A
+new fixture per page pins the promoted-word list, and blessing it is a
+deliberate act under section 8.2.
+
+**Cost.** The consistency check is O(k·n) per page, for k candidate glyphs
+against n page glyphs, plus a second decode of the words that were not
+promoted. Wall time is reported for both corpora.
+
+**Gates.**
+- The usual gates: finfilings-val beats control on both metrics;
+  pages-cov ≤ control + 0.05 with drawing Δ ≤ 0; identifier test; wasm
+  build; workspace tests.
+- ECE is re-measured with adaptation on.
+- Also reported, as prominently as the mean: the count of val pages whose
+  CER got worse. The paper's own result shows that a mean gain can hide a
+  fifth of documents getting worse.
