@@ -2852,3 +2852,76 @@ Nothing is built before that ceiling is known.
 **Not measured:** OCRcer's error rate on CUSIPs. Also not measured: the
 SIN's Luhn check (third-party sources only) and any check digit on the
 CRA business number (none found in an official source).
+
+## Addendum 2026-09-25: store prototypes dimension-major in blocks of 64 (PDX), which keeps each distance's summation order
+
+**Why.** The previous addendum reorders dimensions so that a losing
+distance is abandoned sooner. A SIGMOD 2025 paper finds that on the
+ordinary row-per-vector layout, such pruning can lose to a plain scan, and
+that the memory layout is what restores its benefit. That fits the pivot
+report's reading: 29% fewer dimensions summed, but only 3–7% less wall
+time. Fitting is not proof, and the cause is still not measured.
+
+**PDX** (Kuffo, Krippner and Boncz, "PDX: A Data Layout for Vector
+Similarity Search", SIGMOD 2025, arXiv 2503.04422; abstract and body read
+2026-09-25):
+- *Layout.* Vectors are stored in blocks, dimension-major within a block.
+  "Processing 64 vectors at-a-time" was fastest on NEON, AVX2 and AVX512.
+- *Kernel.* Search runs dimension by dimension over all vectors of a block
+  at once, in tight loops. The paper says it uses "only … scalar code that
+  gets auto-vectorized", and it beats SIMD-optimised distance kernels on
+  the row layout by 40% on average.
+- *Pruning.*
+  - PDX-BOND prunes on the partial distance alone, against the current
+    k-th best exact distance, and "does not have any recall trade-off".
+  - Dimensions are visited by how far each dimension's mean is from the
+    query. That is the UCR ordering again.
+  - A warm-up fetches 2, then 4, then 8 dimensions before pruning, and
+    survivors are tracked by count and position within the block.
+  - Reported: 2–7× for pruning methods once moved onto PDX, and 2.5×
+    over FAISS on exact search, averaged over datasets that include 16-
+    and 50-dimension ones.
+
+**How this maps onto OCRcer's matcher** (reading of `match.rs`, not a
+measurement):
+1. **Each prototype's sum is one serial chain today.** The loop adds `f64`
+   terms one after another, so every addition waits on the previous one.
+   That is the whole of `acc`'s data dependency.
+   - Arithmetic only: about 2.8 ns per dimension is about 11 cycles at
+     4 GHz, several times one `f64` add's latency. So the chain is not the
+     whole story either. This is a reason to measure, not a finding.
+2. **Dimension-major blocks keep every prototype's summation order.**
+   - With the block's dimensions visited 0, 1, 2, … as today, each
+     prototype still adds its own terms in file order. Its `f64` sum is
+     therefore bit-identical to today's, by construction. There is no
+     re-sum and no slack, unlike reordering.
+   - The 64 prototypes in a block are 64 independent chains, which gives
+     the processor, and the compiler's auto-vectoriser, work in parallel.
+   - It needs no `unsafe` and no intrinsics, so rule 3 holds, and it
+     builds for wasm32 unchanged.
+3. **Pruning stays exact under the argument OCRcer already uses.** Inside
+   a block, the ceiling is a snapshot from the block's start. That
+   snapshot is looser than the running ceiling. The dense-page speed
+   report shows a looser snapshot never cuts a true top-m winner. After
+   the block, the per-prototype acceptance test runs in the block's visit
+   order against the running ceiling, exactly as now.
+4. **Blocks follow the pivot order.** On the pivot branch, a class's
+   prototypes are already sorted by distance to the pivot. A block of 64
+   consecutive ones carries a range of that distance, so a whole block can
+   be skipped by the same triangle bound the class uses.
+5. **Memory.** The layout is built at load, like the pivot index, and the
+   file format does not change. Whether it replaces the row layout or
+   sits beside it is a spec question. Beside it adds about 21 MB at `f32`
+   (arithmetic: 50,095 × 107 × 4 bytes).
+
+**What this changes in the queued follow-up** (backlog, "reordered early
+abandon"):
+- Measure the layout **first**. It is byte-identical by construction, and
+  it isolates the memory effect the pivot report could not.
+- Add the dimension reordering on top, as the addendum above specifies,
+  with survivors re-summed in file order.
+- Both keep the pivot index's four gates. Time is taken on captured
+  queries, pinned to one core.
+
+**Not measured:** any of this on OCRcer. The paper's speed-ups come from
+embedding benchmarks with different dimension counts and data.
