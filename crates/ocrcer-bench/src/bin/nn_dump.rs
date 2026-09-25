@@ -41,9 +41,19 @@
 //! output is read back against a recomputed mask.
 //!
 //! For every qualifying real crop this also records the raw prototype
-//! matcher's top-1 (`ocrcer_core::match::nearest` against the same model,
-//! the same extracted vector) so the report can compare matcher vs. network
-//! on identical inputs.
+//! matcher's **top-`TOPK`** (`ocrcer_core::match::nearest` against the same
+//! model, the same extracted vector), not just top-1 -- Round 2
+//! (`docs/measurements/2026-09-25_nn_probe.md` "Round 2", task item 3) needs
+//! the matcher's runner-up classes and distances to build an oracle and a
+//! fusion score, and re-running the matcher a second time in Python would
+//! violate the "one extractor, one matcher" rule (`CLAUDE.md` rule 4) just
+//! as surely as re-deriving features would.
+//!
+//! Round 2 also dumps the matcher's own top-1 on `bank_val` (a separate
+//! `bank_val_top1.u16`, val rows only -- train rows never call the matcher,
+//! since nothing downstream reads it there) so the report can tell
+//! "the network is undertrained" from "this split is hard for every
+//! classifier, matcher included" (task item 1).
 //!
 //! # Output
 //!
@@ -52,14 +62,19 @@
 //! `finfilings`, `finfilings-val`, `bench/pages-cov` or any fixture):
 //!
 //! - `classes.tsv` -- a copy of the authored charset, for Python's grouping.
-//! - `bank_train_{G,X,y,meta}.*`, `bank_val_{G,X,y,meta}.*`
-//! - `real_{G,X,y,top1,meta}.*`
-//! - `summary.json` -- every count this run measured.
+//! - `bank_train_{G,X,y,meta}.*`, `bank_val_{G,X,y,meta}.*`,
+//!   `bank_val_top1.u16` (Round 2).
+//! - `real_{G,X,y,top1,topk_class,topk_dist,meta}.*` (`topk_class`/`topk_dist`
+//!   are Round 2; `top1` is kept, == `topk_class[:, 0]`).
+//! - `summary.json` -- every count this run measured, plus `matcher_topk`.
 //!
 //! `G` is 32*32 `f32` (row-major), `X` is 107 `f32` (standardised with the
 //! loaded model's own mean/sd -- the file's constants, never a compiled-in
-//! copy, per `match.rs`'s own contract), `y`/`top1` are `u16` class indices
-//! (`0xFFFF` sentinel for "no match").
+//! copy, per `match.rs`'s own contract), `y`/`top1`/`topk_class` are `u16`
+//! class indices (`0xFFFF` sentinel for "no match"; `topk_class` rows are
+//! `TOPK`-wide and sentinel-padded on the right when the matcher returned
+//! fewer than `TOPK` candidates). `topk_dist` rows are `TOPK`-wide `f32`,
+//! sentinel-padded with `+inf`, same order as `topk_class`.
 //!
 //! # Usage
 //!
@@ -85,6 +100,10 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 const NONE_CLASS: u16 = 0xFFFF;
+/// Round 2 (`docs/measurements/2026-09-25_nn_probe.md` "Round 2"): the
+/// matcher's top-k, not just top-1, dumped alongside real crops so Python
+/// can build oracle/fusion numbers without a second Rust pass.
+const TOPK: usize = 5;
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
@@ -159,7 +178,8 @@ fn main() -> ExitCode {
          \"bank_sizes\": {:?},\n  \"page_stride\": {},\n  \"pages_read\": {},\n  \
          \"lines_total\": {},\n  \
          \"lines_qualifying\": {},\n  \"words_total\": {},\n  \"words_qualifying\": {},\n  \
-         \"chars_dumped\": {},\n  \"chars_out_of_charset\": {},\n  \"chars_bad_crop\": {}\n}}\n",
+         \"chars_dumped\": {},\n  \"chars_out_of_charset\": {},\n  \"chars_bad_crop\": {},\n  \
+         \"matcher_topk\": {}\n}}\n",
         bank_summary.train_rows,
         bank_summary.val_rows,
         bank_summary.faces,
@@ -173,6 +193,7 @@ fn main() -> ExitCode {
         real_summary.chars_dumped,
         real_summary.chars_out_of_charset,
         real_summary.chars_bad_crop,
+        TOPK,
     );
     if let Err(e) = std::fs::write(out_dir.join("summary.json"), &summary) {
         return fail(&format!("writing summary.json: {e}"));
@@ -283,6 +304,15 @@ fn dump_bank(model: &Model, classes: &[tables::Class], out_dir: &Path) -> Result
     let mut val = Sink3::open(out_dir, "bank_val")?;
     let mut train_rows = 0u64;
     let mut val_rows = 0u64;
+    // Round 2: the matcher's own top-1 on the identical render-val rows the
+    // network is scored on, so the report can tell "network undertrained"
+    // from "this split is hard for every classifier" (task item 1). Train
+    // rows never call the matcher -- nothing downstream needs it and it
+    // would roughly quadruple this dump's wall time for no report value.
+    let mut val_top1 = BufWriter::new(
+        File::create(out_dir.join("bank_val_top1.u16"))
+            .map_err(|e| format!("creating bank_val_top1.u16: {e}"))?,
+    );
 
     for (fi, renderer) in renderers.iter().enumerate() {
         for class in classes {
@@ -306,6 +336,12 @@ fn dump_bank(model: &Model, classes: &[tables::Class], out_dir: &Path) -> Result
                     let is_val = split_fraction(seed) < 0.2;
                     if is_val {
                         val.write(&grid, &raw_or_std(&xv), class.index, &meta)?;
+                        let m1 = r#match::nearest(model, &raw, 1, true)
+                            .and_then(|m| m.top())
+                            .map_or(NONE_CLASS, |c| c.class);
+                        val_top1
+                            .write_all(&m1.to_le_bytes())
+                            .map_err(|e| format!("writing bank_val_top1.u16: {e}"))?;
                         val_rows += 1;
                     } else {
                         train.write(&grid, &raw_or_std(&xv), class.index, &meta)?;
@@ -558,7 +594,7 @@ fn dump_real(
     let train_rows: Vec<&splits::ManifestRow> =
         all_train_rows.into_iter().step_by(stride).collect();
 
-    let mut sink = Sink4::open(out_dir, "real")?;
+    let mut sink = Sink5::open(out_dir, "real")?;
 
     let mut s = RealSummary {
         pages_read: 0,
@@ -675,14 +711,23 @@ fn dump_real(
                         GlyphInput { ink: &ink, width: rw, height: rh, baseline_dy, x_height: dline.x_height };
                     let (raw, grid) = extract_with_grid(&input);
                     let xv = model.standardise(&raw);
-                    let top1 = r#match::nearest(model, &raw, 1, true)
-                        .and_then(|m| m.top())
-                        .map_or(NONE_CLASS, |c| c.class);
+                    // Round 2 (task item 3, fusion): top-k, not just top-1,
+                    // so Python can build oracle/fusion numbers from the
+                    // matcher's own candidate list without a second dump.
+                    let mtch = r#match::nearest(model, &raw, TOPK, true);
+                    let mut topk_class = [NONE_CLASS; TOPK];
+                    let mut topk_dist = [f32::INFINITY; TOPK];
+                    if let Some(m) = &mtch {
+                        for (i, c) in m.best.iter().take(TOPK).enumerate() {
+                            topk_class[i] = c.class;
+                            topk_dist[i] = c.distance;
+                        }
+                    }
                     let meta = format!(
                         "{}\t{}\t{}\t{}\t{}\t{}",
                         row.row_id, stem, line_idx, word_idx, char_idx, tch as u32
                     );
-                    sink.write(&grid, &xv, class_idx, top1, &meta)?;
+                    sink.write(&grid, &xv, class_idx, &topk_class, &topk_dist, &meta)?;
                     s.chars_dumped += 1;
                 }
             }
@@ -692,25 +737,34 @@ fn dump_real(
     Ok(s)
 }
 
-struct Sink4 {
+struct Sink5 {
     g: BufWriter<File>,
     x: BufWriter<File>,
     y: BufWriter<File>,
+    /// Round 1's single `top1.u16`, kept for anyone still reading it
+    /// (== `topk_class[:, 0]`, written from the same candidate list).
     top1: BufWriter<File>,
+    /// Round 2: `TOPK` class ids per row (`NONE_CLASS` sentinel-padded).
+    topk_class: BufWriter<File>,
+    /// Round 2: `TOPK` distances per row (`f32::INFINITY` sentinel-padded),
+    /// same order as `topk_class`.
+    topk_dist: BufWriter<File>,
     meta: BufWriter<File>,
 }
 
-impl Sink4 {
-    fn open(dir: &Path, prefix: &str) -> Result<Sink4, String> {
+impl Sink5 {
+    fn open(dir: &Path, prefix: &str) -> Result<Sink5, String> {
         let open = |name: &str| -> Result<BufWriter<File>, String> {
             let p = dir.join(format!("{prefix}_{name}"));
             File::create(&p).map(BufWriter::new).map_err(|e| format!("creating {}: {e}", p.display()))
         };
-        Ok(Sink4 {
+        Ok(Sink5 {
             g: open("G.f32")?,
             x: open("X.f32")?,
             y: open("y.u16")?,
             top1: open("top1.u16")?,
+            topk_class: open("topk_class.u16")?,
+            topk_dist: open("topk_dist.f32")?,
             meta: open("meta.tsv")?,
         })
     }
@@ -720,7 +774,8 @@ impl Sink4 {
         grid: &[[f32; 32]; 32],
         xv: &[f32; FEATURE_DIMS],
         y: u16,
-        top1: u16,
+        topk_class: &[u16; TOPK],
+        topk_dist: &[f32; TOPK],
         meta_row: &str,
     ) -> Result<(), String> {
         for row in grid {
@@ -732,7 +787,13 @@ impl Sink4 {
             self.x.write_all(&v.to_le_bytes()).map_err(|e| e.to_string())?;
         }
         self.y.write_all(&y.to_le_bytes()).map_err(|e| e.to_string())?;
-        self.top1.write_all(&top1.to_le_bytes()).map_err(|e| e.to_string())?;
+        self.top1.write_all(&topk_class[0].to_le_bytes()).map_err(|e| e.to_string())?;
+        for &c in topk_class {
+            self.topk_class.write_all(&c.to_le_bytes()).map_err(|e| e.to_string())?;
+        }
+        for &d in topk_dist {
+            self.topk_dist.write_all(&d.to_le_bytes()).map_err(|e| e.to_string())?;
+        }
         writeln!(self.meta, "{meta_row}").map_err(|e| e.to_string())?;
         Ok(())
     }
