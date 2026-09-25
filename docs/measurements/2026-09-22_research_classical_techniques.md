@@ -2904,7 +2904,9 @@ measurement):
    snapshot is looser than the running ceiling. The dense-page speed
    report shows a looser snapshot never cuts a true top-m winner. After
    the block, the per-prototype acceptance test runs in the block's visit
-   order against the running ceiling, exactly as now.
+   order against the running ceiling.
+   - Classes outside the top m may record different bests, as they already
+     may on the pivot branch. Nothing reads them.
 4. **Blocks follow the pivot order.** On the pivot branch, a class's
    prototypes are already sorted by distance to the pivot. A block of 64
    consecutive ones carries a range of that distance, so a whole block can
