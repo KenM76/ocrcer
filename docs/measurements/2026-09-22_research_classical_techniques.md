@@ -2927,3 +2927,115 @@ abandon"):
 
 **Not measured:** any of this on OCRcer. The paper's speed-ups come from
 embedding benchmarks with different dimension counts and data.
+
+## Addendum 2026-09-25: symbols drawings print that the charset cannot emit — GD&T and hole callouts (standards and Unicode read; nothing measured)
+
+**Why.** `CLAUDE.md` rule 7 names CAD drawing text as the domain. The
+drawings in that domain carry symbols the 187-class charset has no class
+for:
+- the characteristic symbol at the head of every feature control frame;
+- the modifiers inside a frame;
+- the counterbore, countersink and depth marks in hole callouts.
+
+The 2026-09-22 ⌀ entry in §11 put the argument this way: "a class the
+charset does not name is a character the engine cannot emit". This is
+in-domain work, not scope creep. Chunk 10's "no symbol recognition" is about
+the vector-primitive extractor, not the charset.
+
+**The inventory.** Names are from `UnicodeData.txt` (unicode.org, read
+2026-09-25). Drafting meanings are from Wikipedia's *Geometric dimensioning
+and tolerancing* page (read 2026-09-25), which cites ASME Y14.5 and ISO 1101.
+None of the 27 codepoints is in `model/charset.tsv` (checked by script).
+
+| Group | Symbol, meaning, codepoint (Unicode name) |
+|---|---|
+| Form | ⏤ straightness U+23E4 (STRAIGHTNESS); ⏥ flatness U+23E5 (FLATNESS); ○ circularity U+25CB (WHITE CIRCLE); ⌭ cylindricity U+232D (CYLINDRICITY) |
+| Profile | ⌒ line U+2312 (ARC); ⌓ surface U+2313 (SEGMENT) |
+| Orientation | ⟂ perpendicularity U+27C2 (PERPENDICULAR); ∠ angularity U+2220 (ANGLE); ∥ parallelism U+2225 (PARALLEL TO) |
+| Location | ⌖ position U+2316 (POSITION INDICATOR); ◎ concentricity U+25CE (BULLSEYE); ⌯ symmetry U+232F (SYMMETRY) |
+| Runout | ↗ circular U+2197 (NORTH EAST ARROW); ⌰ total U+2330 (TOTAL RUNOUT) |
+| Modifiers | Ⓕ free state U+24BB; Ⓛ LMC U+24C1; Ⓜ MMC U+24C2; Ⓟ projected zone U+24C5; Ⓢ RFS U+24C8; Ⓣ tangent plane U+24C9 |
+| Callouts | ⌴ counterbore U+2334 (COUNTERBORE); ⌵ countersink U+2335 (COUNTERSINK); ⌲ U+2332 (CONICAL TAPER); ⌳ U+2333 (SLOPE); ⌱ U+2331 (DIMENSION ORIGIN) |
+| By convention only | ↧ depth U+21A7 (DOWNWARDS ARROW FROM BAR); □ square U+25A1 (WHITE SQUARE) |
+
+- For the last row, Unicode's names do not state the drafting meaning. The
+  mapping is recalled, not read, and it needs a source before anything is
+  authored on it.
+- A summariser reading Wikipedia's *Miscellaneous Technical* page named
+  U+2316 TELEPHONE RECORDER and U+232D BENZENE RING. Both are one codepoint
+  off. The UCD file is what this table uses. This is the same lesson as the
+  CUSIP addendum: a summariser's reading is not a source.
+
+**What `ocrs` does.** `ocrs` 0.12.2's `DEFAULT_ALPHABET` (`src/lib.rs`, read
+from the cargo registry) is printable ASCII only. A caller can pass its own
+alphabet. A grep of pdfcer's crates for `alphabet` finds no override. So
+`ocrs` as pdfcer runs it most likely emits none of these symbols, and not ⌀,
+°, ± or × either. That is a coverage lead for OCRcer that the head-to-head
+does not score today, because no scoring page is a drawing. Not measured.
+
+**The structure these symbols sit in** (for chunk 9a, from the same page;
+geometry proportions not read):
+- A feature control frame is one row of small ruled compartments: the
+  symbol, then the tolerance (often ⌀ plus a value plus modifiers), then up
+  to three datum letters.
+  - A composite frame stacks two rows under one symbol compartment, which is
+    a spanning cell.
+  - This is exactly the region-of-cells shape the 9a cell walk emits.
+- A basic dimension is a number in a closed rectangle: a one-cell region.
+- A datum feature is a boxed letter attached to a triangle.
+- **Risk, not measured:** on a drawing, part geometry is also ruled lines.
+  The cell walk will close cells out of outlines and assign dimension text
+  to them. What 9a's regions mean on a drawing page has not been specified
+  or checked. Before pdfcer uses regions for reading order on drawings, that
+  needs a synthetic drawing fixture.
+
+**The expensive failure, reasoned (not measured).** Any out-of-charset
+symbol is still matched against 187 classes. Some nearest shapes are digits:
+- ○ against `0`/`O`/`o`;
+- ⟂ against `1`/`L`;
+- ∥ against `11`/`ll`;
+- ⏤ against `-`/`—`;
+- ⌵ against `v`/`V`;
+- ⌴ against `u`/`U`.
+
+`○ 0.05` read as `0 0.05`, or `⟂ 0.1 A` as `1 0.1 A`, changes a number on a
+drawing. If the margin is high, confidence says nothing is wrong. That is
+rule 6's failure in a different place, and it is the question that decides
+whether the charset protocol is warranted.
+
+**Cheaper steps first, in order** (the charset-change protocol, step 1):
+1. **Probe what the engine emits today.**
+   - Render short callout lines with each symbol in a licence-clean face
+     that draws it: `○ 0.05`, `⟂ 0.1 A`, `⌴ ⌀11 ↧6.4`, `⌖ ⌀0.2 Ⓜ A B C`.
+   - Read the top-1 class, the margin and the reported confidence for each
+     symbol.
+   - This is a probe, not a scoring set, and it fits nothing. Run it
+     light, one process, not alongside a heavy run.
+   - If every symbol comes back as low confidence, rule 5's honest path
+     already holds, and the charset change can wait for demand.
+   - If any comes back as a confident digit or letter, that is the measured
+     accuracy problem the protocol requires.
+2. **Coverage census** (`ocrcer-glyphs`). Which licence-clean faces draw
+   these 27 codepoints? Candidates, none checked:
+   - Noto Sans Symbols;
+   - Noto Sans Math and STIX Two Math (both OFL);
+   - DejaVu Sans;
+   - the authored ISO 3098 face.
+
+   The ⌀ audit found that the CAD-vendor faces which draw them are barred
+   by rule 2. If coverage is thin, authoring the shapes is the answer, as it
+   was for ⌀.
+3. **Only then, the charset change.** Append the classes after class 186,
+   so no existing index moves. Then:
+   - the §2 edit, the `.ocrw` `version` bump and the meta extractor-identifier
+     bump;
+   - a full bank rebuild;
+   - bigram category backoff rows and confusion rows for the look-alikes
+     above;
+   - lexicon suppression inside frames (rule 6), because frame contents are
+     identifiers, not words;
+   - a §11 entry.
+
+**Not measured:** any recognition behaviour on these symbols, how often
+they occur (there is no licence-clean drawing corpus to count them in), face
+coverage, and how `ocrs` behaves with pdfcer's actual parameters.
