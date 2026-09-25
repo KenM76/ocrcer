@@ -2205,3 +2205,103 @@ the synthetic structure fixtures cannot be.
 **Not measured:** any GriTS figure on any OCRcer output (no structure layer
 exists); the gap between the heuristic's bounds on financial tables;
 FinTabNet's page count or annotation format, which neither README states.
+
+## Addendum 2026-09-25: the row hierarchy of a financial statement — ReMine's rectangle rules, and why they decide which cells should foot
+
+**Source.** Chen, Chiticariu, Danilevsky, Evfimievski and Sen (IBM
+Research), "A Rectangle Mining Method for Understanding the Semantics of
+Financial Tables", ICDAR 2017. Read 2026-09-25 from the author's PDF.
+
+**The task.** In a statement, a row's meaning comes from rows above it
+that do not overlap it. "Restricted cash 94" sits under "Current", which
+sits under "ASSETS". Recovering those parent rows is a tree over rows.
+
+**The method (ReMine).** Each row gets a few features, and each feature
+has an order for "can be a parent of":
+
+- bold ≻ not bold;
+- smaller indent ≻ larger indent;
+- not blank ≻ blank;
+- capitalised ≻ not capitalised;
+- section header ≻ not a section header. A section header is a row with
+  a label and empty data cells.
+- A total row may never take children. It is detected by a label starting
+  with "total".
+
+Rows start as one-row rectangles. The algorithm then repeats two steps
+until nothing changes:
+
+1. merge adjacent rectangles whose features are equal;
+2. attach a rectangle to the one above it when that one is strictly
+   greater in the order.
+
+It also uses two whole-rectangle rules:
+
+- **Ended section.** A section that closes with its paired total row
+  stops growing. The pair is found by the longest common subsequence
+  between the header label and the total label, against a threshold.
+- **Empty section.** A lone header row takes the rows below it as
+  children.
+
+**Their numbers.** These are theirs, leave-one-company-out, on 72 tables
+from six companies' 2015 Q3 statements:
+
+| Measure | ReMine | SVM pair classifier |
+|---|---|---|
+| Direct parent-child F1 | 84.11 | 68.42 |
+| Transitive F1 | 87.90 | 60.89 |
+| Transitive F1, ICDAR 2013, trained out of domain | 86.90 | — |
+
+The global section rules are worth about 5 points of transitive F1.
+
+Error analysis:
+
+- The hand-written order is the main source of errors.
+- Capitalisation hurts, because acronyms such as "EBITDA" trigger it.
+  Transitive F1 rose to 88.94 without it.
+- "Starts with total" misses "Net ..." totals.
+
+**What an image engine has that their input did not.** Their footnote 1
+says they ignore "lines and spaces, often unavailable in the extracted
+table format", because they worked from PDF converted to HTML. OCRcer sees
+the page, so it has three signals ReMine went without:
+
+- the accounting rules above totals (single rule: subtotal; double rule:
+  grand total), which `PLAN.md` §2a already lists;
+- real indent in pixels, not an HTML approximation;
+- stroke weight, which the page shows directly. No bold field is exposed
+  today; that is a gap for chunk 9.
+
+**Why this matters for footing.** The footing addendum above found exact
+foots on 3% of train pages. It listed "totals of subtotals" as something
+its flat scan misses. A row tree answers exactly that: a total row's
+addends are its section's children, and the subtotals are those children's
+own total rows. So the tree decides which cells should foot. Footing then
+works in two ways:
+
+- as a check on the tree: a section whose children sum to its total
+  confirms the section boundary;
+- as the rule-5-safe flag already recommended, when they do not.
+
+**What that suggests for chunk 9 (candidate, not specified).**
+
+- Build the row tree with ReMine's two-step merge and attach, using an
+  authored partial order: bold, indent, blank data, section header, rule
+  above.
+- Drop capitalisation, per their ablation.
+- Detect total rows from:
+  - a rule above the number cells, first;
+  - a label keyword second: "total", "net", and the French "total" and
+    "net" for Canadian filings.
+- Every order and threshold is a labelled guess until it is fitted on a
+  train split.
+- Score the tree with their transitive F1 on authored statement fixtures.
+  The fixtures assert the tree exactly, as the gate requires.
+
+**Their dataset is not usable yet.** The 72 labelled tables are offered
+as a zip on the author's page. No licence is stated there, so it goes to
+the operator before any use, and even then it would be scoring-only.
+
+**Not measured:** how many finfilings-train statement pages carry indent,
+rules or bold that separate the levels; any tree accuracy on OCRcer
+output, since no table layer exists.
