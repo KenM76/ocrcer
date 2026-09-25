@@ -2281,7 +2281,8 @@ works in two ways:
 
 - as a check on the tree: a section whose children sum to its total
   confirms the section boundary;
-- as the rule-5-safe flag already recommended, when they do not.
+- as the review flag already recommended (flag, never alter a digit),
+  when they do not.
 
 **What that suggests for chunk 9 (candidate, not specified).**
 
@@ -2291,8 +2292,8 @@ works in two ways:
 - Drop capitalisation, per their ablation.
 - Detect total rows from:
   - a rule above the number cells, first;
-  - a label keyword second: "total", "net", and the French "total" and
-    "net" for Canadian filings.
+  - a label keyword second: "total" and "net", plus "sous-total" for
+    French-language Canadian filings.
 - Every order and threshold is a labelled guess until it is fitted on a
   train split.
 - Score the tree with their transitive F1 on authored statement fixtures.
