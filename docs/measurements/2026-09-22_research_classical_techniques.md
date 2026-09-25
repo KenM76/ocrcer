@@ -1616,5 +1616,7 @@ markers are not a visible share of this corpus.
 **Verdict: recorded, not queued.**
 - The census's substitution table would show it if it matters: digits
   read as `'`, `°` or `"` at word ends.
-- For drawings, stacked tolerances and `mm²` are the cases. The drawing
-  census for 13c counts them before anything is specced.
+- For drawings, stacked tolerances and `mm²` are the cases. The 13c
+  drawing census counts only rotated strings today. Adding a count of
+  raised or stacked text to it is the proposed way to price this, and is
+  not yet in any spec.
