@@ -1811,3 +1811,63 @@ Sources:
 - [tesseract `lstmrecognizer.cpp`](https://github.com/tesseract-ocr/tesseract/blob/main/src/lstm/lstmrecognizer.cpp)
 - [Lund, Kennard & Ringger, Combining multiple thresholding binarization values to improve OCR output (SPIE 8658)](https://www.spiedigitallibrary.org/conference-proceedings-of-spie/8658/1/Combining-multiple-thresholding-binarization-values-to-improve-OCR-output/10.1117/12.2006228.short)
 - [Lund, Kennard & Ringger, Why multiple document image binarizations improve OCR (HIP 2013)](https://www.researchgate.net/publication/255482649_Why_Multiple_Document_Image_Binarizations_Improve_OCR)
+
+## Addendum 2026-09-25: how strongly Tesseract prefers a dictionary word (read from source)
+
+**Why this was looked up.** In the 12b cost-knob run, cutting the matcher's
+shortlist from 5 candidates to 3 *lowered* train CER: 21.010 → 20.963 at
+stride 6. That is a reading from `fitlogs`. One explanation is that the
+decoder's language terms override the matcher too readily when given
+rank-4 and rank-5 candidates. The lexicon term is one of those terms.
+
+**Tesseract, read from `src/dict/dict.cpp` (main branch).**
+`Dict::adjust_word` multiplies a word's whole rating by a factor (lower is
+better):
+
+| Parameter | Default | Applies to |
+|---|---|---|
+| `segment_penalty_dict_frequent_word` | 1.0 | a frequent dictionary word with good case |
+| `segment_penalty_dict_case_ok` | 1.1 | a dictionary word with good case |
+| `segment_penalty_dict_nonword` | 1.25 | not a dictionary word |
+| `segment_penalty_dict_case_bad` | 1.3125 | a dictionary word that may have case issues |
+| `segment_penalty_garbage` | 1.50 | not in the dictionary, and looks like garbage |
+
+Separately, `stopper_smallword_size = 2`: "Size of dict word to be treated
+as non-dict word". The stopper does not trust a dictionary match of two
+characters or fewer.
+
+**What that means.** The dictionary preference is *proportional to the
+word's own evidence*. A good-case dictionary word beats a non-word reading
+only if its rating is below 1.25 / 1.1 ≈ 1.14 times the non-word's. The
+preference is worth about 12% of the word's total rating (the rating is
+match distance × outline length). It therefore grows with word length and
+with how badly both readings matched. A two-letter word cannot collect a
+large absolute preference. The stopper additionally refuses to trust it.
+
+**OCRcer, read from `decode/viterbi.rs`.** The lexicon term is additive and
+fixed per word: `w_lex × lex_bonus[tier]`, which is 0.6 × (1.0 … 0.4) in the
+campaign vector. It is added once at the word end, whatever the length.
+- Relative to the word's evidence, it is strongest on the shortest words.
+  That is where a lexicon match is least informative, and where a word
+  competes with digits and symbols in lone cells. CLAUDE.md rule 6's
+  expensive failure lives there.
+- Under the 12c `width_weighting` mode, the match, bigram and confusion
+  terms scale with width and the lexicon term does not. Its relative weight
+  would then change again with word length.
+
+Rule 6 is kept in both designs. Tesseract's factor is a penalty on
+non-words only in the sense that the argmax sees a ratio. OCRcer's bonus is
+never subtracted.
+
+**Not queued. What would decide it.** A census bucket on the train
+char-dump:
+- among words the engine output *as a lexicon word* whose truth differs,
+  count them by output length (1–2, 3–4, 5+ letters);
+- split by whether the truth word was itself in the lexicon.
+
+If the errors concentrate at 1–2 letters, two candidates follow:
+- a length-scaled bonus (per letter, or proportional to the word's match
+  term, as Tesseract does);
+- a floor like `stopper_smallword_size`.
+
+Each would be behind a switch, measured on train and confirmed on val.
