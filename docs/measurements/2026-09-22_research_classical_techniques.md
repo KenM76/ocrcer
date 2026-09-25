@@ -1912,3 +1912,83 @@ page for one.
 page with an MRZ or a scan line that is misread; the fix is then one font
 row. OCR-A follows the same trigger. MICR stays out of v1 unless the
 operator asks: it needs a charset change and has no clean face.
+
+## Addendum 2026-09-25: reading boxed slips — anchor on the printed box number, not on a layout (prior art, and the CRA rule that makes templates brittle)
+
+For `PLAN.md` section 2a item 3 (boxed forms, the box-number-to-value
+mapping).
+
+**The classical method is a form library.** Casey and Ferguson's
+Intelligent Forms Processing (IBM Systems Journal 29(3), 435–450, 1990), and
+Casey, Ferguson, Mohiuddin and Walach (Machine Vision and Applications,
+1992) work in four steps:
+
+1. analyse a blank form once, to build a model of each form type;
+2. recognise an incoming form by matching its pattern of ruled lines against
+   the library;
+3. register the page to the model and extract each field at its model
+   position;
+4. run "forms dropout", separating the preprinted form from the filled-in
+   data.
+
+This works when every copy of a form type shares one layout.
+
+**CRA slips do not share one layout.** Information Circular IC97-2R20,
+Customized Forms (2023-10-27), lets issuers produce their own T3, T4, T4A
+and T5 slips:
+
+- they "must include all identification areas, as well as income tax and
+  code boxes";
+- "Except for those required fields, you can choose to include only the
+  boxes that meet the recipient's circumstances";
+- paper-filed slips "keep the boxes in the same numerical order as the boxes
+  on the CRA slip".
+
+So one slip type arrives in as many layouts as there are payroll vendors,
+with boxes left out. What stays fixed is the printed box number and the
+order of the boxes, not where they sit. A template per slip type would miss
+every customised slip, and a template per issuer does not scale.
+
+**Consequences for chunk 9's design.** These are inputs to its spec, not
+decisions.
+
+1. **Primary mechanism: no template.** Find the cells from the rulings,
+   using the same horizontal and vertical run machinery as the checkbox
+   border signal and ruling-pixel removal. Inside each cell, separate the
+   label from the value:
+   - the label is the box number plus its caption, in smaller type near the
+     cell's top-left corner;
+   - the value is the rest.
+
+   The box number names the value. Box order is a free consistency check:
+   box numbers read in reading order must not decrease on a paper-filed
+   slip. A slip that breaks the order is flagged, never reordered.
+2. **Box numbers are not all digits.** The T4 has boxes 16A and 17A
+   (`C:/tax_rag/rag/form__t4_slip.md`). A box-number token is two digits
+   with an optional capital letter, and the letter must survive the
+   numeric-context rules (char-type consistency, the number DAWG
+   addendum). Otherwise `16A` is "corrected" into a number, which is
+   exactly the rule 6 failure.
+3. **Some box numbers are data, not labels.** The T4's "Other information"
+   area is twelve empty Box/Amount pairs that the issuer fills in. There, the
+   box number is a read value, identifier-shaped, and paired with the amount
+   beside it. It is not a printed label.
+4. **Identifier fields.** SIN (box 12) and the employer's account number
+   (box 54) are identifier-shaped. The lexicon is suppressed there under
+   rule 6's identifier-context rule.
+5. **Plain-paper slips.** A customised slip may have no ruled cells at all.
+   The fallback pairs each box-number label with the nearest value to its
+   right or below, and it runs on the same label/value size split.
+6. **Fixtures.** The exit gate's boxed-form fixture should be a slip laid
+   out by us, carrying CRA box numbers (which are facts) in our own layout,
+   plus variants that exercise IC97-2's latitude:
+   - boxes omitted;
+   - boxes moved but kept in numerical order;
+   - no rulings.
+
+   Rendering on CRA's own blank PDFs would put Crown-copyright page
+   designs into a public MIT repository. That is an operator question, and
+   it does not need asking if the fixtures are our own layouts.
+
+**Not measured.** No boxed-form page exists in any corpus or dev set yet,
+so none of this has a reading.
