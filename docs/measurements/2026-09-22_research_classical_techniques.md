@@ -3171,3 +3171,98 @@ pair, even on a perfect render.
 
 **Not measured:** any engine output, and the faces finfilings pages are
 actually set in.
+
+## Addendum 2026-09-25: faxed pages — the grid is not square, so "native resolution" is two numbers (standards read, pdfcer and OCRmyPDF source read; nothing measured)
+
+An accounting office still receives faxes: supplier invoices, bank letters,
+signed forms. They reach pdfcer as PDFs or TIFFs made from Group 3 fax
+images. FEASIBILITY and ARCHITECTURE already name fax-grade input as the
+place a trained CNN wins. This addendum is about a narrower thing the
+engine controls: how the pixels arrive.
+
+**The fax grid (ITU-T T.4, read 2026-09-25).**
+- Horizontal: 1728 pels over 215 mm, 8 pels/mm, about 204 dpi.
+- Vertical: 3.85 lines/mm (about 98 lpi) in standard mode, and 7.7 lines/mm
+  (about 196 lpi) in fine mode.
+- A standard-mode page is therefore sampled half as finely down the page
+  as across it. 10 pt text has an em of about 13.6 rows, at or below the
+  13/14 px-per-em accuracy cliff (§11, 2026-09-22). The x-height is 6 to 7
+  rows.
+- Squaring the grid by repeating rows is an established practice. libtiff's
+  `fax2tiff -s` "stretch[es] the input image vertically by writing each
+  input row of data twice to the output file". So a fax can arrive already
+  square, with nearest-neighbour magnification on one axis baked into the
+  file. How often fax services do this is not known here.
+
+**What OCRmyPDF does (`_pipeline.py`, read 2026-09-25).**
+`get_page_square_dpi` is documented as "Get the DPI when we require xres ==
+yres". It rasterises at the larger of the two image resolutions, with
+vector pages at 400 dpi. A standard-mode fax is rendered at about 204 dpi
+on both axes, so the vertical axis is magnified by about 2.
+
+**What pdfcer's renderer does (read from `pdfcer-render/src/interpret.rs`,
+`image_geometry` and `is_minified`; not run).**
+- It picks one filter per image, not one per axis.
+- Bilinear is used if the image sets `/Interpolate`, or if smooth
+  minification is on (the default) and the image is minified.
+- "Minified" means either axis: `sx < w || sy < h`. Otherwise it uses
+  Nearest.
+- Take a standard-mode fax, 1728 × about 1100, on a letter page:
+  - rendered below about 203 dpi, the horizontal axis minifies, so both
+    axes are drawn bilinear;
+  - rendered at or above about 203 dpi, neither axis minifies, so both are
+    Nearest and each fax row is painted about twice (three times at 300
+    dpi).
+- The switch sits at the fax's own horizontal resolution. That is the
+  number a caller following §8.1's "pass at native resolution" is most
+  likely to pick. The vertical doubling is the same pixel replication the
+  §11 2026-09-25 entry measured garbling words (`project` → `projæt`),
+  applied on one axis.
+
+**The contract is ambiguous here.** §8.1 says to pass raster sources at
+native resolution and to magnify only with a smoothing filter. For a
+non-square source, native resolution has two values, and the engine needs
+square pixels: every feature assumes one pixel is as tall as it is wide.
+Passing 1728 × 1100 unscaled would squash every glyph to half height. The
+reading that follows from the existing rule, and matches OCRmyPDF, is:
+- square the grid at the larger resolution;
+- magnify the other axis with a smoothing filter.
+
+**What smoothing hides (reasoned).** The per-line floor (§11, 2026-09-21)
+reads px per em from the recovered x-height.
+- After a smooth ×2 vertical magnification, a standard-mode 10 pt line
+  measures about 28 px/em. That is in the "calibrated" tier.
+- Its vertical information is about 13.6 rows per em, at the accuracy
+  cliff.
+- So the engine would report confidence calibrated on clean pages for text
+  sampled at the cliff. Rule 5 is exposed, not only accuracy.
+- The engine sees only pixels. The `OcrEngine` call has no way to say
+  "these rows were magnified". Row duplication is detectable: pairs of
+  identical inked rows are systematic. Smooth magnification is much harder
+  to detect.
+
+**Queued, not specced.**
+- Add a fax arm to the nearest-neighbour measurement already queued behind
+  the 12b fold and the 16b runs (§11, 2026-09-25, "Candidate, not
+  specced"). Train pages only, rendered at 408 dpi grey:
+  - F0: 204 × 204 grey, the control;
+  - F1: 204 × 204, thresholded to one bit, which isolates the bilevel loss;
+  - F2: 204 × 98, from a vertical box average and then a threshold, with
+    rows repeated back to square. This is `fax2tiff -s` and pdfcer's
+    Nearest path.
+  - F3: the same 204 × 98 source, magnified vertically by bilinear to
+    square;
+  - F4: 204 × 196 one-bit, fine mode, bilinear ×1.04.
+- Report both finfilings metrics per arm, and the per-line px/em tier the
+  engine assigns. The threshold for F1 to F4 is `guess` (50%).
+  Transmission noise is out of scope for a first reading.
+- If F2 is clearly worse than F3, the nearest-neighbour detector's spec
+  must detect duplication per axis (rows only), not only both axes.
+- If F3 is close to F0, smoothing is enough and the only open item is the
+  confidence tier.
+- If F3 is far below F0, fax text sits at the cliff, and the honest output
+  is a capped confidence. That needs a way to learn the source sampling,
+  which is a question for the binding's API, not the engine.
+
+**Recorded now:** the §8.1 clarification above (a §11 entry the same day).
+The change on the call side belongs to pdfcer, in pdfcer's own session.

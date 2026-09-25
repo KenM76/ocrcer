@@ -831,6 +831,10 @@ bridges neighbouring glyphs into shapes the matcher reads as ligatures or
 accented letters (`project` → `projæt`); see §11, 2026-09-25. Vector-only
 pages have no native resolution and render at whatever DPI puts the text
 above the §11 per-line resolution floor.
+A source whose horizontal and vertical resolutions differ (a standard-mode
+fax is about 204 × 98 dpi) is squared at the larger of the two, and the
+other axis is magnified with a smoothing filter. The engine assumes square
+pixels. See §11, 2026-09-25, on faxed pages.
 
 ### 8.2 The correctness contract
 
@@ -8805,3 +8809,34 @@ layer into the pipeline:
   pieces.
 - `rules` gains a fixture: a rule stepped by one pixel at mid-length is
   one rule.
+
+### 2026-09-25 — Faxed pages: a source with unequal resolutions is squared at the larger one, and magnified smoothly
+
+**Finding (standards and source read; nothing measured).** Research
+addendum 2026-09-25, "faxed pages".
+- A Group 3 fax is about 204 dpi across and, in standard mode, about 98 lpi
+  down (ITU-T T.4).
+- §8.1 said "pass pixels at the source's native resolution". For such a
+  source that has two values, and the engine assumes square pixels.
+- OCRmyPDF squares at the larger resolution (`get_page_square_dpi`).
+- pdfcer's renderer chooses one filter per image. It uses bilinear when
+  either axis minifies, and Nearest otherwise. A standard-mode fax
+  rendered at or above about 203 dpi therefore has every row repeated.
+  That is the pixel replication the 2026-09-25 upsampling entry measured
+  garbling words, on one axis. This is read from pdfcer source, not run.
+
+**Decision.**
+- §8.1 gains one sentence. When the two resolutions differ, square the
+  grid at the larger one and magnify the other axis with a smoothing
+  filter.
+- This follows from the existing rule and needs no engine change. The
+  call-site change is pdfcer's, in pdfcer's own session.
+
+**Open, not decided.**
+- After smooth magnification, a standard-mode 10 pt line measures about
+  28 px/em, which is the "calibrated" tier. Its vertical sampling is about
+  13.6 rows per em, at the accuracy cliff. The per-line floor cannot see
+  the difference.
+- Whether that needs a sampling hint from the caller (a binding API
+  question) waits for the fax arm added to the queued nearest-neighbour
+  measurement (train pages, arms F0 to F4 in the addendum).
