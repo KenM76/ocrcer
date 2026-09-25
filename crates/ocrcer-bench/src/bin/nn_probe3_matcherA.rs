@@ -310,6 +310,7 @@ fn build_augmented_model(
         lexicon: None,
         bigrams: None,
         confusions: None,
+        nn: None,
     }
 }
 

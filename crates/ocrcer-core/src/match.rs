@@ -273,6 +273,7 @@ mod tests {
             lexicon: None,
             bigrams: None,
             confusions: None,
+            nn: None,
         }
     }
 
