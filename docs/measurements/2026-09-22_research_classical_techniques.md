@@ -1871,3 +1871,44 @@ If the errors concentrate at 1–2 letters, two candidates follow:
 - a floor like `stopper_smallword_size`.
 
 Each would be behind a switch, measured on train and confirmed on val.
+
+## Addendum 2026-09-25: OCR-B, OCR-A and MICR — machine-reading faces an accounting office meets (licence check only)
+
+**Where they appear.** OCR-B is "used for machine-readable passports" and
+"widely used for the human-readable digits in UPC/EAN barcodes"; it follows
+ISO 1073-2 ([Wikipedia, OCR-B](https://en.wikipedia.org/wiki/OCR-B)). It is
+also the usual face of the scan line on payment slips and remittance stubs.
+OCR-A prints ISBNs and some older remittance lines. MICR E-13B prints the
+routing and account line along the foot of a cheque.
+
+**Licences, as checked.**
+
+- OCR-B: Matthew Skala's font (Tsukurimashou project). Skala's files are
+  public domain. The Metafont sources they build on are Norbert Schwarz's,
+  under "You may freely use, modify and/or distribute this file, without
+  limitation" (Ubuntu `fonts-ocr-b` copyright file,
+  [launchpad](https://launchpad.net/ubuntu/focal/+source/fonts-ocr-b/+copyright)).
+  Clean under `CLAUDE.md` rule 2, with no attribution requirement.
+- OCR-A: the upstream font files (John Sauter) are public domain. The GPL-3
+  line on that package covers its Debian packaging, not the font
+  ([launchpad](https://launchpad.net/ubuntu/focal/+source/fonts-ocr-a/+copyright)).
+  Clean.
+- MICR E-13B: no licence-clean face has been identified. The widely packaged
+  free one, GnuMICR, is GPL, and copyleft stays out.
+
+**What each would cost.** OCR-B and OCR-A draw only characters the charset
+already has, including `<` (U+003C), the MRZ filler. Adding either is a bank
+coverage change for `ocrcer-glyphs`: one `fonts.tsv` row and a bank rebuild.
+There is no format change and no charset change. MICR is different. Its four
+control symbols (transit, amount, on-us, dash; U+2446–U+2449) are outside the
+charset. Adding them is a charset change under section 2's protocol, and
+there is no clean face to render them from.
+
+**Train reading.** None taken. No corpus is known to contain an MRZ, a
+cheque or a payment-slip scan line; no corpus has been searched page by
+page for one.
+
+**Decision.** Not queued. OCR-B's trigger is a pdfcer report, or a dev-set
+page with an MRZ or a scan line that is misread; the fix is then one font
+row. OCR-A follows the same trigger. MICR stays out of v1 unless the
+operator asks: it needs a charset change and has no clean face.
