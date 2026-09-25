@@ -9125,3 +9125,49 @@ side, with fold means reported.
    probe's Python scripts are evidence, not the chunk-15 trainer. That
    trainer is written fresh in `tools/nn/` under the parity-fixture
    conditions.
+
+### 2026-09-25 — Identifier gates: lexicon harm is zero, and two ratchets at the fitted baseline
+
+**Measured.** Source: `docs/measurements/2026-09-25_ident_corpus.md`,
+branch `ident-test`. The corpus is 1,855 synthetic pages: 53 faces × 5
+sizes × 7 blocks. It holds 6,360 identifier-shaped tokens and is
+scoring-only. Fitted model:
+- 61.5% of tokens are read exactly.
+- 1,271 (20.0%) are REWRITTEN to a different identifier-shaped string.
+- 67 REWRITTEN tokens carry word confidence ≥ 0.9, and 193 carry ≥ 0.8.
+- The median confidence of a REWRITTEN token is 0.576. The median for an
+  exact read is 0.800.
+- Under the pre-fold control, 1,469 tokens are REWRITTEN.
+- Four clusters make up about 60% of REWRITTEN:
+  - `-` read as a rare dash or math glyph;
+  - `NX` read as `Nx`;
+  - `0` read as `O` after `R`;
+  - a leading digit dropped at 14 px.
+
+**Lexicon harm.** The causal test reads every page twice: at the
+configured `decode.w_lex` and at 0.
+- **The bonus changes one fitted read and five control reads.** The
+  fitted case turned a wrong read into a drop; none of the six turned a
+  correct read into a dictionary word.
+- **LEXICON-HARM** is defined as all three of the following:
+  - the two reads differ;
+  - the lexicon-on read is wrong;
+  - either the lexicon-off read was right, or the lexicon-on read is a
+    lexicon word.
+- On the fitted model, by the architect's reading of the one case,
+  LEXICON-HARM is 0. The harness re-measures it under this definition.
+
+**Gates, for every chunk from now on.** Chunk 15 is the first.
+1. **LEXICON-HARM = 0.** This is hard: rule 6.
+2. **REWRITTEN ≤ 1,271.** A ratchet: a chunk that lowers it resets the
+   baseline in this log.
+3. **REWRITTEN at confidence ≥ 0.9 ≤ 67.** Also a ratchet. A confident,
+   wrong identifier is rule 5's harm. It is the number a reviewer is
+   misled by.
+
+**Why the ratchets are not zero.** The engine misreads identifiers at
+about its CER. Pretending otherwise would put a gate in place that is
+always overridden. The clusters go to their owners:
+- the hyphen, `X`/`x` and `0`/`O` clusters to `ocrcer-linguist`;
+- the leading-digit drop to `ocrcer-runtime`;
+- `0`/`O` also to chunk 15, whose probe read the digit `0` at about 98%.
