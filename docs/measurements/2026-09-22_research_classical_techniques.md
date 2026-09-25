@@ -902,3 +902,26 @@ our vertical-only cuts cannot express. A slanted or kerned pair (`Te`,
 `ry` in italic) has overlapping boxes, so no vertical line separates it.
 Whether that error class is common enough to pay for polygonal outlines in
 `ocrcer-core` is exactly the census question. No chunk is proposed here.
+
+## Addendum 2026-09-25: characters touching drawing lines (Tombre et al., GREC 2001)
+
+Read, not measured. Source: Tombre, Tabbone, Pélissier, Lamiroy, Dosch,
+"Text/Graphics Separation Revisited", DAS 2002, §4.
+
+- Connected-component separation cannot recover a character whose ink
+  touches a line. Such characters are merged into the graphics layer.
+- Tombre's method extends each string that was found. It fits the string's
+  direction (median regression when the string has more than 4
+  characters), then sets search areas at each end, sized by the mean
+  character width and spacing. Inside a search area it computes the
+  distance skeleton and cuts it at multiple points that join the outside
+  graphics exactly once. It then rebuilds each cut-off part by the inverse
+  distance transform as a candidate character.
+- Reported yield on five drawing extracts: 25 of 70 touching characters
+  recovered, raising final recall by 5 to 10 points. Dashed lines cause most
+  of the false positives. A string that touches the graphics everywhere has
+  no seed, so it is never recovered.
+- Relevance to OCRcer: this would be a drawing-only stage after line
+  grouping. Whether touching text is a real error class on pages-cov
+  drawings is unmeasured, so it needs a census of drawing misses by cause
+  first. No chunk is proposed.
