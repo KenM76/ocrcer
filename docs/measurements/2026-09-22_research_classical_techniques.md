@@ -2469,3 +2469,85 @@ breaks"):
 
 **Not measured:** any rule-detection accuracy, for Tesseract or OCRcer, on
 any page.
+
+## Addendum 2026-09-25: columns without rules — how Camelot's stream mode finds them (read from source, a train count, for chunk 9c)
+
+**Why.** Chunk 9c must find table columns where no rules are printed. Most
+financial statements are set that way. Camelot's stream mode, which
+descends from Nurminen's text-edge method, was read before 9c is
+specified.
+
+**Source.** camelot-dev/camelot `master`, read 2026-09-25:
+`camelot/core.py` (`TextEdge`, `TextEdges`), `camelot/parsers/stream.py`
+(`_generate_columns_and_rows`), and `camelot/parsers/base.py`
+(`_group_rows`, `_merge_columns`, `_add_columns`, `_join_columns`).
+
+**Table areas from text edges.**
+
+- The unit is a pdfminer text line, the text run a PDF lays down between
+  wide gaps. Units of one character are skipped.
+- Each unit offers three coordinates: its left, right and middle x.
+- A unit joins an existing edge when its coordinate is within 0.5 pt of
+  the edge's coordinate. The edge's coordinate is the running mean of its
+  members.
+- An edge grows downward while each new unit's bottom is within
+  `edge_tol` (default 50 pt) of the edge's current bottom.
+- An edge is valid at `TEXTEDGE_REQUIRED_ELEMENTS = 4` units.
+- One alignment serves the whole page: whichever of left, right or middle
+  has the most units on valid edges.
+- Table areas are the union of vertically overlapping valid edges,
+  extended by every unit lying inside them, then padded.
+
+**Columns inside an area.**
+
+1. Units are grouped into rows by bottom y, within `row_tol` (2 pt).
+2. The column count is the mode of the units-per-row count. If the mode
+   is 1, the 1s are dropped and the mode is taken again.
+3. The columns are the x-extents of the units in rows with exactly that
+   count, merged where they overlap (`column_tol` 0).
+4. Units lying between or outside those columns add columns, taken from
+   their own rows with the most units.
+5. Boundaries go at the midpoints of the gaps.
+
+**What this means for 9c.**
+
+1. **The unit already exists.** OCRcer's column fragment, a line cut at a
+   column gap (`lines.column_gap_heights`), plays the pdfminer text line's
+   role. Tolerances are in `h`, not points.
+2. **One alignment per page is wrong for a statement.** Its labels are
+   left-aligned and its numbers right-aligned, so a per-page choice drops
+   one or the other. 9c should decide alignment per edge.
+3. **Ink edges are not typeset edges.** Excel's built-in accounting format
+   is `_($* #,##0.00_);_($* (#,##0.00);_($* "-"??_);_(@_)`.
+   - `_)` reserves a parenthesis-wide space after a positive number, so
+     the digits of positives and negatives line up.
+   - On the page, the ink of a negative's `)` therefore hangs about one
+     parenthesis width right of the positives' last digit.
+   - A PDF text box includes that reserved space. An image does not.
+   - Number fragments should align on the ink of their last digit. That
+     needs recognised text, which the structure layer may read and never
+     writes.
+4. **A dash can mean zero.** The same format prints zero as a dash. A lone
+   dash in a number column is a value, and 9d's footing reads it as 0.
+5. **The `$` sits apart.** `$*` pads the dollar sign to the column's left
+   edge, on the rows that carry one, usually the first and the total. A
+   `$` fragment is not a column of its own.
+6. **The modal column count breaks on statements.** Section headers and
+   subtotal labels are one-unit rows, and the mode ignores them only when
+   they are the majority. 9c should take columns from edges, and use row
+   counts as a check.
+
+**Train count** (finfilings-train truth text, all 427 pages; a count of
+the truth, not a recognition reading):
+
+- 104 pages have at least one line with two or more number tokens, 295
+  such lines in all;
+- 47 parenthesised negatives on 13 pages;
+- 7 lone dashes in those lines, on 6 pages.
+
+Table-shaped text is therefore a minority of finfilings-train. 9c's
+benchmark cannot come from finfilings alone. That agrees with the 9a spec:
+structure is tuned on our own rendered dev set.
+
+**Not measured:** any column-detection accuracy, for Camelot or OCRcer, on
+any page.
