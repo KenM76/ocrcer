@@ -2647,3 +2647,109 @@ arithmetic is mine. Wall time is indicative, because the machine is shared.
   2026-09-25.
 
 **Not measured:** any speed-up from reordering on OCRcer.
+
+## Addendum 2026-09-25: whole pages scanned sideways or upside down — Tesseract's OSD and Leptonica's flip test (read from source, and a train check)
+
+**Why.** pdfcer applies a page's `/Rotate` before OCR, and the adapter
+passes OCRcer an upright raster. A scan whose *image* is sideways or upside
+down, with `/Rotate` 0, still reaches OCRcer that way. Chunk 13c (§11,
+2026-09-25) turns rotated strings on drawings by exact quarter turns, and
+leaves upside-down text and whole pages as follow-ups. This addendum reads
+two open-source detectors before that follow-up is specified.
+
+**Leptonica, `flipdetect.c`** (BSD-2, read 2026-09-25).
+- *Signal.* A morphological closing joins characters at x-height. Hit-miss
+  patterns then count ascenders and descenders. The source's reason: in
+  Roman text, straight-line ascenders (b, d, h, k, l, t) outnumber
+  descenders (g, p, q).
+- *Confidence.* `2 · (n_up − n_down) / sqrt(n_up + n_down)`, computed only
+  once the larger count exceeds 70.
+- *Decision.* Upright needs `upconf > 8.0` and `|upconf| > 2.5·|leftconf|`,
+  where `leftconf` is the same test on the page turned 90°. The other three
+  orientations are symmetric.
+- *Resolution.* 150 to 300 ppi.
+- *Stated failures.* The source says the method "will fail on some
+  images, such as tables, where most characters are numbers". A leading 1
+  or 3 can count as an ascender, and 7 matches a descender.
+  - Number tables are much of OCRcer's domain. So this detector does not
+    transfer as a page test.
+
+**Tesseract, OSD** (`osdetect.cpp`, `pagesegmain.cpp`, Apache-2.0, read
+2026-09-25).
+- *Sample.*
+  - Keep blobs with an aspect of 2 or less and a height of at least 10 px.
+  - Visit them in a deterministic quasi-random order.
+  - Try at least `min_characters_to_try` (50) and at most five times that.
+  - Skip the page if fewer than 25 qualify.
+- *Per blob.*
+  - Normalise the blob at each of the four rotations and classify it with
+    the ordinary character classifier.
+  - Map the top certainty, which runs from −20 to 0, onto 0 to 1:
+    `1 + 0.05·certainty`.
+  - An orientation with no choice takes the worst of the others, halved if
+    only one orientation scored.
+  - Normalise the four scores to sum to 1, and add their logs to page
+    totals.
+- *Decision.* The best total wins. The margin is its lead over the
+  runner-up, and `min_orientation_margin` defaults to 7.0. A weak margin
+  still rotates, with one exception: weak evidence for upside-down Latin
+  text on horizontal lines is overridden to "do not rotate".
+- *Order of questions.* Whether lines run vertically is decided first,
+  from geometry: `IsVerticallyAlignedText` checks whether more than half
+  the text blobs sit in vertical alignment. The classifier then picks
+  among the four turns.
+- *Early exit.* None. `detect_blob` returns false with a TODO to add a
+  margin-based stop.
+
+**What this means for OCRcer.**
+1. The recogniser is the better detector for this domain. It needs no
+   ascender statistics, so number tables do not break it outright.
+   - OCRcer already turns pixels by exact quarter turns (chunk 13c). So
+     "classify at four turns" reuses the bank and the one extractor. It
+     needs no new prototypes and no second implementation (rule 4).
+   - Each turn's per-blob score would be the calibrated confidence, which
+     is already on a 0-to-1 scale.
+2. **Digits are weak evidence for 180°.** 6 and 9 turn into each other,
+   and 0, 1 and 8 read about the same either way up. A digit-heavy page
+   gets its 180° signal mostly from letters and punctuation.
+   - That is an expectation from the shapes, not a reading. It argues for
+     Tesseract's prior: weak evidence for upside down means do not
+     rotate.
+3. **Trigger on a failed upright reading.** Run the check only when the
+   page's upright pass comes back with low mean calibrated confidence.
+   - Upright pages then pay nothing, and upright stays the default that a
+     rotation has to beat. That is the same arbitration chunk 13c uses for
+     strings.
+   - The cost falls only on suspect pages. Arithmetic, not a reading:
+     `match()` on the dense-page runs took about 3.5 ms per query. So 50
+     blobs at 4 turns is about 0.7 s, and 250 blobs at 4 turns is about
+     3.5 s.
+4. **Stop early on a clear margin.** Tesseract has only a TODO here. A
+   running margin, checked after the 50-blob minimum, would stop most
+   pages early. The threshold is fitted, not copied.
+5. **Output.** Rotated words keep page coordinates plus a rotation, the
+   same additive field chunk 13c adds. No coordinate transform moves into
+   the pdfcer adapter.
+
+**Train check** (finfilings-train, 427 pages, 2026-09-25).
+- 0 of 427 page images are wider than they are tall. All are 1653×2339.
+- A crude projection test counted pages whose blank-column share exceeds
+  their blank-row share. It flagged 13 pages.
+- Two of those were viewed, plus one page with almost no blank rows. All
+  three are upright tables, whose column gaps and rules fool the test. The
+  count is therefore not a count of sideways pages, and it was not checked
+  page by page.
+- The corpus is rendered from filing transcripts. Sideways or upside-down
+  content is not expected in it, so finfilings cannot measure this
+  feature. It can only guard against false rotation.
+- Fitting would need train and val pages turned by exact quarter turns,
+  which is the same construction as chunk 13c's synthetic set. Scoring
+  pages stay scoring-only.
+
+**Sources.**
+- Leptonica `src/flipdetect.c` (D. Bloomberg), read 2026-09-25.
+- Tesseract `src/ccmain/osdetect.cpp`, `src/ccmain/pagesegmain.cpp` and
+  `src/ccmain/tesseractclass.cpp`, read 2026-09-25.
+
+**Not measured:** the check's accuracy or cost on OCRcer, and how many
+real pdfcer scans arrive sideways or upside down.
