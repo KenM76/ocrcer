@@ -857,3 +857,48 @@ how OCRcer's margin-based confidence is already kept.
 - Proposed as a mode switch and specified in `ARCHITECTURE.md` §11 on
   2026-09-25. That it removes the prose-versus-drawing trade is a
   hypothesis for the gates to test.
+
+## Addendum 2026-09-25: Tesseract's chop scoring, read from source
+
+Read, not measured. This sharpens the 2026-09-24 concavity-pair addendum,
+which was based on reference docs. Sources: `wordrec/chop.cpp`,
+`findseam.cpp`, `gradechop.cpp`, `wordrec.cpp` (defaults),
+`ccstruct/split.cpp`, `seam.cpp`, `normalis.h`, `pageres.cpp` (Tesseract
+`main`).
+
+Chopping runs on the baseline-normalised word, where the x-height is 128
+units (`kBlnXHeight`). So each default below converts to x-heights.
+
+- **Candidate points.** These are the outline's local y-extrema that pass
+  a direction test, plus any vertex that turns inward by more than 50°
+  (`chop_inside_angle` −50). Each is prioritised by its turn angle.
+- **Pairs.** Two candidate points form a split if they are not neighbours
+  and neither lies outside the other's outline. The weighted length is
+  `3·dx² + dy²` and must be under 10000. So a vertical split is at most
+  0.78 x-height long, and a horizontal one at most 0.45 x-height. The 3×
+  weight on dx is what makes near-vertical cuts preferred without
+  requiring them.
+- **Vertical splits.** A candidate point is also paired with the nearest
+  outline crossing straight above or below it. That is our projection cut,
+  anchored at a concavity instead of at a column minimum.
+- **Split score.** The partial score is `0.5·√(weighted length)`, plus
+  `0.06·(angle₁ + angle₂ + 360)` (zero once the two angles sum below
+  −360). Lower is better.
+- **Seam score.** The full score adds three terms:
+  - `0.9 ×` the pixel overlap of the two pieces' boxes, or 100 if one box
+    contains the other;
+  - `0.15 × |w₁ − w₂|` (capped), applied only when a piece is at most
+    0.70 x-height wide;
+  - a width-change term.
+- **Limits.** A seam scoring at least 100 (`chop_ok_split`) is refused. One
+  scoring under 50 (`chop_good_split`) ends the search early. A seam may
+  combine up to three splits. Each resulting piece needs at least 6 outline
+  points and an area of at least 2000 units², which is 0.12 x-height².
+
+How this maps to OCRcer, if a missing-cut census ever justifies it: the
+pair search and the seam score would produce extra cut candidates, and the
+decoder would still arbitrate between them. The overlap term is the part
+our vertical-only cuts cannot express. A slanted or kerned pair (`Te`,
+`ry` in italic) has overlapping boxes, so no vertical line separates it.
+Whether that error class is common enough to pay for polygonal outlines in
+`ocrcer-core` is exactly the census question. No chunk is proposed here.
