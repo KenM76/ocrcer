@@ -818,3 +818,42 @@ so this also informs the open "what dpi should pdfcer use for OCRcer"
 question.
 
 Source: [Lazzara & Géraud, Efficient Multiscale Sauvola's Binarization, IJDAR 2014](https://www.lre.epita.fr/dload/papers/lazzara.13.ijdar.pdf).
+
+## Addendum 2026-09-25: Tesseract weights character costs by ink, so path length carries no bias
+
+The four decoder losses in the r000583 autopsy were one merged edge beating
+two good single-letter edges. The global `char_bonus` re-sweep then showed
+that the only lever against that bias trades prose against drawings at every
+step. Tesseract's legacy segmentation search has no per-character credit at
+all. These lines were read from tesseract `main` source on 2026-09-25:
+
+- `classify/adaptmatch.cpp` (`ConvertMatchesToChoices`):
+  `Rating = (1 - match) * rating_scale * BlobLength`. `BlobLength` is the
+  outline length divided by `kStandardFeatureLength`, and `rating_scale`
+  defaults to 1.5 (`classify.cpp`).
+  `Certainty = -(1 - match) * certainty_scale`, with `certainty_scale` 20
+  (`dict.cpp`). Certainty is *not* length-scaled.
+- `wordrec/language_model.cpp` (`GenerateNgramInfo`): the combined
+  classifier and n-gram cost is multiplied by
+  `outline_length / language_model_ngram_rating_factor` (16.0). The n-gram
+  part is weighted by `language_model_ngram_scale_factor` (0.03).
+- The dictionary and consistency adjustments multiply the path cost
+  (`ComputeAdjustedPathCost`: `adjustment = 1 + penalties`). They do not add
+  a per-character constant.
+
+So a path's cost is an ink-weighted sum. Cutting the same ink into more or
+fewer pieces does not change the total's scale. A merged reading must match
+about as well as the pieces it replaces, averaged by ink. The per-glyph
+acceptance quantity (certainty) is kept separate and unweighted, which is
+how OCRcer's margin-based confidence is already kept.
+
+**Fit to OCRcer:**
+- Every `Hyp` carries `x0`/`x1`, which are lattice node positions. So edge
+  widths along any start-to-end path sum to the word's width exactly. A
+  width-weighted credit is therefore identical for every path and cannot
+  bias length.
+- Width is the exact form here. Ink, Tesseract's form, is not exact:
+  `crop` restricts a piece to its atoms' labels, so ink need not add up.
+- Proposed as a mode switch and specified in `ARCHITECTURE.md` §11 on
+  2026-09-25. That it removes the prose-versus-drawing trade is a
+  hypothesis for the gates to test.

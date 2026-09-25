@@ -7643,3 +7643,48 @@ selection. Digits stay deferred, as the spec says.
 **Not adopted:** the addendum's fitted distance discount for page rows.
 Page rows are plain rows in the first build. A discount can join the
 fitting list if the measurement asks for one.
+
+### 2026-09-25 — Candidate: weight each character's decoder terms by its width, as Tesseract does
+
+**Evidence.**
+- The r000583 autopsy found four decoder losses, each a merged edge
+  beating two good single-letter edges.
+- The `char_bonus` re-sweep showed that the per-character credit, the only
+  counter-bias, trades prose against drawings at every step.
+- Tesseract's legacy search weights each character's classifier and n-gram
+  cost by outline length, and it has no per-character credit. That was
+  verified from source; see the research addendum of 2026-09-25 in
+  `docs/measurements/2026-09-22_research_classical_techniques.md`.
+- In our lattice, `Hyp.x0`/`x1` are node positions, so edge widths along
+  any path sum exactly to the word's width. A width-weighted credit is the
+  same for every path, so the length bias disappears by construction
+  rather than being offset by a tuned constant.
+
+**Spec (candidate; no format change).**
+- `decode.width_weighting`: a u32 mode, 0 or 1, `authored`, default **0**.
+  At 0 every fixture is byte-identical, and the test suite asserts that.
+- At 1, each edge's match term `w_match * (bonus - distance)` and its bigram
+  term (and the confusion adjustment riding on it) are multiplied by
+  `(x1 - x0) / x_height`. `x_height` is the line's measured x-height,
+  passed in as an additive field.
+- The segmentation prior, the case-shape penalty and the lexicon bonus stay
+  as they are. Identifier suppression is unchanged.
+- Confidence is unchanged. It stays the per-glyph margin, as Tesseract
+  keeps its certainty unweighted.
+
+**Fit and gates.**
+- With the mode on, refit `w_match`, `w_bigram`, `char_bonus`,
+  `char_bonus_slanted` and `w_seg` on finfilings-train with the campaign
+  harness, starting from the shipped chunk-12b vector.
+- Confirm on val once. Then run the usual gates once: pages-cov with
+  drawing Δ ≤ 0, both finfilings metrics, identifier test, workspace, wasm.
+- Also report, from the train run, how many merged and split edges the
+  chosen paths use per 1,000 characters, with the mode on and off.
+
+**Hypotheses the measurement settles.** Whether this dissolves the
+prose-versus-drawing trade is a hypothesis, not a finding. Narrow
+characters (`.`, `i`, `l`) get less bigram weight, as they do in Tesseract.
+Whether that costs punctuation context is for the gates to show.
+
+**Order.** After chunk 12b is folded. It competes with the 16b serial runs
+for single-`ocr.exe` time, and goes after them.
