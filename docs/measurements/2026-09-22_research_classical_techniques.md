@@ -3039,3 +3039,66 @@ whether the charset protocol is warranted.
 **Not measured:** any recognition behaviour on these symbols, how often
 they occur (there is no licence-clean drawing corpus to count them in), face
 coverage, and how `ocrs` behaves with pdfcer's actual parameters.
+
+## Addendum 2026-09-25: stacked tolerances on drawings — eDOCr's split, and why line grouping likely interleaves them (paper read; nothing measured)
+
+**Why.** A toleranced dimension on a drawing often prints its deviations as
+two small lines stacked in one column after the nominal: `25` then `+0.1`
+over `−0.05`. The raised-characters addendum above names this case and says
+it is in no spec. Its expensive failure is a changed number.
+
+**What the standard says.** Not read. ASME Y14.5 is paywalled, and the free
+copies found are not licensed. A search summary says limit dimensions put
+the high limit above the low one, and plus/minus tolerances follow the
+dimension. Treat that as recalled. The probe below needs only geometry,
+which a render supplies exactly.
+
+**What eDOCr does.** Villena Toro et al., *Optical character recognition on
+engineering drawings to achieve automation in production quality control*,
+Frontiers in Manufacturing Technology 2023. Read through a summariser
+2026-09-25; the quoted steps are the paper's wording as returned.
+- It runs on a dimension box from a neural detector, not a whole line.
+- Step 1: find the box's ink y-range.
+- Step 2: scan right to left for the gap to the nearest ink, only in the
+  middle 30–70% of the box's width, "to avoid lower or higher characters".
+- Step 3: a gap wider than 80% of the ink height means the box holds
+  tolerances.
+- Step 4: the nominal ends at the first ink-free column from the widest
+  gap.
+- Step 5: the tolerance column is cut vertically at the first ink below the
+  gap's y, which gives the upper and lower boxes.
+- Its recogniser alphabet for dimensions is digits, the letters
+  `AaBCDGHhMmnR`, and `(), + − ± : /°∅.`. GD&T symbols have a separate
+  recogniser that runs on the first compartment of a frame. Frames are found
+  as two or more adjacent boxes.
+- Reported: 90% detection precision and recall, and 8% CER, on seven
+  drawings. One of them is private.
+
+**Why OCRcer is likely to get this wrong today** (reasoned from §6, not
+measured):
+- Line grouping joins components by vertical overlap. Both deviations
+  overlap the nominal's band, so they probably join the nominal's line.
+- Components on one line are then ordered by x. Two rows sharing an x
+  range would interleave: `+0.1` over `−0.05` could come out like `+−00..15`.
+- The cut at `lines.column_gap_heights` does not separate the two rows,
+  because it cuts across x, and the rows share x.
+- Stacked inch fractions (numerator over a bar over denominator) are the
+  same shape. The bar is about one text height long, which is short for
+  9a's `rule_min_h`.
+
+**What to do first: the same probe as the GD&T symbols.**
+- Render callout lines in a licence-clean face with exact ground truth:
+  - a nominal with stacked `+a`/`−b` deviations at about 0.7 of the
+    nominal's height (authored, a guess);
+  - a stacked limit pair;
+  - a stacked inch fraction.
+- Read what the engine emits and in what order.
+- If the output interleaves, the fix belongs in line grouping. The fix
+  would detect a column of two small rows inside a band's x-gap and emit
+  them as separate words, top first. That is a spec to write only after
+  the reading, with `guess` thresholds and the synthetic fit/fixture split
+  13c already uses.
+
+**Not measured:** everything above for OCRcer, and how often stacked
+tolerances occur. There is no licence-clean drawing corpus to count them
+in, and scoring pages are not counted to justify design.
