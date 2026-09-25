@@ -7987,3 +7987,29 @@ implementation.
   no reference.
 
 The gate and landing order are unchanged.
+
+### 2026-09-25 — Clarified: in the descender check, the re-read runs before the inheritance vote
+
+This settles the order the two entries above left open. At
+`lines.descender_cap_check = 1`, `inherit_x_heights` runs in three steps:
+1. Compute the page cap and page x-height references, excluding flagged
+   lines, as amended.
+2. Re-read the flagged lines that qualify.
+3. Run the existing inheritance vote on the updated lines. Any line still
+   flagged is left out of the `Observed` set.
+
+**Why the order matters.** On `filing__s5__r000385` (train) every text line
+is `FromCapHeight`, with an x-height of 10.4. The only `Observed` lines are
+9 flagged ones at 14. Today those 9 carry the page vote alone, so 124
+`Inherited` marks take an x-height of 14. After steps 1–3, the `Observed`
+set is empty and the vote falls to all lines, which gives 10.4.
+
+**Test added:** that page's shape. `FromCapHeight` text, a few flagged
+lines, and small marks below the inheritance floor. The marks inherit the
+text's x-height, not the flagged lines'.
+
+**Measured and not specced: the mirror case.** Tesseract's `ROW_UNKNOWN`
+branch also covers a one-band line with no descender whose height matches
+the page x-height, such as a short lowercase word. OCRcer reads that line
+as a cap band. On the same sample, 8 of 308 `FromCapHeight` lines fit,
+holding 19 components. That is too few to act on.
