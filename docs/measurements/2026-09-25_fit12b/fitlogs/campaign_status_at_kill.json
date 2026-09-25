@@ -1,0 +1,339 @@
+{
+  "phase": "tier:tier2_lines",
+  "base": {
+    "decode.w_lex": 0.35,
+    "decode.w_seg": 0.4,
+    "decode.lex_bonus_tier1": 1.0,
+    "decode.lex_bonus_tier2": 0.85,
+    "decode.lex_bonus_tier3": 0.7,
+    "decode.lex_bonus_tier4": 0.55,
+    "decode.lex_bonus_tier5": 0.4,
+    "decode.seg_ideal_aspect": 0.45,
+    "decode.seg_aspect_tolerance": 0.35,
+    "decode.seg_merge_penalty": 0.7,
+    "decode.seg_split_penalty": 0.5,
+    "decode.char_bonus_slanted": 3.44
+  },
+  "tiers": {
+    "tier1_decode": {
+      "params": {
+        "decode.w_lex": {
+          "candidates": [
+            0.35,
+            0.6,
+            0.9
+          ],
+          "results": [
+            {
+              "value": 0.35,
+              "cer": 22.616,
+              "error": null
+            },
+            {
+              "value": 0.6,
+              "cer": 22.616,
+              "error": null
+            },
+            {
+              "value": 0.9,
+              "cer": 22.616,
+              "error": null
+            }
+          ],
+          "chosen": 0.35
+        },
+        "decode.w_seg": {
+          "candidates": [
+            0.12,
+            0.25,
+            0.4
+          ],
+          "results": [
+            {
+              "value": 0.12,
+              "cer": 22.637,
+              "error": null
+            },
+            {
+              "value": 0.25,
+              "cer": 22.616,
+              "error": null
+            },
+            {
+              "value": 0.4,
+              "cer": 22.581,
+              "error": null
+            }
+          ],
+          "chosen": 0.4
+        },
+        "__lex_bonus_scale__": {
+          "candidates": [
+            0.7,
+            1.0,
+            1.3
+          ],
+          "results": [
+            {
+              "value": 0.7,
+              "cer": 22.601,
+              "error": null
+            },
+            {
+              "value": 1.0,
+              "cer": 22.581,
+              "error": null
+            },
+            {
+              "value": 1.3,
+              "cer": 22.593,
+              "error": null
+            }
+          ],
+          "chosen": 1.0
+        },
+        "decode.seg_ideal_aspect": {
+          "candidates": [
+            0.45,
+            0.6,
+            0.75
+          ],
+          "results": [
+            {
+              "value": 0.45,
+              "cer": 22.542,
+              "error": null
+            },
+            {
+              "value": 0.6,
+              "cer": 22.581,
+              "error": null
+            },
+            {
+              "value": 0.75,
+              "cer": 22.61,
+              "error": null
+            }
+          ],
+          "chosen": 0.45
+        },
+        "decode.seg_aspect_tolerance": {
+          "candidates": [
+            0.35,
+            0.55,
+            0.75
+          ],
+          "results": [
+            {
+              "value": 0.35,
+              "cer": 22.401,
+              "error": null
+            },
+            {
+              "value": 0.55,
+              "cer": 22.542,
+              "error": null
+            },
+            {
+              "value": 0.75,
+              "cer": 22.604,
+              "error": null
+            }
+          ],
+          "chosen": 0.35
+        },
+        "decode.seg_merge_penalty": {
+          "candidates": [
+            0.3,
+            0.5,
+            0.7
+          ],
+          "results": [
+            {
+              "value": 0.3,
+              "cer": 22.454,
+              "error": null
+            },
+            {
+              "value": 0.5,
+              "cer": 22.401,
+              "error": null
+            },
+            {
+              "value": 0.7,
+              "cer": 22.318,
+              "error": null
+            }
+          ],
+          "chosen": 0.7
+        },
+        "decode.seg_split_penalty": {
+          "candidates": [
+            0.5,
+            0.75,
+            1.0
+          ],
+          "results": [
+            {
+              "value": 0.5,
+              "cer": 22.318,
+              "error": null
+            },
+            {
+              "value": 0.75,
+              "cer": 22.318,
+              "error": null
+            },
+            {
+              "value": 1.0,
+              "cer": 22.368,
+              "error": null
+            }
+          ],
+          "chosen": 0.5
+        },
+        "decode.char_bonus_slanted": {
+          "candidates": [
+            2.8,
+            3.44,
+            4.2
+          ],
+          "results": [
+            {
+              "value": 2.8,
+              "cer": 22.324,
+              "error": null
+            },
+            {
+              "value": 3.44,
+              "cer": 22.318,
+              "error": null
+            },
+            {
+              "value": 4.2,
+              "cer": 22.318,
+              "error": null
+            }
+          ],
+          "chosen": 3.44
+        }
+      },
+      "inner_stride": 35,
+      "baseline_confirm": {
+        "cer": 22.091,
+        "line_matched_cer": 23.939
+      },
+      "tentative_confirm": {
+        "cer": 21.823,
+        "line_matched_cer": 23.75
+      },
+      "accepted": true,
+      "reason": "tentative CER 21.823 beats baseline 22.091 on 6-stride confirm"
+    },
+    "tier2_lines": {
+      "params": {
+        "deskew.min_corrected_slope": {
+          "candidates": [
+            0.0007,
+            0.0015,
+            0.003
+          ],
+          "results": [
+            {
+              "value": 0.0007,
+              "cer": 22.318,
+              "error": null
+            },
+            {
+              "value": 0.0015,
+              "cer": 22.318,
+              "error": null
+            },
+            {
+              "value": 0.003,
+              "cer": 22.318,
+              "error": null
+            }
+          ],
+          "chosen": 0.0007
+        },
+        "lines.min_area": {
+          "candidates": [
+            1,
+            2,
+            3
+          ],
+          "results": [
+            {
+              "value": 1,
+              "cer": 22.315,
+              "error": null
+            },
+            {
+              "value": 2,
+              "cer": 22.318,
+              "error": null
+            },
+            {
+              "value": 3,
+              "cer": 22.318,
+              "error": null
+            }
+          ],
+          "chosen": 1
+        },
+        "lines.furniture_fraction": {
+          "candidates": [
+            0.13,
+            0.2,
+            0.3
+          ],
+          "results": [
+            {
+              "value": 0.13,
+              "cer": 22.321,
+              "error": null
+            },
+            {
+              "value": 0.2,
+              "cer": 22.315,
+              "error": null
+            },
+            {
+              "value": 0.3,
+              "cer": 22.315,
+              "error": null
+            }
+          ],
+          "chosen": 0.2
+        },
+        "lines.mark_height_fraction": {
+          "candidates": [
+            0.25,
+            0.35,
+            0.45
+          ],
+          "results": [
+            {
+              "value": 0.25,
+              "cer": 22.315,
+              "error": null
+            },
+            {
+              "value": 0.35,
+              "cer": 22.315,
+              "error": null
+            },
+            {
+              "value": 0.45,
+              "cer": 22.309,
+              "error": null
+            }
+          ],
+          "chosen": 0.45
+        }
+      }
+    }
+  },
+  "started": 1790253931.4494736
+}

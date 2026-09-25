@@ -1,0 +1,690 @@
+{
+  "phase": "done",
+  "base": {
+    "decode.w_lex": 0.6,
+    "decode.w_seg": 0.4,
+    "decode.lex_bonus_tier1": 1.0,
+    "decode.lex_bonus_tier2": 0.85,
+    "decode.lex_bonus_tier3": 0.7,
+    "decode.lex_bonus_tier4": 0.55,
+    "decode.lex_bonus_tier5": 0.4,
+    "decode.seg_ideal_aspect": 0.45,
+    "decode.seg_aspect_tolerance": 0.35,
+    "decode.seg_merge_penalty": 0.7,
+    "decode.seg_split_penalty": 0.5,
+    "decode.char_bonus_slanted": 3.44,
+    "lines.descender_fraction": 0.17,
+    "lines.descender_reach_fraction": 0.55,
+    "lines.inherit_x_height_below": 0.5,
+    "lines.baseline_split_sep": 0.6,
+    "lines.baseline_split_support": 0.25,
+    "lines.thin_debris_heights": 3.4288,
+    "words.pitch_min_glyphs": 6,
+    "words.pitch_agreement": 0.8,
+    "words.pitch_tolerance": 0.22,
+    "segment.max_merge_x_heights": 1.5,
+    "segment.valley_fraction": 0.65,
+    "segment.min_piece_x_heights": 0.28,
+    "layout.slant_min_deg": 6,
+    "layout.slant_margin": 1.08,
+    "match.top_k": 3,
+    "decode.beam_width": 14
+  },
+  "tiers": {
+    "tier1_decode": {
+      "params": {
+        "decode.w_lex": {
+          "candidates": [
+            0.35,
+            0.6,
+            0.9
+          ],
+          "results": [
+            {
+              "value": 0.35,
+              "cer": 22.616,
+              "error": null
+            },
+            {
+              "value": 0.6,
+              "cer": 22.616,
+              "error": null
+            },
+            {
+              "value": 0.9,
+              "cer": 22.616,
+              "error": null
+            }
+          ],
+          "chosen": 0.35
+        },
+        "decode.w_seg": {
+          "candidates": [
+            0.12,
+            0.25,
+            0.4
+          ],
+          "results": [
+            {
+              "value": 0.12,
+              "cer": 22.637,
+              "error": null
+            },
+            {
+              "value": 0.25,
+              "cer": 22.616,
+              "error": null
+            },
+            {
+              "value": 0.4,
+              "cer": 22.581,
+              "error": null
+            }
+          ],
+          "chosen": 0.4
+        },
+        "__lex_bonus_scale__": {
+          "candidates": [
+            0.7,
+            1.0,
+            1.3
+          ],
+          "results": [
+            {
+              "value": 0.7,
+              "cer": 22.601,
+              "error": null
+            },
+            {
+              "value": 1.0,
+              "cer": 22.581,
+              "error": null
+            },
+            {
+              "value": 1.3,
+              "cer": 22.593,
+              "error": null
+            }
+          ],
+          "chosen": 1.0
+        },
+        "decode.seg_ideal_aspect": {
+          "candidates": [
+            0.45,
+            0.6,
+            0.75
+          ],
+          "results": [
+            {
+              "value": 0.45,
+              "cer": 22.542,
+              "error": null
+            },
+            {
+              "value": 0.6,
+              "cer": 22.581,
+              "error": null
+            },
+            {
+              "value": 0.75,
+              "cer": 22.61,
+              "error": null
+            }
+          ],
+          "chosen": 0.45
+        },
+        "decode.seg_aspect_tolerance": {
+          "candidates": [
+            0.35,
+            0.55,
+            0.75
+          ],
+          "results": [
+            {
+              "value": 0.35,
+              "cer": 22.401,
+              "error": null
+            },
+            {
+              "value": 0.55,
+              "cer": 22.542,
+              "error": null
+            },
+            {
+              "value": 0.75,
+              "cer": 22.604,
+              "error": null
+            }
+          ],
+          "chosen": 0.35
+        },
+        "decode.seg_merge_penalty": {
+          "candidates": [
+            0.3,
+            0.5,
+            0.7
+          ],
+          "results": [
+            {
+              "value": 0.3,
+              "cer": 22.454,
+              "error": null
+            },
+            {
+              "value": 0.5,
+              "cer": 22.401,
+              "error": null
+            },
+            {
+              "value": 0.7,
+              "cer": 22.318,
+              "error": null
+            }
+          ],
+          "chosen": 0.7
+        },
+        "decode.seg_split_penalty": {
+          "candidates": [
+            0.5,
+            0.75,
+            1.0
+          ],
+          "results": [
+            {
+              "value": 0.5,
+              "cer": 22.318,
+              "error": null
+            },
+            {
+              "value": 0.75,
+              "cer": 22.318,
+              "error": null
+            },
+            {
+              "value": 1.0,
+              "cer": 22.368,
+              "error": null
+            }
+          ],
+          "chosen": 0.5
+        },
+        "decode.char_bonus_slanted": {
+          "candidates": [
+            2.8,
+            3.44,
+            4.2
+          ],
+          "results": [
+            {
+              "value": 2.8,
+              "cer": 22.324,
+              "error": null
+            },
+            {
+              "value": 3.44,
+              "cer": 22.318,
+              "error": null
+            },
+            {
+              "value": 4.2,
+              "cer": 22.318,
+              "error": null
+            }
+          ],
+          "chosen": 3.44
+        }
+      },
+      "inner_stride": 35,
+      "baseline_confirm": {
+        "cer": 22.091,
+        "line_matched_cer": 23.939
+      },
+      "tentative_confirm": {
+        "cer": 21.823,
+        "line_matched_cer": 23.75
+      },
+      "accepted": true,
+      "reason": "tentative CER 21.823 beats baseline 22.091 on 6-stride confirm"
+    },
+    "tier2_lines": {
+      "params": {
+        "lines.descender_fraction": {
+          "candidates": [
+            0.08,
+            0.12,
+            0.17
+          ],
+          "results": [
+            {
+              "value": 0.08,
+              "cer": 22.365,
+              "error": null
+            },
+            {
+              "value": 0.12,
+              "cer": 22.348,
+              "error": null
+            },
+            {
+              "value": 0.17,
+              "cer": 22.315,
+              "error": null
+            }
+          ],
+          "chosen": 0.17
+        },
+        "lines.descender_reach_fraction": {
+          "candidates": [
+            0.28,
+            0.4,
+            0.55
+          ],
+          "results": [
+            {
+              "value": 0.28,
+              "cer": 22.315,
+              "error": null
+            },
+            {
+              "value": 0.4,
+              "cer": 22.315,
+              "error": null
+            },
+            {
+              "value": 0.55,
+              "cer": 22.129,
+              "error": null
+            }
+          ],
+          "chosen": 0.55
+        },
+        "lines.inherit_x_height_below": {
+          "candidates": [
+            0.4,
+            0.5,
+            0.62
+          ],
+          "chosen": 0.5,
+          "results": [
+            {
+              "value": 0.4,
+              "cer": 22.129,
+              "error": null
+            },
+            {
+              "value": 0.5,
+              "cer": 22.129,
+              "error": null
+            },
+            {
+              "value": 0.62,
+              "cer": 22.129,
+              "error": null
+            }
+          ]
+        },
+        "lines.baseline_split_sep": {
+          "candidates": [
+            0.45,
+            0.6,
+            0.78
+          ],
+          "chosen": 0.6,
+          "results": [
+            {
+              "value": 0.45,
+              "cer": 22.301,
+              "error": null
+            },
+            {
+              "value": 0.6,
+              "cer": 22.129,
+              "error": null
+            },
+            {
+              "value": 0.78,
+              "cer": 22.121,
+              "error": null
+            }
+          ]
+        },
+        "lines.baseline_split_support": {
+          "candidates": [
+            0.17,
+            0.25,
+            0.35
+          ],
+          "chosen": 0.25,
+          "results": [
+            {
+              "value": 0.17,
+              "cer": 22.112,
+              "error": null
+            },
+            {
+              "value": 0.25,
+              "cer": 22.129,
+              "error": null
+            },
+            {
+              "value": 0.35,
+              "cer": 22.132,
+              "error": null
+            }
+          ]
+        },
+        "lines.thin_debris_heights": {
+          "candidates": [
+            2.8,
+            3.4288,
+            4.2
+          ],
+          "chosen": 3.4288,
+          "results": [
+            {
+              "value": 2.8,
+              "cer": 22.129,
+              "error": null
+            },
+            {
+              "value": 3.4288,
+              "cer": 22.129,
+              "error": null
+            },
+            {
+              "value": 4.2,
+              "cer": 22.129,
+              "error": null
+            }
+          ]
+        }
+      },
+      "inner_stride": 35,
+      "baseline_confirm": {
+        "cer": 21.802,
+        "line_matched_cer": 23.724
+      },
+      "tentative_confirm": {
+        "cer": 21.74,
+        "line_matched_cer": 23.846
+      },
+      "accepted": true
+    },
+    "tier3_words_segment": {
+      "params": {
+        "words.pitch_min_glyphs": {
+          "candidates": [
+            4,
+            6,
+            9
+          ],
+          "results": [
+            {
+              "value": 4,
+              "cer": 22.109,
+              "error": null
+            },
+            {
+              "value": 6,
+              "cer": 22.129,
+              "error": null
+            },
+            {
+              "value": 9,
+              "cer": 22.18,
+              "error": null
+            }
+          ],
+          "chosen": 6
+        },
+        "words.pitch_agreement": {
+          "candidates": [
+            0.65,
+            0.8,
+            0.92
+          ],
+          "results": [
+            {
+              "value": 0.65,
+              "cer": 22.18,
+              "error": null
+            },
+            {
+              "value": 0.8,
+              "cer": 22.129,
+              "error": null
+            },
+            {
+              "value": 0.92,
+              "cer": 22.144,
+              "error": null
+            }
+          ],
+          "chosen": 0.8
+        },
+        "words.pitch_tolerance": {
+          "candidates": [
+            0.1,
+            0.15,
+            0.22
+          ],
+          "results": [
+            {
+              "value": 0.1,
+              "cer": 22.171,
+              "error": null
+            },
+            {
+              "value": 0.15,
+              "cer": 22.129,
+              "error": null
+            },
+            {
+              "value": 0.22,
+              "cer": 22.047,
+              "error": null
+            }
+          ],
+          "chosen": 0.22
+        },
+        "segment.max_merge_x_heights": {
+          "candidates": [
+            1.5,
+            1.8,
+            2.15
+          ],
+          "results": [
+            {
+              "value": 1.5,
+              "cer": 21.59,
+              "error": null
+            },
+            {
+              "value": 1.8,
+              "cer": 22.047,
+              "error": null
+            },
+            {
+              "value": 2.15,
+              "cer": 22.103,
+              "error": null
+            }
+          ],
+          "chosen": 1.5
+        },
+        "segment.valley_fraction": {
+          "candidates": [
+            0.35,
+            0.5,
+            0.65
+          ],
+          "results": [
+            {
+              "value": 0.35,
+              "cer": 22.144,
+              "error": null
+            },
+            {
+              "value": 0.5,
+              "cer": 21.59,
+              "error": null
+            },
+            {
+              "value": 0.65,
+              "cer": 21.463,
+              "error": null
+            }
+          ],
+          "chosen": 0.65
+        },
+        "segment.min_piece_x_heights": {
+          "candidates": [
+            0.12,
+            0.2,
+            0.28
+          ],
+          "results": [
+            {
+              "value": 0.12,
+              "cer": 21.808,
+              "error": null
+            },
+            {
+              "value": 0.2,
+              "cer": 21.463,
+              "error": null
+            },
+            {
+              "value": 0.28,
+              "cer": 21.395,
+              "error": null
+            }
+          ],
+          "chosen": 0.28
+        }
+      },
+      "inner_stride": 35,
+      "baseline_confirm": {
+        "cer": 21.74,
+        "line_matched_cer": 23.846
+      },
+      "tentative_confirm": {
+        "cer": 21.099,
+        "line_matched_cer": 23.314
+      },
+      "accepted": true,
+      "reason": "tentative CER 21.099 beats baseline 21.740 on 6-stride confirm"
+    },
+    "tier4_slant": {
+      "params": {
+        "layout.slant_min_deg": {
+          "candidates": [
+            4,
+            6,
+            8.5
+          ],
+          "results": [
+            {
+              "value": 4,
+              "cer": 21.395,
+              "error": null
+            },
+            {
+              "value": 6,
+              "cer": 21.395,
+              "error": null
+            },
+            {
+              "value": 8.5,
+              "cer": 21.395,
+              "error": null
+            }
+          ],
+          "chosen": 6
+        },
+        "layout.slant_margin": {
+          "candidates": [
+            1.08,
+            1.15,
+            1.3
+          ],
+          "results": [
+            {
+              "value": 1.08,
+              "cer": 21.371,
+              "error": null
+            },
+            {
+              "value": 1.15,
+              "cer": 21.395,
+              "error": null
+            },
+            {
+              "value": 1.3,
+              "cer": 21.386,
+              "error": null
+            }
+          ],
+          "chosen": 1.08
+        }
+      },
+      "inner_stride": 35,
+      "baseline_confirm": {
+        "cer": 21.099,
+        "line_matched_cer": 23.314
+      },
+      "tentative_confirm": {
+        "cer": 21.01,
+        "line_matched_cer": 23.211
+      },
+      "accepted": true,
+      "reason": "tentative CER 21.010 beats baseline 21.099 on 6-stride confirm"
+    },
+    "cost_knobs": {
+      "match.top_k": {
+        "results": [
+          {
+            "value": 3,
+            "cer": 20.963,
+            "error": null
+          },
+          {
+            "value": 5,
+            "cer": 21.01,
+            "error": null
+          },
+          {
+            "value": 8,
+            "cer": 21.17,
+            "error": null
+          }
+        ],
+        "chosen": 3,
+        "reason": "cheapest candidate within 0.02 CER of baseline 21.010"
+      },
+      "decode.beam_width": {
+        "results": [
+          {
+            "value": 14,
+            "cer": 20.966,
+            "error": null
+          },
+          {
+            "value": 24,
+            "cer": 20.963,
+            "error": null
+          },
+          {
+            "value": 36,
+            "cer": 20.963,
+            "error": null
+          }
+        ],
+        "chosen": 14,
+        "reason": "cheapest candidate within 0.02 CER of baseline 20.963"
+      }
+    }
+  },
+  "started": 1790253931.4494736,
+  "resumed": "after memory-pressure kill; tie-break keeps current unless > EPS better; w_lex reverted to 0.6"
+}

@@ -1,0 +1,20 @@
+pages   103 of 103 in D:/Dev/ExcludedPrivate/ocrcer/pages/finfilings-val (stride 1, offset 0)
+
+end-to-end   CER 24.325%  WER 49.055%  recall 68.105%  precision 62.350%  F1 65.101%
+line-matched CER 28.871%  (reading-order-independent)
+
+speed       1866.5s for 103 pages, 18121 ms/page, 0.2 Mpixel/s (recognition only; loading, scoring and rendering excluded)
+
+top confusions (aligned, end-to-end)
+    9628  "\n" -> " "
+    2912  "" -> " "
+    1675  "." -> ""
+    1120  ":" -> ""
+     998  " " -> ""
+     909  "," -> " "
+     877  "0" -> "O"
+     744  "i" -> ""
+     709  "\n" -> ""
+     642  "t" -> ""
+     540  "e" -> ""
+     531  "," -> ""

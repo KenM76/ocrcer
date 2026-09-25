@@ -1,0 +1,27 @@
+=== POST launched (detached, waits for CAMPAIGN DONE) 09/24/2026 23:44:16 ===
+=== POST relaunched with generalised edge walks (half-step, tiers 1/3/4) 09/24/2026 23:59:31 ===
+=== POST relaunched with tie revert seg_split_penalty 0.75 (ARCHITECTURE s11 2026-09-25) 09-25-2026 04:23:12 ===
+=== post: start 04:44:13 ===
+[post:inner:current] CER 21.298%  LM 19.841  F1 74.059%  (212s, stride 35)
+[post:inner:decode.w_seg=0.475] CER 21.259%  LM 19.861  F1 74.205%  (220s, stride 35)
+[post:inner:decode.w_seg=0.55] CER 21.218%  LM 19.835  F1 74.351%  (237s, stride 35)
+[post:inner:decode.w_seg=0.625] CER 21.236%  LM 19.835  F1 74.387%  (224s, stride 35)
+[post:inner:decode.seg_ideal_aspect=0.375] CER 21.215%  LM 19.832  F1 74.405%  (235s, stride 35)
+[post:inner:decode.seg_aspect_tolerance=0.25] CER 21.256%  LM 19.858  F1 74.442%  (222s, stride 35)
+[post:inner:decode.seg_merge_penalty=0.8] CER 21.200%  LM 19.817  F1 74.460%  (266s, stride 35)
+[post:inner:words.pitch_tolerance=0.255] CER 21.233%  LM 20.118  F1 74.071%  (219s, stride 35)
+[post:inner:segment.max_merge_x_heights=1.35] CER 20.330%  LM 18.982  F1 79.362%  (208s, stride 35)
+[post:inner:segment.max_merge_x_heights=1.2] CER 20.041%  LM 18.673  F1 81.039%  (207s, stride 35)
+[post:inner:segment.max_merge_x_heights=1.05] CER 19.941%  LM 18.593  F1 81.731%  (202s, stride 35)
+[post:inner:segment.valley_fraction=0.725] CER 19.932%  LM 18.578  F1 81.749%  (281s, stride 35)
+[post:inner:segment.min_piece_x_heights=0.32] CER 19.941%  LM 18.593  F1 81.731%  (242s, stride 35)
+[post:inner:layout.slant_margin=1.045] CER 19.941%  LM 18.593  F1 81.731%  (210s, stride 35)
+[post:confirm:phase1:baseline] CER 20.978%  LM 23.226  F1 70.733%  (1256s, stride 6)
+[post:confirm:phase1:tentative] CER 19.631%  LM 21.916  F1 77.923%  (1000s, stride 6)
+=== post phase1: accepted=True base=20.978 tent=19.631 ===
+[post:ablation:A_final] CER 21.418%  LM 24.119  F1 77.705%  (3174s, stride 2)
+=== post ablation A_final: CER 21.418 LM 24.119 ===
+[post:ablation:C_wlex_035:resume] CER 21.450%  LM 24.138  F1 77.582%  (3691s, stride 2)
+=== post ablation C_wlex_035: CER 21.45 LM 24.138 ===
+[post:ablation:D_control:resume] CER 23.809%  LM 26.227  F1 67.094%  (4092s, stride 2)
+=== post ablation D_control: CER 23.809 LM 26.227 ===
