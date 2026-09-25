@@ -735,20 +735,71 @@ decision log and no others.
   of any fitting or bank build until the operator clears it, see *Open
   questions* below), scribeocr (AGPL-3.0, excluded), IRS/CRA forms (not
   cleared, held for the operator).
-- **Chunk 12 — fit the existing `guess` params on the training split.** In
-  progress, unmerged, on branch `fit-12b` — see the *Unmerged work*
-  section below for status.
+- **Chunk 12 — fit the existing `guess` params on the training split. In
+  progress, on branch `fit-12b`.** All four coordinate-descent tiers now
+  have a verdict (measured, `campaign.py`/`campaign_resume2.py`/
+  `campaign_post.py`, `fitlogs/campaign_stdout.log`): tier 1 (decode
+  weights) ACCEPTED, CER 22.091→21.823 (stride-6 confirm); tier 2 (line
+  params) ACCEPTED but mixed — CER 21.802→21.740 improved while
+  line-matched CER worsened 23.724→23.846 and F1/precision/recall all
+  regressed, so an end-of-campaign ablation (revert tier 2, compare
+  full-train) is still required before this tier is trusted; tier 3
+  (segmentation params) ACCEPTED clean, CER 21.740→21.099 with every
+  metric improving together (line-matched 23.846→23.314, F1
+  68.338→70.686); tier 4 (slant) ACCEPTED, 21.099→21.010 (`slant_margin`
+  1.08, LM-metric 23.211, F1 70.797). Post-campaign chain (edge-parameter
+  walks + a stride-2 A/B/C/D ablation) launched detached; a reading (not a
+  decision) found `match.top_k=3` gives CER 20.963, cheaper than tier-4's
+  `top_k=5` — not walked into the post-chain, it would cut headroom chunk
+  14/16b still need. **Not yet merged to master.** See *Unmerged branches*
+  below for full branch state.
+- **Chunk 12c — width-weighted decoder.** Built and reviewed on branch
+  `width-weight` (off `case-geom`), ACCEPTED (a `Params::get` probe bug
+  found and fixed in review). Verified against Tesseract's
+  `Rating=(1-match)×1.5×BlobLength` (`adaptmatch.cpp:1415`) and the
+  n-gram/classifier cost's `outline_length/16` scaling
+  (`language_model.cpp:910`); `Certainty` stays unweighted, matched here.
+  Mode 0 (off) is byte-identical to the pre-existing default. Not yet
+  merged — see *Unmerged branches*.
 - **Chunk 13 — real-scan prototypes from aligned training crops** (kNN
-  "training", no format change) — scope decided, build status not
-  independently confirmed by this filing.
+  "training", no format change). Spec committed (`6c62cd1`): train-only
+  with a refusal test, forced alignment via the core lattice, Wilson edit
+  + Hart condense, moments frozen to rendered rows, pseudo-face
+  Apache-2.0, no format change, an ECE re-measure gate. Build not yet
+  started.
+- **Chunk 13b — per-page adaptive prototypes (candidate).** Spec committed
+  (`9b70410`), verified against Kae et al. CVPR 2010 (clean-list
+  self-training, M=20/θ=0.66, 9.5% error vs. 34.1% for a confidence
+  threshold, 10/56 vs. 21/56 documents harmed) — a phantom citation was
+  caught in the same pass: "3 samples" and "30-60%" attributed to Smith
+  2007 are not in that paper's §7. Candidate status, not yet built.
+- **Chunk 13c — rotated/vertical CAD drawing text (candidate).** Spec
+  committed (`8e4ebd4`), verified against Tombre et al. 2002 (Hough
+  transform on component bounding-box centres, `chdr` sampling parameter
+  explicitly unstable, `tau=2.5` grouping parameter more stable, short
+  strings unreliably detected) and Tesseract's
+  `textord_tabfind_vertical_text_ratio` (0.5). **Its own census was
+  DROPPED** (`84e062c`): `pages-cov`'s "drawing" category is
+  drawing-*vocabulary*, not drawing-*layout* — zero rotated strings by
+  construction, the wrong corpus to census against. Candidate status, not
+  yet built.
 - **Chunk 14 — a domain lexicon and bigrams counted from training-split
-  text** — scope decided, build status not independently confirmed.
+  text.** Spec committed and reconciled (`c820127`, `6edae2d`) — verified
+  absolute discounting D=n1/(n1+2n2) (Chen & Goodman 1998/SRILM). Built and
+  reviewed on branch `chunk14` (off master `4ac2999`, 6 commits): ACCEPTED
+  with a fix — a case-folding bug in the lexicon union gave
+  1555/889/437 instead of the corrected 1503/848/405 (§11 `f775399`). A
+  follow-up is running; val-split pick waits until chunk 12b closes (see
+  the amended runbook below). Not yet merged.
 - **Chunk 15 — a neural glyph classifier as a second matcher, selected by
   `match.classifier` (0 prototypes / 1 network / 2 fused), pure safe Rust
   in `ocrcer-core`, wasm32-buildable, weights in an optional `nn` table,
   gated on beating the prevailing controls plus a wall-time report** — full
   contract in `ARCHITECTURE.md`'s "build the neural network recognizer"
-  entry; build status not independently confirmed by this filing.
+  entry. **Contract amended (`ab6cf7a`) per a direct read of LeCun 1998**:
+  the junk-output unit's negatives now come from the rendered-line lattice
+  plus chunk 13's non-path candidates, not a separate synthetic-negative
+  generator. Build not yet started.
 - **Chunk 16 — the LLM add-on, `ocrcer-llm`, a new workspace crate.**
   Pure safe Rust, `std`-only (GPU is a later, feature-gated relaxation),
   implements exactly the Qwen decoder-only family, ships as one file
@@ -781,6 +832,27 @@ decision log and no others.
     shipped at the neutral 3.44 (= `char_bonus`), labelled `guess`, handed
     to chunk 12's fit rather than hand-tuned. `r000583`'s residual loss is
     not fixed by this lever.
+  - **16a-speed reviewed and accepted, on branch `llm-speed`.** Persistent
+    thread pool + blocked matmul kernel (`1a21c1f`, `3e6507d`) plus batched
+    `score_candidates` (`fac7b34`, verified bit-identical to per-candidate
+    scoring across 31 tests). Accepted with a condition:
+    `forward_token`/`forward_tokens_batch` are two copies guarded only by
+    an equality test, to be unified in 16b. **Awaits the serial
+    real-weights oracle run and pinned timings** before merge — see
+    *Unmerged branches*.
+  - **16b (OCR rescoring) built and reviewed, on branch `rescore`.** Built
+    on `88f8447`; review cycle (`c616715`→`9f2288e`→`0c0f86e`) found and
+    fixed four bugs: (a) the line-prefix for line≥2 was missing a trailing
+    newline, gluing two lines together for the LM; (b) Off mode must not
+    load the LLM or run the nbest path; (c) the confidence cap must apply
+    per word, not just to `LineResult`; (d) `--llm-dump` added for offline
+    grid-fitting. A tie-break rule (errors → smaller λ → fewer changed
+    lines → lower threshold, FULL last → smaller \|β\| → smaller β) and a
+    `--plain-cer` units bug (fraction with 5e-4 tolerance vs. percent-to-3dp)
+    were also found and fixed in review. λ/β/threshold defaults
+    (1.0/0.5/0.7) are `guess`, awaiting a fit grid — **gated behind chunk
+    12b closing and the campaign completing**, per the runbook below. Not
+    yet merged.
 
 **Measured 2026-09-24 — dense-page matching speed, a second cross-class
 early-abandon ceiling (merge `f7757de`).** Full detail:
@@ -805,49 +877,118 @@ rerun is the outstanding step. `cargo test --workspace --release` green;
 
 ---
 
-### Unmerged branches, inventoried 2026-09-24 (all local, `D:\Dev\ExcludedPrivate\ocrcer\wt-*`, none pushed)
+### Unmerged branches, inventoried 2026-09-25 (all local, `D:\Dev\ExcludedPrivate\ocrcer\wt-*` worktrees, none pushed)
 
-Not shipped, not on master. Recorded so the next session does not have to
-reconstruct branch state from scratch.
+Not shipped, not on master. Table **measured just now by the architect
+with `git rev-list`** (ahead/behind master); replaces the 2026-09-24
+inventory in full so the two snapshots cannot be read as both current.
 
-- **`llm-speed`** (commits `1a21c1f`, `3e6507d`, `fac7b34`) — 16a-speed
-  (persistent thread pool + blocked matmul kernel) and 16a-speed2 (batched
-  `score_candidates`). **Pinned single-thread readings**, from the branch's
-  own `docs/measurements/2026-09-24_llm_speed.md`: qwen2.5-0.5b Q8 prefill
-  1.58→3.82 tok/s, decode 1.57→2.81 tok/s. Batched path is bit-identical to
-  the per-candidate path in synthetic tests; **speed of the batched path
-  itself is unmeasured**. The ~46 min single-thread / ~10 min
-  multi-thread-for-50-lines×8-candidates figure in that doc is a
-  **projection**, not a measurement. **Pending before merge:** a serial
-  real-weights oracle run (`--test-threads=1`, never concurrent with
-  another heavy job) plus pinned timings.
-- **`nbest`** (`8bb5799`) — `Engine::recognize_lines_nbest`,
-  `decode_word = decode_word_nbest(..,1)`. **Pending:** a byte-identical
-  check against master's corpus output, and an oracle best-of-8 CER on
-  finfilings-val (unmeasured).
-- **`case-geom`** (`5e0dd1a`, `6567531`) — `decode.case_geom_penalty`
-  default 0.0, provenance `guess`. **Pending:** a train-split sweep and its
-  gates; needs rebasing onto `nbest` first, since `nbest` changes
-  `decode_word`'s signature.
-- **`fit-12b`** — chunk 12's coordinate-descent fit, **in progress, on
-  `finfilings-train` only.** Tier 1 (decode weights) accepted at confirm
-  scale: 21.823 vs. 22.091 (stride-6 train sample). Tier 2 (line params)
-  inner sweeps tentatively chose `descender_fraction` 0.17 and
-  `descender_reach_fraction` 0.55 (inner 22.129 vs. 22.348, others kept);
-  **tier-2 confirm not yet run.** `w_lex` reverted 0.35→0.6 on resume,
-  pending a confirm-scale A/B. **The campaign was killed three times today
-  by Claude Code's memory-pressure reaper** — once because the architect
-  ran all real-weights LLM oracle tests concurrently at ~7 GB, twice from
-  general machine memory pressure (the campaign itself runs at ~70 MB).
-  **Awaiting the operator's go to resume** — not restarted on any agent's
-  own initiative, per the standing rule below.
+| Branch | Ahead/behind | State |
+|---|---|---|
+| `conf-tools` | +9/−0 | char-dump, census and fit-calibration; review follow-up running (manifest-based split check) |
+| `xh-desc` | +2/−0 | descender cap check, first spec; follow-up running (amended reference) |
+| `chunk14` | +7/−4 | count-mixture tables; follow-up running |
+| `rescore` | +16/−39 | 16b, reviewed |
+| `width-weight` | +5/−41 | 12c mode, reviewed |
+| `conf-margin` | +5/−41 | reviewed |
+| `case-geom` | +3/−41 | reviewed |
+| `nbest` | +1/−41 | reviewed |
+| `llm-speed` | +3/−44 | reviewed; awaits oracle tests |
+| `style-probe` | +0/−2 | a probe is running |
+| `fit-12b` | +0/−62 | campaign worktree; uncommitted fold pending |
+| `dpi-diag` | +1/−30 | note cherry-picked; removable |
+| `speed`, `pdfcer-binding` | +0 | merged; worktrees removable |
 
-**Standing rule, new this filing:** run LLM oracle tests with
-`--test-threads=1` and never alongside a fitting campaign — the one
+**Per-branch detail, beyond the table:**
+
+- **`conf-tools`** (char-dump, census, fit-calibration) — **blocking bug
+  found in review**: `fit_calibration`'s name-fragment refusal
+  (`name.contains("finfilings")`, meant to keep the train/score firewall)
+  also refuses `finfilings-val`, the tool's own intended fit input, since
+  a split name built by suffixing the base corpus name is always a
+  superset string of it. Follow-up dispatched for a manifest-based
+  per-stem split check (`filing__s{shard}__r{record}` →
+  `train-0000{shard}-of-00008.parquet#{record}`), running as of this
+  filing.
+- **`xh-desc`** — first spec (`f631a10`) done; follow-up running for the
+  amended cap reference (unflagged `Observed ∪ FromCapHeight`, measured
+  caps only, x-fallback via cap×xhpc, a 3-step order, vote excludes
+  still-flagged lines, 3 new tests). This branch carries the corrected
+  13.9%-of-components descender-defect fix (see SESSION_LOG 2026-09-25).
+- **`chunk14`** — 6 commits, ACCEPTED with a fix (§11 `f775399`, the
+  case-folding bug above); follow-up running. Val-split pick waits for
+  chunk 12b to close (runbook step 8, below).
+- **`rescore`** (16b) — reviewed and accepted with 4 fixes (see the chunk
+  16 entry above); gated behind chunk 12b closing per the runbook.
+- **`width-weight`** (12c) — reviewed and accepted (`Params::get` probe
+  bug fixed). **Merge note:** the `Hyp` type gains an `x_height` field on
+  this branch, which touches other in-flight branches at merge time.
+- **`conf-margin`** — reviewed and accepted (`21eb6a3`, a bit-for-bit test
+  nit fixed in `07027db`). Per-candidate ratio, `agreed` flag, separate
+  agree/override calibration curves, default 0.01→0.05, identity word
+  curve. Fixes the two confidence-machinery defects logged in §11
+  (`924f503`/`6ad92ab`).
+- **`case-geom`** — reviewed and accepted after rebase onto `nbest`
+  (`6404723`), byte-identical default, guarded.
+- **`nbest`** — reviewed and accepted (`8bb5799`, 204 core tests, wasm
+  clean). Open: oracle best-of-8 CER as 16b's first reported number.
+- **`llm-speed`** — reviewed and accepted with a condition
+  (`forward_token`/`forward_tokens_batch` unify in 16b). **Awaits the
+  serial real-weights oracle run** (`--test-threads=1`, never concurrent
+  with a fitting campaign) and pinned timings before merge.
+- **`style-probe`** — a Sarkar & Nagy PAMI 2005-style field-classification
+  probe (`ocrcer-build style`, held-out sizes, fields L=1/2/4/8, in-bank +
+  leave-one-face-out) is running. Decision rule pre-set: L=4 relative
+  glyph-error cut ≥10% → write a candidate spec; <5% → park; 5-10% → park
+  as weak.
+- **`fit-12b`** — the coordinate-descent campaign; see the chunk 12 entry
+  above for all four tiers' verdicts. An uncommitted fold from the
+  post-campaign chain is pending.
+- **`dpi-diag`** — the DPI finding (200dpi-native + nearest-neighbour
+  aliasing, not blur) is already cherry-picked to master (`91d9cdf`, §11
+  `91005e2`); this worktree/branch is removable.
+- **`speed`, `pdfcer-binding`** — already merged; their worktrees are
+  removable.
+
+**Merge order:** `llm-speed` → `nbest` → `case-geom` → `conf-margin`
+(+`conf-tools`) → `width-weight` → `chunk14` → `rescore` (rebased). The
+`xh-desc` train gate runs right after chunk 12b closes.
+
+**Standing rule, still in force:** run LLM oracle tests with
+`--test-threads=1` and never alongside a fitting campaign — the
 documented case of concurrent heavy jobs is what killed `fit-12b`'s run
-today. A job killed by the memory-pressure reaper is restarted only on the
-operator's say-so, never automatically by the next agent that notices it
-stopped.
+on 2026-09-24. A job killed by the memory-pressure reaper is restarted
+only on the operator's say-so, never automatically by the next agent that
+notices it stopped.
+
+### Post-campaign runbook (from the architect's working queue, 01:18
+2026-09-25, as amended later the same session)
+
+1. Let `campaign_post.py`'s edge-parameter walks and stride-2 A/B/C/D
+   ablation finish (tier-2's required ablation is part of this step).
+2. **Amended — moved up to this step:** run the `xh-desc` train gate,
+   immediately after chunk 12b closes, rather than later in the sequence.
+3. Report top-1 / best-of-8 / best-of-32 n-best ceiling figures before
+   fitting 16b's λ/β/threshold grid (added per the n-best-ceiling
+   research, `cfdd2b2`/`0e59ef1`).
+4. Merge the branch chain in the order above.
+5. Fit 16b's shallow-fusion grid (λ∈{0,.05,.1,.2,.3,.5}×β∈{0,.5,1,2}) via
+   `--llm-dump`, offline.
+6. Dispatch `ocrcer-bench` on `conf-tools` for char-dump + census +
+   fit-calibration once `conf-margin` has landed.
+7. Fit the confidence calibration curves (PAV, per §11 `0467ac5`) against
+   `finfilings-val`.
+8. Pick chunk 14's val split.
+9. Re-run the full scoring-corpus gates (`finfilings`, `pages-cov`) and
+   file the chunk-closing measured numbers.
+
+**Amendments to the runbook, this filing:** the style-probe and
+reverse-video (`invert_threshold`-style) candidates are **parked with
+explicit triggers** rather than queued into the runbook — style-probe on
+its own ≥10%/5-10%/<5% decision rule above, reverse-video on the CAD dev
+set existing, a pdfcer report naming it, or a census turning up a
+counter-fragment insertion. `--user-patterns` (a Tesseract-style CAD
+callout bonus, e.g. `M8x1.25`) is parked until the CAD dev set exists.
 
 ---
 
@@ -1170,7 +1311,26 @@ ground-truth normalisation that has to be declared in the report. See
     time — not a standing default.** Recorded here because it is the one
     case in this project where a one-time approval (the initial publish)
     explicitly does **not** generalise to a standing rule, unlike the git
-    *commit* default below — the publish entry states this itself.
+    *commit* default below — the publish entry states this itself. This
+    still holds as of this filing; the `rescore`/`chunk14`/etc. branches
+    above are not to be pushed without a fresh go each time.
+
+14. **A stray 2.1 GB `D:\Dev\pdfcer\target-case\` build directory, flagged
+    2026-09-24.** Found during the pdfcer-adapter review pass; not this
+    project's tree and not deleted without asking — it may be a live
+    build output from a pdfcer session, not simply orphaned. Needs Ken's
+    go before removal.
+
+15. **Removing merged worktrees and their target directories, raised this
+    filing.** `wt-speed` and `wt-pdfcer` (branches `speed`,
+    `pdfcer-binding`) are fully merged; `wt-dpi` (`dpi-diag`) has its one
+    useful commit already cherry-picked to master (`91d9cdf`). All three
+    are candidates for deletion to reclaim disk, each carrying its own
+    `target/` build directory. Not deleted by this filing — a worktree
+    removal is a destructive operation outside this role's remit, and the
+    other unmerged worktrees (`wt-conftools`, `wt-xhdesc`, `wt-c14`,
+    `wt-width`, `wt-style`, `fit-12b`'s own worktree) must **not** be
+    touched, since they hold uncommitted or unmerged work.
 
 ---
 

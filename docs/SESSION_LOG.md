@@ -1083,3 +1083,183 @@ Backlog and *Open questions* sections; `fit-12b`'s tier-2 confirm run; the
 `/usage` calibration, still outstanding.
 
 ---
+
+## 2026-09-25 — fit-12b campaign tiers 1-4, chunk 12b/12c/13/13b/13c/14/15/16a/16b specs and builds, two confidence defects, a descender-defect correction
+
+**Request.** Checkpoint refresh (this filing's own dispatch: last filing
+2026-09-24 16:16 / commit f0481e0; large volume of chunk work landed
+since). Not a new engineering request — an append of everything the
+architect's working queue recorded.
+
+**fit-12b campaign, all four tiers now have a verdict (measured, train
+stride-6/stride-2 confirm runs from `campaign.py`/`campaign_resume2.py`/
+`campaign_post.py`, per `fitlogs/campaign_stdout.log`).** Tier 1 (decode
+weights) ACCEPTED: CER 22.091→21.823 (stride 6); `w_lex` moved 0.6→0.35 by
+a flat-sweep tie only, then reverted after a stride-6 A/B showed 0.6 is
+0.021 better (21.802 vs 21.823) — the inner-sample "0.039 worse" reading
+was noise. Tier 2 (line params) ACCEPTED but flagged mixed: CER
+21.802→21.740 improved, but line-matched CER got worse (23.724→23.846)
+and F1/precision/recall all regressed; campaign rule accepted it on CER
+alone, an end-of-campaign ablation is required before trusting it
+long-term. Tier 3 (segmentation params) ACCEPTED clean: CER 21.740→21.099,
+line-matched CER 23.846→23.314, F1 68.338→70.686 — all four metrics
+improved together. Tier 4 (slant) ACCEPTED: 21.099→21.010 (`slant_margin`
+1.08), LM-metric 23.211, F1 70.797. A late reading (not a decision) found
+`match.top_k=3` gives CER 20.963, cheaper than tier-4's `top_k=5` (21.010)
+— filed as a reading, not walked into the post-chain because it would cut
+headroom the chunk-14/16b work still needs.
+
+**Two mid-campaign incidents, neither restarted without Ken's go.** The
+memory-pressure reaper killed the campaign once (PID 29860, 3.8/16 GB
+free) mid tier-2 inner sweep; salvage was tier-1's already-accepted result
+plus a flat tier-2 x-height-fraction reading. It was killed a second time
+when all 6 LLM oracle tests were run concurrently with it (~7.2 GB) — this
+was the architect's own error; the standing rule from the prior filing
+(oracle tests `--test-threads=1`, never beside a campaign) was violated,
+not missing. Both incidents are filed as measurements of what happened,
+not projections.
+
+**Confidence-machinery: two real defects found by research, not yet
+fixed in the shipped default (`decode.width_weighting`/etc. still 0).**
+(1) the pipeline gives every candidate the matcher-winner's d1/d2 instead
+of its own; (2) `confidence::adjust` is never called, so `lm_floor` is
+dead code. Branch `conf-margin` (per-candidate ratio, an `agreed` flag,
+separate agree/override calibration curves, default 0.01→0.05, an
+identity word curve) was built and reviewed accepted (commit `21eb6a3`,
+one bit-for-bit test nit fixed in `07027db`). §11 entries `924f503`
+(research) and `6ad92ab` (decision) hold the defect writeup.
+
+**A fitted confidence curve now has a stated params-row convention
+(§11, commit `0467ac5`, already in `ARCHITECTURE.md` — not restated here
+beyond the pointer):** one row per knot coordinate (agree r0-r5/c0-c5,
+override r0-r1/c0-c1, word r0-r1/c0-c1), labelled `fitted`, naming
+`fit-calibration`/the split manifest/`finfilings-val`, `tune=no`; load-time
+validation requires ratios ascending and the three curve families
+non-rising/non-falling as specified, monotonicity failure is a load error,
+not a silent fallback.
+
+**The descender/cap-band defect was corrected upward, not just found.**
+First reading (spec `f196a6e`) measured 8.2% of components on the
+descender fallback branch, but only counted the 24 of 43 sampled train
+pages that also had an independent cap-band line — a silent exclusion.
+The corrected full re-read (commit `c52c91e`, all 43 pages, every-10th-page
+train sample) found **905 of 6,141 lines on the descender branch, 13.9% of
+all components, across 31 of the 43 pages** — trade-table date cells
+(`23/12/2024`) are a concrete example, taking the branch purely because
+`/` hangs below baseline. §11 carries the amendment; the cap reference is
+now the unflagged `Observed ∪ FromCapHeight` union with measured caps only.
+Runtime work dispatched to worktree `wt-xhdesc`/branch `xh-desc`
+(`f631a10` first spec; a follow-up for the amended cap reference is still
+running as of this filing).
+
+**Chunk specs committed this window, each against a verified prior-art
+source (see `docs/measurements/2026-09-22_research_classical_techniques.md`
+addenda and `ARCHITECTURE.md` §11 for full text — not restated here):**
+chunk 13 (real-scan prototypes, `6c62cd1`); chunk 13b (per-page adaptive
+prototypes, `9b70410`, verified against Kae et al. CVPR 2010 — a phantom
+citation was caught and corrected in the same pass: "3 samples" and
+"30-60%" attributed to Smith 2007 are not in that paper); chunk 13c
+(rotated CAD text, `8e4ebd4`, verified against Tombre et al. 2002); chunk
+14 (counted bigrams + lexicon union, `c820127`, verified absolute
+discounting D=n1/(n1+2n2)); chunk 15 (junk-output amendment per LeCun
+1998, `ab6cf7a`).
+
+**Process miss, self-reported by the architect (commit `6edae2d` +
+reconciliation entries).** The chunk 13/13b/14 specs were written without
+first grepping `docs/measurements/` and git log for prior art already on
+disk — a count-text stage and two addenda already existed and had to be
+reconciled in afterward rather than written once. New standing rule
+adopted by the architect for itself: grep measurements + git log before
+any spec. Chunk 13c's own census was DROPPED (`84e062c`): pages-cov's
+"drawing" category is drawing-*vocabulary*, not drawing-*layout*, so it
+has zero rotated strings by construction — the wrong corpus to census
+against.
+
+**Chunk 14 built and reviewed (branch `chunk14`, off master `4ac2999`).**
+6 commits, ACCEPTED with a fix: a case-folding bug in the lexicon union
+gave 1555/889/437 instead of the corrected 1503/848/405 (§11 `f775399`).
+Follow-up dispatched; val-split pick for chunk 14 waits until 12b closes
+(runbook step 8, below).
+
+**Chunk 16a-speed and 16b reviewed on their own branches.** `llm-speed`
+(fka 16a-speed2, commit `fac7b34`): `score_candidates` verified bit-identical
+to per-candidate scoring across 31 tests, ACCEPTED with a condition
+(`forward_token`/`forward_tokens_batch` are two copies guarded by an
+equality test, to be unified in 16b). `nbest` (`8bb5799`,
+`recognize_lines_nbest`/`decode_word_nbest`, 204 core tests, wasm clean):
+ACCEPTED, merge order fixed as nbest-before-case-geom (case-geom rebased
+onto it after: `6404723`, ACCEPTED). `rescore` (16b shallow-fusion n-best
+rescoring, built on `88f8447`, reviewed `c616715`→`9f2288e`→`0c0f86e`):
+four bugs found and fixed in review — (a) the line-prefix built for line≥2
+was missing a trailing newline, gluing two lines together for the LM; (b)
+Off mode must not load the LLM or run the nbest path at all; (c) the
+confidence cap must apply per word, not just to `LineResult`; (d)
+`--llm-dump` added for offline grid-fitting. A tie-break rule (errors →
+smaller λ → fewer changed lines → lower threshold, FULL tried last →
+smaller |β| → smaller β) and a `--plain-cer` units/tolerance bug (fraction
+with 5e-4 tolerance vs. percent-to-3dp) were both found and fixed in the
+same review cycle. λ/β/threshold defaults (1.0/0.5/0.7) are flagged as
+guesses awaiting a fit grid, not yet fitted values.
+
+**Width-weighted decoder (chunk 12c) built and reviewed** on branch
+`width-weight` (off `case-geom` `6404723`, commit `e28ab39` reviewed
+accepted with a `Params::get` probe bug fixed in `cb07d71`) — verified
+against Tesseract's `Rating=(1-match)×1.5×BlobLength`
+(`adaptmatch.cpp:1415`) and the n-gram/classifier cost's
+`outline_length/16` scaling (`language_model.cpp:910`); `Certainty` stays
+unweighted in Tesseract, matched here. Merge note: the `Hyp` type gains an
+`x_height` field as part of this branch, which touches other in-flight
+branches.
+
+**DPI finding (dpi-diag worktree, note cherry-picked `91d9cdf`, §11
+`91005e2`).** pdfcer's "300dpi garble" smoke page (`scan.pdf`) is
+200dpi-native (a 1700×2200 image on a 612×792pt page) upsampled 1.5× via
+nearest-neighbour — aliasing, not a genuine resolution/blur problem. Fix
+recommendation is filed against pdfcer (native-dpi rasterization, smooth
+magnification), not against OCRcer.
+
+**Smaller research addenda landed this window, each already in
+`ARCHITECTURE.md`/`docs/measurements/` by commit hash — filed here as
+pointers, not restated:** missing-cut/chopper candidate generation
+(`57bc4e4`); footing detection (train truth 126 exact foots/13 pages,
+IBM prior art expired, chunk-9 backlog, flag-first default off); fixspace
+smallest-gap-first enumeration (`bc364df`); ISRI 1995's 0.5%-flagged bar
+catching 20-45% of errors, and train truth EUR-sign share 6,692/986,633 =
+0.68% (`ba8919e`); column-type numeric-run prior, 4,095/8,628 numeric-run
+cells single-digit (`e668c63`); superscript re-read train truth (7
+attached-digit markers + 76 † in 161,146 tokens, not queued, `e8c93b5`/
+`474ff7d`); cross-line hyphen carry-over (all 18 train line-end hyphens
+are compounds, not queued, `d75e6ac`); reverse-video/`invert_threshold`
+addendum (train count 3/427 pages, ~0.015% of glyph-sized components,
+`51a7408`); n-gram order reading (bits/char 5.225/3.800/3.060/2.694 for
+uni/bi/tri/4-gram; look-alike preference in OOL letter words
+88.78%→96.18%→98.52%, flat ~99.5% where a digit is present) and the
+odd/even-split 4-gram leak (up to 0.27 bits/char inflation from adjacent-
+page boilerplate, `eaf3a13`+`12d630d`); a style-consistent field
+classification probe dispatched against Sarkar & Nagy PAMI 2005 (singlet
+19.8%→LS 16.5%/14.9%→font-oracle 14.2%), branch `style-probe`, still
+running as of this filing.
+
+**Post-campaign runbook recorded, as amended (`ROADMAP.md` now carries
+the full 9-step text — not restated here).** Amendments since the first
+write-up: the `xh-desc` train gate moves to step 2, immediately after 12b
+closes; the style-probe and reverse-video candidates are parked with
+explicit triggers (CAD dev set / pdfcer report / census counter-fragment
+insertions) rather than queued; `--user-patterns` (Tesseract-style CAD
+callout bonus, e.g. `M8x1.25`) is parked until the CAD dev set exists.
+
+**Not independently re-verified by this filing.** No shell in this
+dispatch (per standing rule, see `feedback_no_shell_label_unverified` in
+this agent's memory) — every commit hash, branch state and measured
+figure above is filed as reported by `queue.md`, `ARCHITECTURE.md` §11 and
+`docs/measurements/`, not re-run or re-grepped independently.
+
+**Open, carried forward:** the `conf-tools` manifest-based split-refusal
+fix (blocking bug found this window, follow-up running); the `xh-desc`
+amended-cap-reference follow-up (running); the `style-probe` decision
+(L=4 relative glyph-error cut ≥10% → candidate, <5% → park, 5-10% → weak-
+park); tier-2's required end-of-campaign ablation; the chunk 14 val-split
+pick; `ROADMAP.md`'s now-current branch inventory and merge order; the
+`/usage` calibration, still outstanding.
+
+---
