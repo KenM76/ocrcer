@@ -8694,3 +8694,114 @@ states the path as run. Each moved row's description names
 - the script is committed before it runs, and takes its paths as
   arguments;
 - a rule change mid-run is a §11 entry made before the next number.
+
+### 2026-09-25 — Chunk 9a-i reviewed: the cell walk follows lines, not rule objects; side coverage is a union; a rule with no crossing is not a region
+
+Amends "Candidate chunk 9 spec, part 1" and its first amendment ("how cells
+are enumerated"). It records the review of 9a-i, the geometry built on
+authored rules (branch `structure-9a`). The rest of both entries stands.
+
+**What was built.** It has 11 `structure` fixtures, each checked against a
+separate from-scratch geometry script before the Rust ran. All pass. The
+wasm32 build passes, no dependencies were added, and there are no clippy
+findings in new files. The fixtures were spot-checked by hand for this
+review: the spanning cell, the gap under `side_cover`, and the rule short
+by more than `join_tol_h`.
+
+**Accepted as built.** These are choices the spec left open. They are
+recorded so they are decisions, not accidents.
+- A cell's `rect` runs between rule centrelines, half-open. A cell's own
+  right and bottom border belongs to its neighbour. A rule's centreline is
+  the floor of its band's midpoint.
+- Two rules of the same orientation are connected when their nearest
+  centreline ends are within `structure.join_tol_h`. The distance used is
+  the larger axis difference, which avoids a square root.
+- Regions are sorted by `(y0, x0, y1, x1)` of their rectangle. The region
+  for lines outside every cell comes last, and exists only when some line
+  needs it. A line belongs to the region of its first word's cell.
+- For `LineCrossesCell`, a word in no cell counts as a different cell from
+  one in a cell. A label beside a box and its value inside it also cross a
+  vertical rule, and sizing that is what the flag is for.
+- The spec's `Cell { rect, sides }` loses `sides`. No stage reads it, and
+  the `side_cover` test decides whether a cell closes. If 9b needs to know
+  which rules bound a cell, it is added then.
+- Fixture encoding: `"H"`/`"V"` for orientation, and flags as tagged
+  objects.
+
+**Changed before merge.** A follow-up on the same branch makes these
+changes.
+
+1. *The walk follows lines, not rule objects.*
+   - From a top-left crossing, the walk goes down to the crossings with the
+     same x.
+   - From each of those, it goes right to the crossings with the same y.
+   - A cell closes when that bottom-right crossing exists and all four
+     sides pass `side_cover`. Which rule each crossing lies on no longer
+     matters.
+   - Why: a gap in the middle of a left or bottom side leaves two rule
+     objects. Following one rule object then loses the cell, even though
+     `side_cover` passes. The same gap in a top or right side is
+     tolerated. The spec's promise that "a small gap in a printed rule does
+     not open the cell" held on two sides only.
+   - Tabula also walks by coordinate, but it additionally requires the
+     same ruling object. It first merges collinear rulings within about a
+     pixel (`Ruling.collapseOrientedRulings`,
+     `SpreadsheetExtractionAlgorithm.findCells`, read 2026-09-25). The
+     `side_cover` test replaces that identity check here, and does so on
+     all four sides.
+2. *Side coverage is a union.*
+   - A side's coverage is the length of the union of its overlaps, not
+     their sum.
+   - The segments counted are those of the side's orientation whose
+     thickness band contains the side's coordinate. For a one-pixel rule,
+     that is today's test of equal centrelines.
+   - Why: a sum counts overlapping segments twice. Take segments [0,6) and
+     [2,8) on a side of length 10. The sum gives 1.2, capped to 1.0, so the
+     side passes at 0.9. The union is 0.8, so it should fail.
+3. *Cells hold regions together.* Every rule that covers a closed cell's
+   side joins that cell's region. With change 1, a cell's sides can come
+   from rules that neither cross each other nor end near each other. One
+   example is a left side broken by a gap longer than `join_tol_h`. Without
+   this change, one cell's rules could fall in two regions.
+4. *A rule with no crossing is not a region.*
+   - A component of the rule graph with no crossing (a lone rule, a double
+     rule, a broken underline) is not a region. Its rules still appear in
+     `rules`, and 9d reads the rules above totals from there.
+   - Why: once 9a-ii feeds in the strip's bands, every underline on a page
+     would become a region with no cells and no lines.
+
+*Fixtures added:*
+- a left side, and separately a bottom side, broken mid-length into two
+  rules by a gap under 1 − `side_cover`: each is one cell;
+- two overlapping segments on one side whose union is under `side_cover`:
+  no cell;
+- a left side broken by a gap longer than `join_tol_h` but under
+  1 − `side_cover`: one cell, one region;
+- a lone rule and a double rule: no region.
+
+If change 4 alters an existing expectation, that fixture is re-blessed in
+the same commit, named, with this entry as its reason. No other
+expectation may move.
+
+**Where the parameters live.** 9a-i keeps `join_tol_h` and `side_cover`
+in a constant struct in the source, both labelled guesses there. Nothing
+calls `build` yet, so this does not block the merge. When 9a-ii wires the
+layer into the pipeline:
+- the four structure parameters become `params.tsv` rows and
+  `Params::DEFAULT` fields, labelled `guess`, per the spec: `join_tol_h`,
+  `side_cover`, `rule_min_h`, `rule_max_thick_h`;
+- `structure::build` takes them from there;
+- the source constant goes.
+
+**Also for 9a-ii: a rule with a one-pixel step is one rule.**
+- A deskew residual of a fraction of a degree steps a long one-pixel rule
+  by a row part-way along. The breaks rule joins pieces that overlap
+  across the run's direction. A one-pixel step leaves two bands that only
+  touch, so the rule becomes two half-length pieces at different
+  centrelines. Change 1 cannot fix that, because the pieces' coordinates
+  differ.
+- The breaks rule therefore reads "overlap or touch across the run's
+  direction". The gap condition is unchanged. The joined band spans both
+  pieces.
+- `rules` gains a fixture: a rule stepped by one pixel at mid-length is
+  one rule.
