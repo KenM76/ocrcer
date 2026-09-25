@@ -2598,8 +2598,8 @@ arithmetic is mine. Wall time is indicative, because the machine is shared.
   The ones it still visits take about 59 dimensions to abandon.
 - Time per dimension rose by about a third. The per-query pivot pass is
   about 20,000 dimension operations (187 pivots × 107). That is small next
-  to the roughly 1.5 million dimensions summed per query, so it cannot
-  explain the rise.
+  to the roughly 0.93 million dimensions summed per query (dims summed over
+  each page's captured query count), so it cannot explain the rise.
 - The cause is not measured. Visit order in memory and per-call overhead
   are the candidates.
 
