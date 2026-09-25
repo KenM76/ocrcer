@@ -9212,3 +9212,63 @@ Each chunk 12b regression traces to one fitted row:
 was a projection, and this reading falsifies it. Performance becomes a
 tracked item, and chunk 15's wall-time gate matters more. Step 1 records
 wall time because `top_k` and the beam width are both cost levers.
+
+### 2026-09-25 — Chunk 15 interfaces: trainer output, the `nn` table, and the parity check
+
+These fix the seams, so three agents can build in parallel. They follow the
+2026-09-24 contract as amended three times: for the junk output, for the
+Python trainer, and by the probe result.
+
+1. **Trainer output** is a directory. The trainer lives in `tools/nn/` and
+   its output is not committed.
+   - `spec.json` holds:
+     - `nn_version`: the integer 1;
+     - the layer list, in order, with kinds (`conv3x3`, `relu`, `maxpool2`,
+       `flatten`, `concat_features`, `dense`) and shapes;
+     - `n_outputs`, which is the charset length + 1;
+     - `junk_index`, which is the charset length;
+     - `charset_sha256`, taken over `meta`'s charset string as the model
+       stores it;
+     - `feature_extractor`, the version id;
+     - the training manifest id, seed, and torch and Python versions;
+     - the lock file's hash.
+   - One raw little-endian f32 file per tensor,
+     `<layer_index>.<weight|bias>.f32`. Conv weights are laid out
+     `[out][in][3][3]`, dense weights `[out][in]`.
+   - Input convention: `G` is the extractor's 32x32 grid as
+     `extract_with_grid` returns it, laid out `[1][32][32]`. The 107-dim
+     vector is **normalised with the model's `feature_norm`** before it is
+     concatenated. The trainer never computes the normalisation itself: the
+     dumps carry the normalised vector, written by Rust.
+2. **The `nn` table** is written by `ocrcer-build` from that directory.
+   It is additive, so `.ocrw` `version` stays at 1.
+   - Weights are int8 with per-output-channel scales. Biases are f32.
+   - The layer spec goes in `meta.nn`, together with `nn_version`,
+     `junk_index` and the trainer provenance.
+   - The writer refuses a `charset_sha256` or `feature_extractor` that does
+     not match the model being written.
+   - Core's parser refuses an `nn_version` it does not know, **for the `nn`
+     table only**: it falls back to prototypes and reports that it did. It
+     never fails the model load.
+3. **Forward pass.** It lives in `ocrcer-core`, uses safe f32 with no
+   dependencies, and dequantises at load, the same as the prototype
+   tables. Accumulation is f32 in a fixed loop order. Output is
+   log-softmax over `n_outputs`.
+4. **Parity.** The writer also emits the dequantised tensors. A committed
+   fixture holds 256 train-split crops, taken as dumped `G` and vector, and
+   PyTorch's log-probs for them under the dequantised weights.
+   - `cargo test` asserts that the Rust top-1 is identical on every crop.
+   - It also asserts that the largest log-prob difference is within 1e-4.
+     That tolerance is a guess, confirmed at the first bless.
+   - The fixture is blessed through §8.2.
+5. **Decoder use.** `match.classifier` is `authored` and defaults to 0.
+   - 0: prototypes only.
+   - 1: the network only. A candidate's distance is
+     `nn.scale · (−log p(c))`. `nn.scale` is `fitted` on train.
+   - 2: fused. The rule is left open; the probe's linear fusion lost.
+   - Confidence is `log p₁ − log p₂` over charset classes only, then
+     calibrated on val (rule 5).
+6. **Negatives come without chunk 13.** Words that the probe's count-match
+   filter accepts stand in for chunk 13's alignment. That filter already
+   picks the non-path lattice candidates inside those words. The source is
+   labelled in `meta.nn`.
