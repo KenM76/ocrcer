@@ -7770,3 +7770,54 @@ borders, and no text touching graphics. The category measures drawing
   not before.
 - Nothing already decided on pages-cov changes. Every past drawing Δ gate
   was a vocabulary gate, and that is what it was used for.
+
+### 2026-09-25 — A character's confidence is its own margin, and the curves are fitted, not authored
+
+**Two defects, read from source.**
+- `pipeline.rs` gives every candidate on a lattice edge the same ratio:
+  the matcher's winner's `d1/d2`. When the decoder picks a different class
+  (a bigram, lexicon or confusion override), that character reports the
+  confidence the matcher had in the class it did *not* pick. §4.2 and
+  `CLAUDE.md` rule 5 define confidence as the margin of the chosen class
+  over its nearest rival of a different class. An override currently
+  reports a high number exactly where it should report doubt.
+- `confidence::adjust` is never called. The language-model agreement term
+  that §4.2 lists for character confidence is not wired, and
+  `confidence.lm_floor` is a dead parameter.
+
+**Decision.**
+1. Each candidate carries its own ratio. For the matcher's winner it stays
+   `d1/d2`. For any other class it is `d1/d_c`, where `d_c` is that class's
+   own distance: how close it came to the class that beat it.
+2. Confidence uses two curves chosen by whether the decoder agreed with the
+   matcher's top-1: `agree` over `d1/d2` and `override` over `d1/d_c`.
+   This replaces `adjust` and `lm_floor` with a measured split. Whether an
+   override is usually right is a measurement, not an assumption.
+3. A word gets its own curve, taking the geometric mean of its characters
+   to the probability that the whole word is right. The geometric mean
+   stays the aggregate; the curve only makes the reported number mean what
+   it says (research addendum of 2026-09-25).
+4. All three curves are fitted by isotonic regression (PAV) on
+   finfilings-val, after the 12b parameter vector is frozen. The fitter is
+   a Rust bin in `ocrcer-bench`. Knot x-values sit at equal-mass quantiles.
+   The knots go into `params.tsv` labelled `fitted`, with the script, the
+   manifest and the split named. There is no `.ocrw` version bump. They are
+   params rows, and a reader skips a row name it does not know (2026-09-22
+   entry).
+5. Measured and reported on each run: equal-mass-bin ECE, the reliability
+   diagram, the errors caught against characters flagged at each
+   threshold, and the deletion rate. Deletions are reported because no
+   confidence can flag them. Calibration is scored once on the scoring
+   set, as its own line and never blended into CER (`PLAN.md` §4).
+
+**Gates.**
+- Output text is byte-identical before and after, on the train stride
+  run: this changes confidence only.
+- Equal-mass ECE on val beats `AUTHORED`'s, for characters and for words.
+- Confidence fixtures move at one stage boundary only. Their re-bless is
+  adjudicated here.
+
+**Sequencing.** This lands before 16b fits the LLM low-confidence
+threshold. That threshold is fitted against whatever confidence means at
+the time, so a later change here would force a refit. Order: 12b fold,
+then this, then 16b.
