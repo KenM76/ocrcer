@@ -1320,8 +1320,8 @@ Models*, ICASSP 2014 (Cambridge; PDF from mi.eng.cam.ac.uk). Read
 given (rule 6, by construction). If the correct reading of a line is not
 among the 8, no λ or β recovers it.
 - A line with k independent doubtful characters has 2^k readings. At k ≥ 4,
-  8 candidates cannot cover them, and Viterbi n-best tends to spend its
-  slots on variants of the single most doubtful position.
+  8 candidates cannot cover them. How an n-best list spreads its slots
+  over the doubtful positions is not measured here.
 - The `nbest` branch's pending check is already "oracle best-of-8 CER, on
   finfilings-val" (RESUME item 3). That gives the ceiling, but not whether
   8 is too small.
