@@ -8915,3 +8915,84 @@ ink", "show-through" and "show-through detection").**
 - Whether the operator meant auto contrast as a mode of its own, or as
   what auto-detect does when it fires. The four-mode shape holds either
   way.
+
+### 2026-09-25 — Candidate: a throwaway neural probe before chunk 15, on the extractor's own dumps
+
+**Question.** Does a small network beat the prototype matcher on real scanned
+glyphs by enough to justify chunk 15? Chunk 15 is the Rust trainer plus
+inference in core, under the 2026-09-24 "build the neural network
+recognizer" contract. This probe answers the question cheaply, before that
+work starts.
+
+**Shape.**
+- The probe is a measurement, not a model. Its weights never enter an
+  `.ocrw`, a crate or a commit.
+- PyTorch is allowed here, and only here. Chunk 15's ban on a Python trainer
+  still stands for anything that ships.
+- **Rule 4 still holds for the inputs.** Python never computes a grid or a
+  feature. A Rust bin dumps each crop's 32x32 grid `G` and its 107-dim vector
+  through `ocrcer-core`'s extractor. It dumps both kinds of glyph: bank
+  renders, and real crops from the training split.
+- **Training data:**
+  - bank renders from the licence-cleared faces;
+  - deterministic scan-damage augmentation, applied to the image *before*
+    extraction, in Rust.
+- **Test data:** real glyph crops from finfilings-train only.
+  - A crop is labelled only when its word's segment count equals the truth
+    length. That is a selection bias, and it is reported.
+- No val, score, pages-cov or fixture data is used.
+- **Reported, per class group** (digits, 0/O/o, l/1/I, lower, upper, punct):
+  - network top-1 against prototype top-1 on the same crops;
+  - the same comparison with geometry context in the input and without it.
+- The 2026-09-24 contract fixes the architecture: conv16, conv32, dense 128,
+  187 classes. One wider variant may be reported alongside it.
+- A GPU may be used for the probe; the operator allowed up to 10 GB of VRAM
+  on the Intel Arc Pro B50, through PyTorch XPU. It is not used for
+  anything that ships. Chunk 15's trainer stays deterministic Rust.
+
+**What the result decides.**
+- If the network is no better than prototypes on real crops, chunk 15 is
+  re-examined before it is built. Chunk 13's real-scan prototypes come first
+  either way.
+- A win is a reason to build chunk 15 against its contract. It is not a
+  measurement of chunk 15.
+
+### 2026-09-25 — Chunk 15's trainer may be Python; a forward-pass parity fixture replaces the ban
+
+**Operator, 2026-09-25:** "use a python trainer if there is no reason not
+to." This supersedes item 5 of the 2026-09-24 "build the neural network
+recognizer" entry, which forbids a Python trainer. Item 5 stays in the log
+as history. Items 1–4, 6 and 7 of that entry are unchanged. Inference is
+still pure safe Rust in `ocrcer-core`.
+
+**Why the ban can go.**
+- It existed for rule 4. A trainer's forward pass is a second
+  implementation of core's forward pass, and the two could drift apart
+  without anything reporting it.
+- The drift can be made loud instead, by the parity fixture below.
+- The extractor, the other half of rule 4, is untouched. Python never
+  computes a grid or a feature.
+
+**Conditions.**
+1. **Inputs come from Rust.**
+   - `G` and the 107-dim vector are dumped by `ocrcer-core`'s extractor.
+   - Augmentation is applied to images in Rust, before extraction.
+   - The trainer reads the dumps and nothing else.
+2. **Parity fixture.** The quantised weights go through core's Rust forward
+   pass and through PyTorch's, on a fixed crop set. Top-1 must agree on
+   every crop. Logits must agree within a tolerance, which is set when the
+   fixture is first blessed.
+   - The fixture is blessed under §8.2. It runs in `cargo test`.
+   - A change to the layer spec re-blesses it through the architect.
+3. **Reproducibility.**
+   - Shipped weights come from a CPU run: seeded,
+     `torch.use_deterministic_algorithms(True)`, single thread.
+   - Torch and Python versions are pinned in a committed lock file.
+   - The claim is "same bytes on the same platform and pinned versions".
+     It is not a claim across platforms. The `nn` table's `meta` records the
+     trainer script, the lock file hash and the data manifest.
+4. **The GPU is for exploration only**: sweeps and probes, on the Intel Arc
+   through XPU, within 10 GB. Shipped weights are not taken from a GPU run.
+5. **The trainer lives in `tools/nn/`,** like `tools/fit12b`. It never
+   ships, and nothing in the Rust workspace depends on it. PyTorch is
+   BSD-3-Clause.
