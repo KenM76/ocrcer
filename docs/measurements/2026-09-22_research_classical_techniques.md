@@ -2131,3 +2131,77 @@ from the file's own table.
 
 **Not measured:** any fitted weight set; how much of the published
 full-matrix gain survives a diagonal restriction; any per-pair effect.
+
+## Addendum 2026-09-25: scoring table structure — adjacency relations, tree edit distance, and grid similarity (prior art, for chunk 9's benchmark)
+
+**Why this is needed.** Chunk 9's exit gate (`PLAN.md` §2a) asserts golden
+fixtures exactly: region tree, block types, reading order, and the
+box-number or line-item-to-value mapping. That is right for fixtures, whose
+structure is authored. It gives no number for a real page, where a table is
+partly right. The benchmark needs a score that says how much of a table's
+structure was recovered, separately from how well its text was read.
+
+**The three metrics in use** (from Smock et al., "GriTS", arXiv 2203.12555,
+which compares them):
+
+- **Directed adjacency relations (DAR)**, ICDAR 2013 table competition
+  (Göbel et al.). Each non-empty cell is paired with its nearest right and
+  lower neighbour; precision and recall are counted over those pairs. The
+  paper's criticism: it "mostly ignores the insertion of contiguous blank
+  cells", and it scores local neighbourhoods, not the whole grid.
+- **Tree edit distance similarity (TEDS)**, from PubTabNet. The table is
+  scored as an HTML tree. Per the paper it is "sensitive to whether rows
+  are selected or columns are selected": a table stored row by row makes a
+  lost row and a lost column cost different amounts.
+- **Grid table similarity (GriTS)**. Both tables are matrices of grid
+  cells. The score is `2·Σ f(Ã_ij, B̃_ij) / (|A| + |B|)`, where `Ã` and
+  `B̃` are the most similar two-dimensional substructures of the two grids
+  (a subset of rows and a subset of columns from each). Recall divides by
+  `|A|`, precision by `|B|`. Three versions differ only in the cell
+  function `f`:
+  - `GriTS_Top`: IoU of each cell's span in grid coordinates (structure
+    only);
+  - `GriTS_Con`: normalised longest common subsequence of cell text;
+  - `GriTS_Loc`: IoU of cell boxes in pixels.
+
+  A cell spanning several grid positions repeats its content at each one.
+  The exact two-dimensional problem is NP-hard. The paper uses a factored
+  heuristic, a nested dynamic programme of cost `O(|A|·|B|)`, which gives
+  lower and upper bounds; it reports "little difference" between the bounds
+  in practice.
+
+**Why GriTS fits this domain.** Financial statements carry many blank
+cells: note-reference columns, the unused year of a comparative pair,
+subtotal rows with one filled column. DAR does not see blank cells inserted
+or dropped. TEDS charges a dropped column differently from a dropped row,
+and a comparative statement loses columns, not rows, when it goes wrong.
+
+**What that suggests for chunk 9 (candidate, not specified).**
+
+- **Fixtures** keep exact assertions, as the gate says.
+- **Benchmark:** report `GriTS_Top` and `GriTS_Con` side by side.
+  `GriTS_Top` isolates structure. `GriTS_Con` mixes structure with reading
+  errors, and the gap between the two shows how much of a table's loss is
+  OCR rather than layout.
+- **Boxed forms:** score as field-level exact match, box number to value.
+  That is a key-value task, not a grid.
+- **Where it runs:** in `ocrcer-bench`, in f64, never in `ocrcer-core`.
+  Only one implementation of it exists, so the "every stage is written
+  once" rule is not engaged.
+
+**A candidate scoring corpus, not cleared.** FinTabNet (IBM) has table
+structure annotations for tables in S&P 500 earnings reports, 1999–2019.
+Its licence is stated as CDLA-Permissive, and the FinTabNet.c re-release on
+Hugging Face as CDLA-Permissive-2.0. Two questions go to the operator
+before anything is downloaded:
+
+1. the copyright of the underlying report pages, which neither README
+   addresses;
+2. whether its annotations fit a scoring-only role.
+
+It would be scoring-only under rule 1's firewall. It is in domain in a way
+the synthetic structure fixtures cannot be.
+
+**Not measured:** any GriTS figure on any OCRcer output (no structure layer
+exists); the gap between the heuristic's bounds on financial tables;
+FinTabNet's page count or annotation format, which neither README states.
