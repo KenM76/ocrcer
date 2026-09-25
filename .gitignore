@@ -34,6 +34,11 @@ bench/pages-cov/
 bench/holdout-cov/
 bench/sizesweep-cov/
 bench/sizesweep-hi-cov/
+# the identifier-preservation corpus (`bin/ident.rs`): same deal, generated
+# from the authored text in `crates/ocrcer-bench/src/ident_corpus.rs` and
+# reproducible byte for byte by `ident generate`. Scoring-only by
+# construction, same as `bench/pages-cov/` -- see `bench/splits/README.md`.
+bench/ident/
 
 # Third-party evaluation material downloaded from the web: real accounting
 # documents in the many shapes real clients send. It lives OUTSIDE this
