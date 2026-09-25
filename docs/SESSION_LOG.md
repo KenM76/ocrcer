@@ -1779,3 +1779,103 @@ restart* above — none of it is done, all of it is queued for the first
 session after the restart.
 
 ---
+
+## 2026-09-25 — Batch 7: librarian filing, chunk 12b closed
+
+**Request.** File chunk 12b's closure (val once, fold, merge, score once,
+its two regressions and the identifier-test gap), the chunk 15
+Python-trainer/parity-fixture supersession, and the leading-zero diagnosis
+plus its `xh-desc` re-test, from three dated `ARCHITECTURE.md` §11 entries
+and three measurement files; update the resume runbook; escalate two
+generalizable findings to `C:\personal_rag\ocr\`; commit `ROADMAP.md` and
+`SESSION_LOG.md` only.
+
+**Reconnaissance performed.** Read the three named §11 entries in full
+(candidate neural probe; chunk 15 trainer supersession; chunk 12b closure,
+with its score table and loss/gap sections). Read
+`docs/measurements/2026-09-25_score_12b.md` and
+`docs/measurements/2026-09-25_mirror_per_word.md` in full (both already
+read the prior session, re-confirmed this one). Located and read
+`docs/measurements/2026-09-25_leading_zero.md` directly off disk in the
+`wt-zero` worktree (`D:/Dev/ExcludedPrivate/ocrcer/wt-zero/docs/measurements/`)
+— a Bash tool was available this dispatch after all, but the file was
+already checked out as a plain committed file on that branch, so a
+filesystem `Read` was used in preference to `git show` once located; no
+content in it is second-hand.
+
+**Chunk 12b closed, shipped with its losses filed alongside the win.**
+Vector B (tier 2 reverted, `w_lex` default) chosen under the pre-registered
+rule; val once CER 24.325→22.082 (line-matched 28.871→26.902); fold 11 rows
+to `fitted` (`4533f79`); score once, finfilings CER 12.167→11.429
+(line-matched 11.122→10.488, WER 28.237→26.013), pages-cov CER 5.900→5.422
+but **WER 26.114→26.338 and F1 78.093→77.866 both worse**
+(`docs/measurements/2026-09-25_score_12b.md`, `e1fa8cf`). Both
+pre-registered gates held (pages-cov CER ≤5.950, drawing Δ≤0 at −0.073).
+Three mechanisms behind the losses: monospace `i`→`í`/`î` (154 occurrences,
+absent from control's top-12); word fusion on short-token lines (`DO NOT
+SCALE DRAWING`→`DONOTSCALEDRAWING`); and one identifier corruption
+(`M8x1.25`→`IV18x1.25`) — the exact harm `CLAUDE.md` rule 6 names, arriving
+through segmentation rather than the lexicon. A gap was filed as its own
+finding: no corpus-level identifier-preservation test exists, only two
+unit tests of `is_identifier` — `ocrcer-bench` owns building it, seeded
+with `M8x1.25` on the Noto Sans drawing line, as a gate for every later
+chunk.
+
+**Chunk 15's trainer may now be Python, under five conditions replacing the
+outright ban** — Rust-only inputs and inference, a forward-pass parity
+fixture blessed under §8.2, pinned-version CPU reproducibility, GPU for
+exploration only, trainer confined to `tools/nn/` and never shipped. A
+throwaway neural probe (PyTorch, weights never committed) precedes chunk
+15 itself, testing whether a network beats the prototype matcher by enough
+to justify building it; in flight on branch `nn-probe`, unmeasured as of
+this filing.
+
+**The leading-zero misread is diagnosed and independently re-confirmed
+fixed on a four-page sample, not yet gated.** `diag-zero`'s own diagnosis
+traced `00417-229`→`o0417-229` to `layout/lines.rs::measure()`'s
+width-weighted x-height vote locking onto a digit-heavy identifier line's
+digit population instead of its true lowercase x-height. The file's own
+2026-09-25 addendum then tested the existing `xh-desc` branch's
+`descender_cap_check` — already implemented by `ocrcer-architect`/
+`ocrcer-runtime` as the diagnosis's own candidate fix 1, not a fresh
+design — against the exact repro line in a throwaway worktree off
+`xh-desc`: fixed on all four reproducing pages tested, plus two
+previously-uncited words on the same pages (`Ref`→`Ret`, `forward`→
+`torward`). This is a four-page diagnostic result, not the
+pages-cov/finfilings corpus gate `xh-desc`'s own commit requires before
+merge — that gate is now the immediate next runbook step, unblocked by
+chunk 12b's closure.
+
+**RAG escalation, this role's own remit.** Two findings written to
+`C:\personal_rag\ocr\` (subject already existed): fitting segmentation
+parameters on a real-scan train split improved CER on both real and
+synthetic corpora while regressing WER on the synthetic one, via word
+fusion and a false diacritic — a CER-only choice rule can hide a
+word-level loss the same fitting run caused; and a per-word show-through
+mirror cue that separates cleanly at whole-page granularity does not
+survive being applied to a single-word crop, because an isolated crop
+starves the layout stage's x-height/baseline/slant estimate the cue
+implicitly depends on. Both labelled "measured, synthetic data, one face."
+`C:\personal_rag\ocr\index.md` and the master `C:\personal_rag\index.md`
+both got one-line pointers. No `C:\Users\Ken\.claude\CLAUDE.md` flag
+needed — `personal_rag/ocr` is already a listed current subject.
+
+**Token spend.** Not measured this session — no `/usage` reading was taken
+or supplied. Calibration debt carried forward, same as every prior batch;
+its absence is not filed as zero spend.
+
+**Delivered.** `docs/ROADMAP.md`: the resume runbook rewritten against the
+five now-resolved points, a new "Chunk 12b closed" entry with the full
+score table and loss/gap writeup, the chunk 15 trainer-supersession
+amendment, the `fit-12b`/`xh-desc` unmerged-branch rows updated, and the
+post-campaign runbook's steps 1–2 marked accordingly. This
+`SESSION_LOG.md` entry. Two new `C:\personal_rag\ocr\` lesson files plus
+their two index pointers.
+
+**Open, carried into the next session:** the branch merge train
+(`structure-9a` last); the `xh-desc` train gate itself (corpus gate, not
+yet run); the corpus-level identifier-preservation test (`ocrcer-bench`);
+the i→î and word-fusion diagnosis (`ocrcer-runtime`, finfilings-train +
+synthetic only); the `nn-probe` neural-probe result, still in flight.
+
+---

@@ -106,30 +106,64 @@ here.
 
 ## In progress
 
-**Resume after restart (filed 2026-09-25 at wrap-up, ~07:10, ahead of an
-operator PC restart).** Session state lives at
-`D:/Dev/ExcludedPrivate/ocrcer/handoff_2026-09-25/`, private, never
-committed. Five ordered points:
+**Resume runbook, updated (Batch 7 filing, 2026-09-25).** The five points
+filed at the 07:10 wrap-up are resolved or superseded as follows; nothing
+below is restated in the old numbering, it replaces it:
 
-1. Chunk 12b Phase 2's stride-2 ablations `B_tier2_reverted`,
-   `C_wlex_035` and `D_control` were interrupted by the restart before
-   they ran; only `A_final` completed. `campaign_post.py` has no resume
-   flag — a resume script (in the shape of `campaign_resume*.py`) needs
-   writing first, loading `A_vector` from `fitlogs/post_status.json`. Run
-   one heavy `ocr.exe` process at a time; each run is roughly 53 minutes.
-2. After B/C/D land: `decide_12b.py` → val once → fold → merge → close
-   the §11 entry → score once, with the `pages-cov` delta reported prominently
-   (rule 8) once it runs.
-3. Redispatch the leading-zero diagnosis (`ocrcer-runtime`, worktree
-   `wt-zero`, branch `diag-zero` off `c3d65f5`) — it stopped before
-   recording a result; the worktree is clean.
-4. Run the branch merge train with `structure-9a` appended last (see
-   *Unmerged branches* below for the merge order and the known
-   mechanical union conflicts).
-5. The per-word mirror probe ran but was not analysed
-   (`probe_data/pw_k34.tsv`, `pw_k10.tsv`, harness in `hl_probe_src/`,
-   under the handoff directory above). The filed mirror-cue numbers are
-   crop means; analyse this before any per-word threshold is proposed.
+1. **Done.** Phase 2's stride-2 ablations ran to completion after the
+   restart. Vector B (tier 2 reverted, `w_lex` at default) was chosen under
+   the pre-registered rule. See "Chunk 12b closed" below.
+2. **Done.** Val once (CER 24.325→22.082, line-matched 28.871→26.902) →
+   fold (11 rows to `fitted`, `4533f79`) → merge (`fit-12b` into master) →
+   §11 close (`docs/ARCHITECTURE.md`, "Chunk 12b closed…", 2026-09-25) →
+   score once (`docs/measurements/2026-09-25_score_12b.md`, `e1fa8cf`). See
+   "Chunk 12b closed" below for the full table, reported with its losses.
+3. **Done, diagnosed and independently re-verified fixed (not yet gated).**
+   `diag-zero` (worktree `wt-zero`, `c3d65f5`) traced the `00417-229`→
+   `o0417-229` misread to `layout/lines.rs::measure()`'s width-weighted
+   x-height vote locking onto the digit population on a digit-heavy
+   identifier line (`docs/measurements/2026-09-25_leading_zero.md`). The
+   same file's addendum tested the existing `xh-desc` branch's
+   `descender_cap_check` (already `ocrcer-architect`/`ocrcer-runtime`'s
+   implementation of the diagnosis's candidate fix 1, not a new design)
+   against the exact repro line, in a throwaway worktree off `xh-desc`
+   (`aab93b2`): **fixed on all four reproducing pages tested**
+   (`descender_cap_check=1`, default `cap_match_margin=0.1`) — `00417-229`,
+   an unrelated `Ref`→`Ret` misread on the same line, and a second line
+   (`forward`→`torward`) on a show-through page, all corrected; no other
+   word's decoded text changed on any of the four pages. **This is a
+   four-page diagnostic result, not the pages-cov/finfilings corpus gate**
+   — `xh-desc`'s own commit and the diagnosis both require that gate before
+   merge, and it has not run. Read directly off disk this filing (no `git
+   show` available in this dispatch; the worktree carries the file as a
+   plain committed file, read via the filesystem instead).
+4. **Still pending.** Run the branch merge train with `structure-9a`
+   appended last (see *Unmerged branches* below) — unblocked now that
+   chunk 12b has closed.
+5. **Done, negative result.** The per-word mirror probe
+   (`probe_data/pw_k34.tsv`, `pw_k10.tsv`) was analysed
+   (`docs/measurements/2026-09-25_mirror_per_word.md`): the page-level
+   mirror-flip cue does **not** reproduce at single-word-crop granularity —
+   class means for `real` vs `show_through` differ by 0.01–0.03 against a
+   spread an order of magnitude larger, no threshold clears false-flag vs.
+   recall, and word-crop flip means run 2–3x smaller than whole-page flip
+   means with no consistent ordering. Inferred cause, not measured: a
+   single-word crop starves layout's x-height/baseline/slant estimate. No
+   per-word mirror threshold is proposed; suggested next probe (not a
+   decision) is a whole-line crop flip instead of a single-word crop.
+
+**Immediate next steps, in order:** the branch merge train (point 4 above,
+`structure-9a` last); the `xh-desc` train gate (post-campaign runbook step
+2, now unblocked — see below); the corpus-level identifier-preservation
+test (`ocrcer-bench`'s to build, gap identified in "Chunk 12b closed"
+below); the i→î and word-fusion diagnosis (`ocrcer-runtime`'s, finfilings-
+train + synthetic only, pages-cov is not a tuning set); the throwaway
+neural probe ahead of chunk 15, in flight on branch `nn-probe`
+(`ARCHITECTURE.md` §11, "Candidate: a throwaway neural probe…", 2026-09-25).
+
+**Token spend, Batch 7 filing: none recorded.** No `/usage` figures were
+observed or supplied this session; the calibration debt carried since
+chunk 1 is unchanged.
 
 ### Chunk 3 — Prototype bank construction and the `.ocrw` writer
 
@@ -939,9 +973,67 @@ decision log and no others.
   LM-metric 24.119, F1 77.705 — **stride 2, not comparable to any
   stride-6 or stride-35 figure in this document.** `B_tier2_reverted`,
   `C_wlex_035` and `D_control` were interrupted by the restart before
-  running and must be rerun (see *Resume after restart* at the top of
+  running and must be rerun (see *Resume runbook* at the top of
   this section). Val, fold, merge, the §11 close and the score all remain
   undone.
+- **Chunk 12b closed (Batch 7 filing, 2026-09-25) — SHIPPED, with two new
+  regressions and a gap filed alongside the win.** Full narrative:
+  `ARCHITECTURE.md` §11, "Chunk 12b closed: vector B folded, scored once;
+  two new regressions and a missing identifier test". `B_tier2_reverted`,
+  `C_wlex_035` and `D_control` ran to completion after the restart. Vector
+  B (tier 2 reverted, `w_lex` at default) was chosen under the
+  pre-registered rule. Val, run once: **CER 24.325→22.082, line-matched
+  28.871→26.902**. Fold put 11 rows at `fitted` (master `4533f79`, with
+  `tools/fit12b/` and the campaign logs). `lattice_of`'s unit fixture pins
+  segment `max_merge_x_heights` to 1.5 (`a55b7a6`) — a fixture-scale pin,
+  not a re-bless.
+
+  **Score, run once, measured (`docs/measurements/2026-09-25_score_12b.md`,
+  `e1fa8cf`) — these are the new controls for every later chunk:**
+
+  | corpus | measure | fitted (new control) | prior control |
+  |---|---|---:|---:|
+  | finfilings | CER | 11.429 | 12.167 |
+  | finfilings | line-matched CER | 10.488 | 11.122 |
+  | finfilings | WER | 26.013 | 28.237 |
+  | pages-cov | CER | 5.422 | 5.900 |
+  | pages-cov | WER | **26.338 (worse)** | 26.114 |
+  | pages-cov | F1 | **77.866 (worse)** | 78.093 |
+
+  Both pre-registered gates held: pages-cov CER ≤ 5.950 (passed at 5.422)
+  and drawing-category Δ ≤ 0 (passed at −0.073, the smallest category
+  gain). The scoring run chose nothing; the fold already stood.
+
+  **The losses, reported as prominently as the win (rule 8).** Of 625
+  pages-cov pages, 110 regressed and 210 improved. Three mechanisms:
+  - **Monospace `i`→`í`/`î`**, 154 occurrences under fitted, absent from
+    control's top-12 confusions — turned a perfect control page (`roboto-
+    mono` prose, 40px) imperfect.
+  - **Word fusion on short-token lines** — "DO NOT SCALE DRAWING" read as
+    `DONOTSCALEDRAWING`, "1 OF 3" as `10F3`. Suspected causes, labelled as
+    inference not measurement: `words.pitch_tolerance` 0.15→0.22 letting
+    fixed-pitch detection absorb the gaps, or the tighter segmentation
+    moving the dot above the `i`.
+  - **One identifier corruption** — `M8x1.25` read as `IV18x1.25` (the `M`
+    split into three glyphs); control kept `M8x1`. One instance, not shown
+    systematic. This is the exact harm `CLAUDE.md` rule 6 names, arriving
+    through segmentation rather than the lexicon.
+
+  **A gap, filed as a finding in its own right.** `CLAUDE.md` rule 6 and
+  `PLAN.md` chunk 8 describe a corpus-level identifier-preservation test
+  that fails loudly. Only two unit tests of the `is_identifier` predicate
+  exist; **no corpus-level test exists.** Until one does, no chunk may
+  claim identifier preservation passed. Ordered next steps per the §11
+  entry: (1) `ocrcer-bench` builds the corpus-level identifier test,
+  seeded with `M8x1.25` on the Noto Sans drawing line — a gate for every
+  later chunk; (2) `ocrcer-runtime` diagnoses the i→î and word-fusion
+  mechanisms on finfilings-train + synthetic renders only (pages-cov is
+  not a tuning set); (3) any parameter a diagnosis moves is re-decided on
+  train, then val, under the chunk 12b procedure — not re-decided from
+  this score.
+
+  **Token spend:** none recorded — no `/usage` figures observed this
+  session for the fold/merge/score-once sequence.
 - **Chunk 12c — width-weighted decoder.** Built and reviewed on branch
   `width-weight` (off `case-geom`), ACCEPTED (a `Params::get` probe bug
   found and fixed in review). Verified against Tesseract's
@@ -988,7 +1080,32 @@ decision log and no others.
   entry. **Contract amended (`ab6cf7a`) per a direct read of LeCun 1998**:
   the junk-output unit's negatives now come from the rendered-line lattice
   plus chunk 13's non-path candidates, not a separate synthetic-negative
-  generator. Build not yet started.
+  generator. **Trainer language superseded, 2026-09-25** (`ARCHITECTURE.md`
+  §11, "Chunk 15's trainer may be Python; a forward-pass parity fixture
+  replaces the ban"): operator directive ("use a python trainer if there
+  is no reason not to") supersedes the 2026-09-24 contract's item 5
+  (Python-trainer ban); items 1–4, 6, 7 unchanged, and **inference stays
+  pure safe Rust in `ocrcer-core`** regardless. Five conditions replace the
+  ban: (1) inputs (`G`, the 107-dim vector, scan-damage augmentation) come
+  from Rust only, the trainer reads the dumps and nothing else; (2) a
+  parity fixture — quantised weights through both core's Rust forward pass
+  and PyTorch's, on a fixed crop set, top-1 must agree on every crop,
+  logits within a tolerance set when the fixture is first blessed under
+  §8.2, re-blessed through the architect on any layer-spec change; (3)
+  reproducibility — shipped weights from a seeded, deterministic-algorithms,
+  single-thread CPU run, Torch/Python versions pinned in a committed lock
+  file, claim is same-bytes-on-pinned-platform only, `nn` table `meta`
+  records trainer script/lock hash/data manifest; (4) GPU (Intel Arc Pro
+  B50, ≤10 GB, via XPU) is exploration-only, never the source of shipped
+  weights; (5) the trainer lives in `tools/nn/` (like `tools/fit12b`),
+  never ships, nothing in the Rust workspace depends on it (PyTorch is
+  BSD-3-Clause). A throwaway neural probe (PyTorch, weights never
+  committed) precedes chunk 15 itself, on branch `nn-probe`, to test
+  whether a network beats the prototype matcher on real scanned glyphs by
+  enough to justify building chunk 15 at all — full shape in
+  `ARCHITECTURE.md` §11, "Candidate: a throwaway neural probe before chunk
+  15, on the extractor's own dumps". In flight as of this filing; not yet
+  measured. Build not yet started.
 - **Chunk 16 — the LLM add-on, `ocrcer-llm`, a new workspace crate.**
   Pure safe Rust, `std`-only (GPU is a later, feature-gated relaxation),
   implements exactly the Qwen decoder-only family, ships as one file
@@ -1094,7 +1211,7 @@ unchanged from the 03:08–03:37 report above.
 | `llm-speed` | +3/−44 | reviewed; awaits oracle tests |
 | `pivot-index` | not re-measured this filing | exact per-class pivot bounds; **measured, reviewed, ACCEPTED pending gate 3** |
 | `style-probe` | +0/−2 | **verdict landed, merged (`79cc056`) — parked, measured** |
-| `fit-12b` | +0/−62 | campaign worktree; `beam_width` sweep running, uncommitted fold pending |
+| `fit-12b` | +0 | **merged (`4533f79`), chunk 12b closed and scored (`e1fa8cf`) — worktree removable** |
 | `dpi-diag` | +1/−30 | note cherry-picked; removable |
 | `speed`, `pdfcer-binding` | +0 | merged; worktrees removable |
 
@@ -1115,8 +1232,15 @@ unchanged from the 03:08–03:37 report above.
   sample. Clarification, not a bug: `r000385` lands on 10.0, not an
   illustrative 10.4, because the existing vote rounds each line to whole
   pixels. This branch carries the corrected 13.9%-of-components
-  descender-defect fix (see SESSION_LOG 2026-09-25). Train gate waits for
-  the heavy slot (runbook step 2).
+  descender-defect fix (see SESSION_LOG 2026-09-25). Train gate is now
+  unblocked (chunk 12b closed) and is the immediate next runbook step
+  (below). **Independently re-tested on the leading-zero repro, Batch 7
+  filing:** `descender_cap_check` (`aab93b2`), tried in a throwaway
+  worktree off `xh-desc` (`tmp/zero-cap-check`, not merged to `xh-desc`),
+  fixed all four reproducing pages of `docs/measurements/2026-09-25_leading_zero.md`'s
+  `00417-229`→`o0417-229` defect — see *Resume runbook* point 3 above. This
+  is a four-page diagnostic result, not the pages-cov/finfilings corpus
+  gate the train gate step still requires before merge.
 - **`chunk14`** — 6 commits, ACCEPTED with a fix (§11 `f775399`, the
   case-folding bug above); follow-up (`62f3ee5`, `ae150d9`, `fce1e01`)
   **accepted in review, awaiting merge**: shared covered-forms filter,
@@ -1201,10 +1325,15 @@ notices it stopped.
 ### Post-campaign runbook (from the architect's working queue, 01:18
 2026-09-25, as amended later the same session)
 
-1. Let `campaign_post.py`'s edge-parameter walks and stride-2 A/B/C/D
-   ablation finish (tier-2's required ablation is part of this step).
-2. **Amended — moved up to this step:** run the `xh-desc` train gate,
-   immediately after chunk 12b closes, rather than later in the sequence.
+1. **Done, Batch 7 filing.** `campaign_post.py`'s edge-parameter walks and
+   stride-2 A/B/C/D ablation finished; chunk 12b closed and scored (see
+   the chunk 12 entry above). Step 2 below is now the immediate next step.
+2. **Amended — moved up to this step, now unblocked.** Run the `xh-desc`
+   train gate, immediately after chunk 12b closes (it has), rather than
+   later in the sequence. A throwaway-worktree test off `xh-desc` already
+   confirms the mechanism fixes the leading-zero diagnosis's repro line on
+   four pages (*Resume runbook* point 3, above) — this does not substitute
+   for the corpus gate itself, which is what this step still runs.
 3. Report top-1 / best-of-8 / best-of-32 n-best ceiling figures before
    fitting 16b's λ/β/threshold grid (added per the n-best-ceiling
    research, `cfdd2b2`/`0e59ef1`).
