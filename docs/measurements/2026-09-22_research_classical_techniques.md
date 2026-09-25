@@ -3441,3 +3441,118 @@ tuned).**
 - H1: bands at luma 230, 195, 182 and 168 over seeded amount tokens.
 Both finfilings metrics, and the count of digits changed inside banded
 numbers.
+
+## Addendum 2026-09-25: dot-matrix print — each dot is its own component, so layout finds hundreds of lines (engine measured on synthetic lines; two patents and one abstract read)
+
+Impact printers print multipart forms, cheques and ledgers, so a scan of one
+is a plausible accounting input. How common it is in client documents is
+not known. Nothing in `docs/` covered it before this entry. No corpus we
+hold is known to contain impact print; none was searched for it.
+
+**Measured on synthetic lines.**
+- Setup:
+  - four accounting-style lines, drawn by `tools/dotmatrix_lines.py`, 166
+    characters with line breaks, so one character is about 0.6 points of
+    CER;
+  - the dot grid is Liberation Mono (a bank face) at 11 px, thresholded to
+    5×7-like shapes, one dot per cell, 1/70 in by 1/72 in pitch at 300 dpi
+    (9-pin draft geometry at 10 cpi);
+  - arms: `solid` (each cell a filled rectangle, the same shapes with no
+    gaps: the control); black dots at 1.3, 1.0, 0.8 and 0.6 of the pitch
+    (`d130` overlapping to `d060` separate); `worn080` (grey 110 dots at
+    0.8, a worn ribbon). The diameters are guesses;
+  - grey pre-steps written by the tool (PIL Gaussian radius 1.5 and 2.5, a
+    3×3 minimum filter, a 5×5 closing);
+  - binary pre-steps in a scratch harness: `binarize` from `ocrcer-core`,
+    then a square dilation of radius 1 (`bd3`) or 2 (`bd5`) or a radius-1
+    cross (`bx3`), then the result read as a 0/255 image;
+  - read by `Engine::recognize_lines` at master with the master model.
+- One face, one grid, one resolution, a clean render with no ribbon noise
+  or scanner blur. Four lines is a small sample: differences under about
+  three points are a few characters.
+
+CER in percent (above 100 means insertions; raw, the `d100`, `d080`,
+`d060` and `worn080` arms return 29 to 839 lines for 4):
+
+| arm | none | gauss15 | gauss25 | min3 | close5 | bd3 | bd5 | bx3 |
+|---|---|---|---|---|---|---|---|---|
+| solid | 12.7 | | | | | 9.0 | 32.5 | 6.6 |
+| d130 | 47.0 | 14.5 | 24.7 | 23.5 | 15.7 | 28.9 | 45.8 | 42.2 |
+| d100 | 63.3 | 13.3 | 25.3 | 10.2 | 22.3 | 10.8 | 27.7 | 57.2 |
+| d080 | 227.1 | 134.3 | 185.5 | 12.7 | 94.0 | 13.9 | 30.1 | 75.9 |
+| d060 | 1372.3 | 981.3 | 100.0 | 51.8 | 136.1 | 45.2 | 10.8 | 180.1 |
+| worn080 | 555.4 | 95.8 | 100.0 | 7.8 | 156.6 | 9.6 | 9.6 | 70.5 |
+
+**What the table says.**
+- Separated dots break the engine completely: at `d060`, 4 lines come
+  back as 839 lines holding 937 words.
+- The raw failure is loud. Mean word confidence on the raw dot arms is
+  0.11 to 0.28, and at most one word reaches 0.8. The low-confidence LLM
+  mode and a reviewer would both see it.
+- A wrong pre-step turns it quiet. `d060` after `close5` returns 124 words,
+  13 of them at confidence 0.8 or above; after `gauss15`, 7 of 803.
+- No single fixed join works. Every column fails at least one arm badly:
+  - `bd3` 45.2 on `d060`;
+  - `bd5` 30.1 on `d080`;
+  - `min3` 23.5 on `d130`;
+  - `gauss15` 134.3 on `d080`.
+  The best join per arm tracks the gap between dots. Separate dots need the
+  wider dilation (`d060`: `bd5` 10.8). Nearly touching dots need one pixel
+  (`d080`, `d100`: 10 to 14). Overlapping dots need smoothing, not
+  dilation (`d130`: `gauss15` 14.5, `bd3` 28.9).
+- Overlapping dots are damaged too (`d130` raw 47.0), though every
+  component is whole. The scalloped stroke edge is the likely cause;
+  that is read from the arms, not traced.
+- The shapes cost something on their own. The `solid` control reads 12.7
+  with no gaps at all. Thickening it by one pixel reads 9.0 (`bd3`) and
+  6.6 (`bx3`), so the thin one-dot strokes are part of that cost. The
+  5×7 shapes come from a bank face, but the bank holds no face drawn at
+  that resolution.
+
+**Read, not run.**
+- Kodak, EP0552704 (priority 1992): a 5×5 spatial average turns dots into
+  strokes, then a contrast stretch and an edge enhancement. Larger dots or
+  wider gaps need a larger kernel. Detection uses density profiles along
+  horizontal and vertical slices.
+- Matrox, US10176399 (priority 2016): dots are found as blobs after a
+  second-order derivative filter. The dot pitch is measured in two
+  orientations, and the join is sized from those two pitches rather than
+  from a fixed kernel. The table above is consistent with that choice.
+- Yanikoglu, IJDAR 2000 (abstract only): dot-matrix fonts are fixed pitch.
+  The pitch is estimated, the text is judged fixed or proportional, and a
+  pitch-based segmenter handles both touching and broken characters.
+
+**Candidate designs, none chosen.**
+1. In the engine, a dot join between binarization and component
+   labelling:
+   - A dot census finds components that are small, near-round and similar
+     in size. Their centre-to-centre nearest-neighbour distance clusters
+     at 1 to 2 diameters, in both axes, many to a cluster.
+   - Each qualifying cluster is dilated inside its own box, with a radius
+     sized from the measured gap. The rest of the page is untouched, so a
+     laser-printed form with a dot-matrix fill-in keeps its laser text.
+   - Overlapping dots do not register as dots. The `d130` column says they
+     need smoothing instead; that case stays open.
+   - This is a new §8.1 stage and needs a §11 decision. Its gate: every
+     binarized fixture hash unchanged (the census must not fire on any
+     fixture), and a false-fire count on finfilings-train (counting only).
+     Every threshold starts as a labelled guess on the tuning list.
+2. In the bank, a licence-clean face drawn on a dot grid. This is a
+   script rerun by `ocrcer-glyphs` with no format change, the cheaper fix
+   the charset protocol asks for first. It addresses only the shape cost
+   (the `solid` row), not the broken components. No such face has been
+   licence-checked yet.
+3. Before either: add the dot arms to the binarization probe bin proposed
+   in the highlighter addendum above.
+
+**Real data.** Receipt corpora may hold impact-printed receipts. Their
+content and licences are unchecked, and SROIE is already held out on
+licence. Nothing is downloaded without the operator.
+
+**Queued, behind the 12b fold and the merge train.**
+- The probe bin with the dot arms and the highlighter ladder, for
+  `ocrcer-bench`.
+- A dot-census spec, measurement only: the false-fire count on
+  finfilings-train and the fire rate on the dot arms, before any join is
+  built.
+- A licence check of dot-grid faces, for `ocrcer-glyphs`.
