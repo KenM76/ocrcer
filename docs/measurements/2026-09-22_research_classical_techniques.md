@@ -2382,3 +2382,90 @@ read 2026-09-25):
 
 **Not measured:** any rule or cell accuracy for either tool, or for
 OCRcer, on any page.
+
+## Addendum 2026-09-25: how Tesseract finds ruling lines (read from source, for chunk 9a's rule detector)
+
+**Why.** Chunk 9a's rule detector (`ARCHITECTURE.md` §11, "Candidate chunk
+9 spec, part 1") leaves its length and thickness thresholds as unnamed
+guesses. Tesseract has shipped a line finder for years. It was read before
+anyone builds the detector.
+
+**Source.** `src/textord/linefind.cpp`, tesseract-ocr/tesseract `main`,
+read 2026-09-25.
+
+**Thresholds, all fractions of the scan resolution:**
+
+- `kThinLineFraction = 20`: the widest a line may be is `resolution / 20`
+  (1/20 inch).
+- `kMinLineLengthFraction = 4`: the shortest a line may be is
+  `resolution / 4` (1/4 inch).
+- `closing_brick = max_line_width / 3`: 1/60 inch.
+- `kThickLengthMultiple = 0.75` and `kMinThickLineWidth = 12` px: a
+  candidate at least 12 px in both dimensions, with a stroke wider than
+  12 px and shorter than 0.75 inch in both dimensions, is too thick for
+  its length and is rejected.
+- `kMaxNonLineDensity = 0.25`: see the text test below.
+
+**Method (`GetLineMasks`):**
+
+1. A morphological closing with a `closing_brick` square bridges small
+   breaks.
+2. An opening with a `max_line_width` square finds solid areas, which are
+   subtracted, so only thin structures remain.
+3. Directional openings (`1 x min_line_length`, then `min_line_length x 1`)
+   keep vertical and horizontal lines.
+4. Music staves are filtered out, which is out of scope here.
+
+**The text test (`FilterFalsePositives`, quoted):**
+
+```cpp
+if (!bad_line && (NumTouchingIntersections(box, intersection_pix) < 2)) {
+  int nonline_count = CountPixelsAdjacentToLine(max_width, box, nonline_pix);
+  if (nonline_count > box_height * box_width * kMaxNonLineDensity) {
+    bad_line = true;
+  }
+}
+```
+
+A line crossed by fewer than two lines of the other orientation is
+rejected when the ink beside it is dense. The band counted extends the
+line's own stroke width on each side, and the threshold is more than 25%
+of the line's box area. This removes strike-throughs and runs formed
+inside text.
+
+**Removal.** `SubtractLinesAndResidue` dilates the found lines, seed-fills
+the residue connected to them, and erases only the line pixels. Text
+touching a line keeps its pixels. Tesseract erases both orientations
+before layout.
+
+**What this means for 9a** (the decisions are in `ARCHITECTURE.md` §11,
+"Chunk 9 spec, part 1, amended again: rule length, short box sides, and
+breaks"):
+
+1. **Length.** OCRcer measures in `h`, not inches. The page's median
+   glyphish-component height `h` for 10-point type lies between the
+   x-height and the cap height, roughly 0.0625 to 0.092 inch. At that
+   size Tesseract's 1/4 inch is 2.7 to 4 `h`, and its 1/20 inch is 0.54
+   to 0.8 `h`. This is arithmetic, not a reading.
+2. **The floor already exists.** `lines.rule_run_heights` (5.4209, measured)
+   is twice the longest horizontal ink run any glyph in the bank makes:
+   the em dash, at 2.7105 x-heights. The tallest thin glyph run is `|`,
+   at 2.2859. So 5.4209 `h` is a floor no single glyph reaches, in either
+   orientation. It is longer than Tesseract's 1/4 inch.
+3. **The cost of that floor is short box sides.** A box around one line
+   of text is about one line pitch tall, roughly 3 `h` at 10/12 pt
+   (arithmetic). That is under any glyph-safe floor, including Tesseract's
+   own. What makes a short side safe is that it runs between two rules.
+4. **Breaks.** Tesseract's closing would also join a tight dot leader into
+   a line. A statement's leaders must stay leaders.
+5. **The text test** protects a short, 1/4-inch floor. OCRcer's floor is
+   twice the longest glyph run, and the underline strip erases on that
+   same floor. A test applied to the detector alone would make the two
+   disagree about what a rule is. So the test is counted first, not
+   adopted.
+6. **Erasure.** Tesseract erases both orientations, protecting residue.
+   That is prior art for 9a's deferred vertical-rule erasure question,
+   which the `LineCrossesCell` count sizes.
+
+**Not measured:** any rule-detection accuracy, for Tesseract or OCRcer, on
+any page.

@@ -8569,3 +8569,80 @@ joints. OCRcer does not: a single closed box is a cell, and 9b's
 - a cell spanning two columns, asserting its `cols` span;
 - a rule whose end falls short of the crossing rule by more than
   `structure.join_tol_h`, asserting no cell closes there.
+
+### 2026-09-25 — Chunk 9 spec, part 1, amended again: rule length, short box sides, and breaks
+
+Amends "Candidate chunk 9 spec, part 1" above, in its *Rules* paragraph
+and its `rules` fixtures. Everything else in the spec stands, including
+the first amendment on cells. This touches only 9a-ii, the detector. 9a-i,
+the geometry built on authored rules, is unaffected.
+
+**Why.** The spec left `structure.rule_min_h` and
+`structure.rule_max_thick_h` as unvalued guesses. Read literally, it also
+drops two cases that real pages have: the sides of a box around one line
+of text, and a printed rule broken by a scan. Tesseract's line finder was
+read from source (research addendum "how Tesseract finds ruling lines",
+2026-09-25).
+
+**Length floor.**
+
+- `structure.rule_min_h` takes the value and the derivation of
+  `lines.rule_run_heights`: 5.4209, labelled `measured`. That is twice the
+  longest straight ink run any glyph in the bank makes, and the same
+  floor serves the vertical orientation (the tallest thin glyph is 2.2859).
+- It must never exceed `lines.rule_run_heights`. Then every band the strip
+  erases is long enough to be a detected rule, and the `rules` fixture's
+  assertion (every erased band lies inside a detected rule) holds by
+  construction rather than by luck.
+- A test on `Params::DEFAULT` asserts that ordering.
+
+**Short sides.**
+
+- A straight run shorter than the floor is still a rule when both of its
+  ends lie within `structure.join_tol_h` of rules of the other
+  orientation, each of which passes the floor on its own.
+- The run must still meet the thickness cap.
+- This closes a box around one line of text, whose sides are about 3 `h`,
+  shorter than any glyph-safe floor.
+- A single glyph cannot pass. It would need rules touching both of its
+  ends.
+
+**Breaks.**
+
+- Two collinear pieces of the same orientation are one run when they
+  overlap across the run's direction and the gap between them is no
+  longer than the thinner piece's thickness.
+- The length test applies after joining.
+- A scan dropout in a printed rule is a pixel or two, so it is joined.
+- The gap in a dot leader or a dashed rule is longer than its dots or
+  dashes are thick, so it stays two pieces and is not a rule.
+- This rule has no parameter. Tesseract's closing uses a fixed 1/60 inch,
+  which would also join a tight leader, so it is not adopted.
+
+**Thickness.** `structure.rule_max_thick_h` starts at 0.8, labelled
+`guess`. It is Tesseract's 1/20-inch line width converted at 10-point type
+with `h` at the x-height. It is tuned on the structure dev set with the
+others.
+
+**Counted, not adopted: Tesseract's text test.**
+
+- Tesseract rejects a line crossed by fewer than two lines when the ink
+  beside it covers more than 25% of its box. That test protects a short,
+  1/4-inch floor.
+- OCRcer's floor is twice the longest glyph run.
+- Adopting the test in the detector alone would make it disagree with the
+  strip, which erases on the same floor.
+- 9a-ii reports, on finfilings-train stride 6 (counted, never tuned), how
+  many detected rules with fewer than two crossings would fail the test.
+  If any of them are text, the test is specified for the strip and the
+  detector together.
+
+**Fixtures added to `rules`:**
+
+- a box around one line of text, whose sides are shorter than the floor,
+  closed by the short-side rule;
+- a lone vertical run of the same length with no rules at its ends, which
+  is not a rule;
+- a rule with one-pixel breaks, which is one rule;
+- a dashed rule, which is not a rule;
+- a single em dash in running text, which is not a rule.
