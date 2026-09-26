@@ -9364,3 +9364,65 @@ structural fix, not a parameter revert:
 
 The measurement doc is `docs/measurements/2026-09-25_chunk12c_train.md`.
 The folded diff was never committed.
+
+### 2026-09-26 — Chunk 15 integrated; the measurement rule is fixed before any end-to-end number
+
+**Measured, and merged to master.**
+- The optional `nn` table, core's forward pass, and `match.classifier` /
+  `nn.scale` are in. The default is 0, and no fixture moved.
+- The Python trainer is deterministic: two CPU runs produce byte-identical
+  tensors.
+- Parity fixture: 256 bank-rendered crops, top-1 identical, max |Δ log p|
+  6.1e-5, mean 4.9e-6. That is inside the 1e-4 guess.
+  - Its reference is PyTorch run on the dequantised tensors, a ground truth
+    independent of core. It is therefore accepted as blessed.
+  - Only rendered crops are committed.
+- Per-glyph, on the net's internal-val fold (real crops):
+
+| group | net | prototype matcher |
+|---|---|---|
+| overall | 95.75 | 91.99 |
+| lowercase | 97.99 | 96.05 |
+| digits | 94.43 | 95.09 |
+| uppercase | 85.78 | 90.62 |
+| punctuation | 93.62 | 96.91 |
+
+- Junk: 98.7–98.8% of held-out negatives land on the junk class.
+- Smoke run, 3 train pages, `nn.scale` untuned: 7.0 → 9.1 s/page (+29%).
+
+**The risk, stated before it is measured.** The net loses on uppercase and
+punctuation. Drawings are mostly uppercase, digits and symbols. Its real
+crops come from financial filings, which are mostly lowercase. So the
+pages-cov drawing gate (Δ ≤ 0) is where this can fail.
+
+**The rule.** EPS is 0.02, as in 12b and 12c. "Unseen" means the 320
+finfilings-train pages that are **not** in `bench/splits/nn15_page_split.tsv`,
+so the net never trained on them.
+1. **Fit `nn.scale` on unseen, stride 2.**
+   - Grid {0.25, 0.5, 1, 2, 4}, then ×√2 either side of the best.
+   - The choice is the lowest line-matched CER. A tie within EPS goes to
+     the lower end-to-end CER.
+   - Record wall time.
+2. **Compare on the same pages:** classifier 1 at that scale against 0. It
+   proceeds only if it is no worse than EPS on both measures.
+3. **Calibrate.** Mode 1's margin (log p₁ − log p₂) gets its own
+   calibration curve, fitted on unseen train pages (rule 5). Mode 1's
+   confidence ships only with that curve.
+4. **Val, once:** classifier 1 against 0, no worse than EPS on either
+   measure.
+5. **Gates before the default flips to 1:**
+   - the identifier gates at 0 / 1271 / 67;
+   - `cargo test`;
+   - wall time ≤ +25% against classifier 0, or a justification entry here;
+   - the i → í and 0 → O repros reported.
+6. **Score once.** Beat the finfilings controls on both measures. pages-cov
+   must be ≤ control + 0.05, with drawing Δ ≤ 0. Losses are filed first.
+   If a gate fails, the default stays 0 and the net stays opt-in.
+
+**Mode 2 (fused) is not attempted in this pass.** If mode 1 fails only on
+the uppercase or drawing gate, the next move is fusion or rebalanced
+training data. That gets its own entry, and it is not a re-run of this
+rule.
+
+**Cleanup item:** `ocrcer-build`'s spec reader accepts two key spellings.
+It should accept one, the trainer's.
