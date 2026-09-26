@@ -522,7 +522,8 @@ fn run_dump(args: &[String]) -> ExitCode {
          \"bank_sizes\": {:?},\n  \"page_stride\": {},\n  \"pages_read\": {},\n  \
          \"lines_total\": {},\n  \"lines_qualifying\": {},\n  \"words_total\": {},\n  \
          \"words_qualifying\": {},\n  \"chars_dumped\": {},\n  \"chars_out_of_charset\": {},\n  \
-         \"chars_bad_crop\": {},\n  \"real_train_rows\": {},\n  \"real_val_rows\": {},\n  \
+         \"chars_bad_crop\": {},\n  \"chars_lattice_mismatch\": {},\n  \
+         \"real_train_rows\": {},\n  \"real_val_rows\": {},\n  \
          \"matcher_topk\": {},\n  \
          \"junk_nonpath_train\": {},\n  \"junk_nonpath_val\": {},\n  \
          \"junk_nonpath_lattice_rebuild_mismatches\": {},\n  \
@@ -545,6 +546,7 @@ fn run_dump(args: &[String]) -> ExitCode {
         real_summary.chars_dumped,
         real_summary.chars_out_of_charset,
         real_summary.chars_bad_crop,
+        real_summary.chars_lattice_mismatch,
         real_summary.train_rows,
         real_summary.val_rows,
         TOPK,
@@ -888,6 +890,13 @@ struct RealSummary {
     chars_dumped: u64,
     chars_out_of_charset: u64,
     chars_bad_crop: u64,
+    /// Would-be positives (in-charset, in-bounds) whose word never mapped to
+    /// a verified lattice edge (`ARCHITECTURE.md` section 11, 2026-09-26,
+    /// "rule-4 fix"): the real-positive path only dumps through
+    /// `segment::crop`/`Glyph::input`, same as the runtime, so a row that
+    /// cannot reach that path is counted here rather than synthesised
+    /// another way.
+    chars_lattice_mismatch: u64,
     train_rows: u64,
     val_rows: u64,
 }
@@ -1038,6 +1047,7 @@ fn dump_real_and_nonpath(
         chars_dumped: 0,
         chars_out_of_charset: 0,
         chars_bad_crop: 0,
+        chars_lattice_mismatch: 0,
         train_rows: 0,
         val_rows: 0,
     };
@@ -1137,7 +1147,6 @@ fn dump_real_and_nonpath(
                 continue;
             }
             s.lines_qualifying += 1;
-            let deskewed_baseline = f64::from(dline.baseline) - f64::from(dline.rect.x) * slope;
 
             for (word_idx, (dword, ttoken)) in dline.words.iter().zip(truth_tokens.iter()).enumerate() {
                 s.words_total += 1;
@@ -1147,63 +1156,42 @@ fn dump_real_and_nonpath(
                 }
                 s.words_qualifying += 1;
 
+                // Every decoded char's box, for the exact-match verification
+                // below, and separately the in-charset/in-bounds subset that
+                // would dump as positives -- but only once each is confirmed
+                // to land on a verified lattice edge (`ARCHITECTURE.md`
+                // section 11, 2026-09-26, "rule-4 fix"): the real-positive
+                // path builds `G`/`X` through `segment::crop`/`Glyph::input`,
+                // the same construction the runtime serves and (c)(ii)
+                // already uses below, never a second reconstruction of the
+                // crop or the baseline.
                 let mut on_path_boxes: Vec<(u32, u32, u32, u32)> = Vec::new();
+                let mut real_candidates: Vec<((u32, u32, u32, u32), usize, u16, char)> = Vec::new();
                 for (char_idx, (cbox, &tch)) in dword.chars.iter().zip(truth_chars.iter()).enumerate() {
-                    on_path_boxes.push((cbox.rect.x, cbox.rect.y, cbox.rect.width, cbox.rect.height));
+                    let bx = (cbox.rect.x, cbox.rect.y, cbox.rect.width, cbox.rect.height);
+                    on_path_boxes.push(bx);
                     let Some(&class_idx) = class_of_char.get(&tch) else {
                         s.chars_out_of_charset += 1;
                         continue;
                     };
-                    let rx = cbox.rect.x;
-                    let ry = cbox.rect.y;
-                    let rw = cbox.rect.width;
-                    let rh = cbox.rect.height;
-                    if rw == 0 || rh == 0 || rx.saturating_add(rw) > mw || ry.saturating_add(rh) > mh {
+                    let (rw, rh) = (cbox.rect.width, cbox.rect.height);
+                    if rw == 0
+                        || rh == 0
+                        || cbox.rect.x.saturating_add(rw) > mw
+                        || cbox.rect.y.saturating_add(rh) > mh
+                    {
                         s.chars_bad_crop += 1;
                         continue;
                     }
-                    let mut ink = vec![0u8; (rw * rh) as usize];
-                    for yy in 0..rh {
-                        for xx in 0..rw {
-                            let src = ((ry + yy) * mw + (rx + xx)) as usize;
-                            ink[(yy * rw + xx) as usize] = mask[src];
-                        }
-                    }
-                    let baseline_dy = (deskewed_baseline - f64::from(ry)) as f32;
-                    let input =
-                        GlyphInput { ink: &ink, width: rw, height: rh, baseline_dy, x_height: dline.x_height };
-                    let (raw, grid) = extract_with_grid(&input);
-                    let xv = model.standardise(&raw);
-                    let mtch = r#match::nearest(model, &raw, TOPK, true);
-                    let mut topk_class = [NONE_CLASS; TOPK];
-                    let mut topk_dist = [f32::INFINITY; TOPK];
-                    if let Some(m) = &mtch {
-                        for (i, c) in m.best.iter().take(TOPK).enumerate() {
-                            topk_class[i] = c.class;
-                            topk_dist[i] = c.distance;
-                        }
-                        if let Some(top) = m.top() {
-                            if top.class == class_idx {
-                                class_ratios.entry(class_idx).or_default().push(m.ratio());
-                            }
-                        }
-                    }
-                    let meta = format!("{row_id}\t{stem}\t{line_idx}\t{word_idx}\t{char_idx}\t{}", tch as u32);
-                    let sink = if is_val_fold { &mut real_val } else { &mut real_train };
-                    sink.write(&grid, &xv, class_idx, &topk_class, &topk_dist, &meta)?;
-                    s.chars_dumped += 1;
-                    if is_val_fold {
-                        s.val_rows += 1;
-                    } else {
-                        s.train_rows += 1;
-                    }
+                    real_candidates.push((bx, char_idx, class_idx, tch));
                 }
 
                 // (c)(ii): find this word's WordSpan by x-extent overlap
                 // against `dword.rect` (same mask coordinate space as
                 // `CharBox.rect` -- see the module doc), rebuild its
                 // lattice, and verify by exact on-path box match before
-                // trusting any of its non-path edges as negatives.
+                // trusting any of its edges -- on-path positives or
+                // non-path negatives alike.
                 let wx0 = dword.rect.x;
                 let wx1 = dword.rect.x + dword.rect.width;
                 let wy_mid = dword.rect.y + dword.rect.height / 2;
@@ -1218,6 +1206,7 @@ fn dump_real_and_nonpath(
                 );
                 let Some((tl, span)) = candidate else {
                     nonpath_mismatches += 1;
+                    s.chars_lattice_mismatch += real_candidates.len() as u64;
                     continue;
                 };
                 let lat = segment::build_with(&span, &comps, &labels, mw, &tl, &seg_p);
@@ -1235,10 +1224,45 @@ fn dump_real_and_nonpath(
                     .count();
                 if on_path_found != on_path_boxes.len() {
                     nonpath_mismatches += 1;
+                    s.chars_lattice_mismatch += real_candidates.len() as u64;
                     continue;
                 }
                 for (x, y, w, h, e) in &all_boxes {
                     let bx = (*x, *y, *w, *h);
+                    if let Some(pos) = real_candidates.iter().position(|(rbx, ..)| *rbx == bx) {
+                        let (_, char_idx, class_idx, tch) = real_candidates.remove(pos);
+                        let Some(g) = segment::crop(&lat, &labels, mw, e) else { continue };
+                        let input = g.input(&tl);
+                        let (raw, grid) = extract_with_grid(&input);
+                        let xv = model.standardise(&raw);
+                        let mtch = r#match::nearest(model, &raw, TOPK, true);
+                        let mut topk_class = [NONE_CLASS; TOPK];
+                        let mut topk_dist = [f32::INFINITY; TOPK];
+                        if let Some(m) = &mtch {
+                            for (i, c) in m.best.iter().take(TOPK).enumerate() {
+                                topk_class[i] = c.class;
+                                topk_dist[i] = c.distance;
+                            }
+                            if let Some(top) = m.top() {
+                                if top.class == class_idx {
+                                    class_ratios.entry(class_idx).or_default().push(m.ratio());
+                                }
+                            }
+                        }
+                        let meta = format!(
+                            "{row_id}\t{stem}\t{line_idx}\t{word_idx}\t{char_idx}\t{}",
+                            tch as u32
+                        );
+                        let sink = if is_val_fold { &mut real_val } else { &mut real_train };
+                        sink.write(&grid, &xv, class_idx, &topk_class, &topk_dist, &meta)?;
+                        s.chars_dumped += 1;
+                        if is_val_fold {
+                            s.val_rows += 1;
+                        } else {
+                            s.train_rows += 1;
+                        }
+                        continue;
+                    }
                     if on_path_boxes.contains(&bx) {
                         continue;
                     }
@@ -1261,6 +1285,11 @@ fn dump_real_and_nonpath(
                         nonpath_train_rows += 1;
                     }
                 }
+                // Unreachable in practice: `on_path_found == on_path_boxes.len()`
+                // above means every `real_candidates` box (a subset of
+                // `on_path_boxes`) matched some edge in `all_boxes` and was
+                // removed in the loop, so nothing is silently dropped here.
+                debug_assert!(real_candidates.is_empty());
             }
         }
     }
