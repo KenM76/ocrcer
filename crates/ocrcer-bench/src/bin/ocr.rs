@@ -541,44 +541,20 @@ fn align_substitutions(
     read: &str,
     into: &mut BTreeMap<(String, String), usize>,
 ) {
+    use ocrcer_bench::cer::Edit;
     let a: Vec<char> = ocrcer_bench::cer::normalise(reference).chars().collect();
     let b: Vec<char> = ocrcer_bench::cer::normalise(read).chars().collect();
-    // Full matrix: these are page-sized strings, a few thousand characters,
-    // so the quadratic table is a few megabytes and is gone at the end of the
-    // call. Correct alignment is worth more here than the row-at-a-time trick
-    // `cer::levenshtein` uses, because the path itself is the output.
-    let (n, m) = (a.len(), b.len());
-    if n * m > 16_000_000 {
-        return;
-    }
-    let mut d = vec![0u32; (n + 1) * (m + 1)];
-    let at = |i: usize, j: usize| i * (m + 1) + j;
-    for i in 0..=n {
-        d[at(i, 0)] = i as u32;
-    }
-    for j in 0..=m {
-        d[at(0, j)] = j as u32;
-    }
-    for i in 1..=n {
-        for j in 1..=m {
-            let sub = d[at(i - 1, j - 1)] + u32::from(a[i - 1] != b[j - 1]);
-            d[at(i, j)] = sub.min(d[at(i - 1, j)] + 1).min(d[at(i, j - 1)] + 1);
-        }
-    }
-    let (mut i, mut j) = (n, m);
-    while i > 0 || j > 0 {
-        if i > 0 && j > 0 && d[at(i, j)] == d[at(i - 1, j - 1)] + u32::from(a[i - 1] != b[j - 1]) {
-            if a[i - 1] != b[j - 1] {
-                *into.entry((a[i - 1].to_string(), b[j - 1].to_string())).or_default() += 1;
-            }
-            i -= 1;
-            j -= 1;
-        } else if i > 0 && d[at(i, j)] == d[at(i - 1, j)] + 1 {
-            *into.entry((a[i - 1].to_string(), String::new())).or_default() += 1;
-            i -= 1;
-        } else {
-            *into.entry((String::new(), b[j - 1].to_string())).or_default() += 1;
-            j -= 1;
+    // Page-sized strings, a few thousand characters, so the quadratic table
+    // `cer::align` builds is a few megabytes and is gone at the end of the
+    // call. The backtrace itself is `cer::align`'s, not a second copy of it
+    // (`CLAUDE.md` rule 4) -- shared with the chunk-15 decomposition probe.
+    let Some(path) = ocrcer_bench::cer::align(&a, &b) else { return };
+    for e in path {
+        match e {
+            Edit::Match => {}
+            Edit::Sub(w, g) => *into.entry((w.to_string(), g.to_string())).or_default() += 1,
+            Edit::Del(w) => *into.entry((w.to_string(), String::new())).or_default() += 1,
+            Edit::Ins(g) => *into.entry((String::new(), g.to_string())).or_default() += 1,
         }
     }
 }
