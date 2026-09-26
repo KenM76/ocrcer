@@ -9659,3 +9659,50 @@ rejects, or whole lines misaligned.
    each mode.
 5. For the ten worst-delta pages, a categorisation of the delta by region
    type, with no text committed.
+
+### 2026-09-26 — Chunk 15 decomposition: the loss is concentrated, all substitutions, in dense small-font numeric tables
+
+**Measured** (`docs/measurements/2026-09-26_c15_decomp.md`), on 160 unseen
+pages:
+- **Concentration.** 6 pages carry 50% of mode 1's positive delta and 18
+  carry 80%. 91 pages improve under mode 1, 57 get worse, 12 are unchanged.
+- **Edit operations**, mode 0 → mode 1:
+  - substitutions 23,824 → 28,362 (+4,538);
+  - insertions 12,283 → 12,174;
+  - deletions 12,298 → 11,408.
+
+  The whole loss is substitutions.
+- **Line-paired character correctness:** matcher 97.13%, net 96.12%.
+- **Where the loss sits.** On 9 of the 10 worst pages it is long runs of
+  confidently wrong alphanumerics in dense, small-font holdings-table rows
+  (tightly kerned identifier and share-count columns). The digit confusions
+  (2→8, 0→3, 8→6, 3→6/7) are the signature. Mode 1's biggest wins, in the
+  other direction, are 0/O/o: −773, −306 and −243.
+- The alignment used by `ocr` confusions and by the probe is now one shared
+  function in `cer.rs` (rule 4). The bench tests pass.
+
+The earlier contradictions resolve. The net wins on most pages and on the
+0/O family. It loses heavily on one document genre that the 20-page
+generalisation sample evidently under-represented. Its 99.3% was measured,
+but on the wrong mix.
+
+**Decision: one size-bucketed diagnostic, with both branches decided
+now.** Per-crop top-1 accuracy of net and matcher on ground-truth-aligned
+crops, through the runtime crop path, bucketed by x-height in pixels.
+Samples: (a) the 18 pages carrying 80% of the delta; (b) all 160 pages.
+Also the Fate-C share (the path's cut differs from the truth) inside table
+rows on those 18 pages, per mode.
+- **If the net trails the matcher on small aligned crops:** the net lacks
+  small-size and dense-digit coverage. The route is a retrain.
+  - The fixed dump path is used.
+  - Rendered digits and identifiers at small pixel sizes and tight kerning
+    are added, along with real crops.
+  - A new committed training manifest and page split exclude the 160
+    unseen pages.
+  - Then the chunk 15 rule is rerun from step 1.
+  - An x-height gate between the classifiers is *not* taken first. It would
+    hide the gap rather than close it.
+- **If the net matches or beats the matcher on those aligned crops, and
+  the loss sits in Fate C (merged or split digits):** the route is
+  training junk on touching-digit merges, or segmentation work on dense
+  tables. Which one is chosen from the measured split.
