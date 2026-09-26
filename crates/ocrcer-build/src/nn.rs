@@ -7,12 +7,19 @@
 //! # The trainer output directory
 //!
 //! - `spec.json`: one JSON object with `nn_version`, `junk_index`,
-//!   `n_outputs`, `layers` (`[{"kind":..,"shape":[..]}, ..]` in forward-pass
-//!   order), and the trainer's provenance: `charset_sha256`,
-//!   `feature_extractor`, `manifest_id`, `seed`, `torch_version`,
-//!   `python_version`, `lock_hash`. The same shape [`meta_json`] emits into
-//!   `meta.nn`, because the trainer's claim about itself and the file's claim
-//!   about the trainer are the same claim.
+//!   `n_outputs`, `layers` (in forward-pass order, each with a `kind` and,
+//!   for a weighted layer, a full tensor shape) and the trainer's
+//!   provenance: `charset_sha256`, `feature_extractor`, a training manifest
+//!   id, seed, torch and Python versions, and the lock file's hash. Only the
+//!   *meaning* of these fields is fixed by `ARCHITECTURE.md` section 11, not
+//!   their literal JSON keys -- `tools/nn/train.py` (the trainer that
+//!   shipped) names the weighted-layer shape `weight_shape`, the manifest id
+//!   `training_manifest_id` and the lock hash `lock_file_sha256`; this
+//!   module's [`load_spec`] accepts those names (falling back to `shape`,
+//!   `manifest_id`, `lock_hash` for this module's own pre-trainer test
+//!   fixtures). The same shape [`meta_json`] emits into `meta.nn`, under
+//!   this module's own key names, because the trainer's claim about itself
+//!   and the file's claim about the trainer are the same claim.
 //! - `<layer_index>.weight.f32` / `<layer_index>.bias.f32`: one pair of raw
 //!   little-endian `f32` files per layer with parameters, where
 //!   `layer_index` is that layer's position in `spec.json`'s `layers` array
@@ -83,6 +90,22 @@ fn read_string_field(obj: &ocrcer_core::json::Json, key: &str) -> Result<String,
     obj.get(key).and_then(ocrcer_core::json::Json::as_str).map(str::to_string).ok_or_else(|| format!("spec.json missing string field {key:?}"))
 }
 
+/// Reads a string field trying each key in order, so a trainer that names a
+/// provenance field differently than this module's own doc comment guessed
+/// (`training_manifest_id` rather than `manifest_id`, `lock_file_sha256`
+/// rather than `lock_hash`) still parses -- the architecture's contract
+/// (`ARCHITECTURE.md` section 11) only fixes what the field *means*, not its
+/// literal JSON key, and `tools/nn/train.py` is the trainer that actually
+/// shipped.
+fn read_string_field_any(obj: &ocrcer_core::json::Json, keys: &[&str]) -> Result<String, String> {
+    for key in keys {
+        if let Some(s) = obj.get(key).and_then(ocrcer_core::json::Json::as_str) {
+            return Ok(s.to_string());
+        }
+    }
+    Err(format!("spec.json missing string field (tried {keys:?})"))
+}
+
 /// Loads and self-validates `dir/spec.json`. Does not touch the tensor
 /// files, and does not check `charset_sha256` / `feature_extractor` against
 /// anything -- that is [`build`]'s job, once it knows what model it is
@@ -112,8 +135,13 @@ pub fn load_spec(dir: &Path) -> Result<TrainerSpec, String> {
     for (i, l) in layers_v.iter().enumerate() {
         let kind_text = l.get("kind").and_then(Json::as_str).ok_or_else(|| format!("spec.json layer {i} missing kind"))?.to_string();
         let kind = LayerKind::parse(&kind_text).ok_or_else(|| format!("spec.json layer {i} has unknown kind {kind_text:?}"))?;
+        // `weight_shape` is what `tools/nn/train.py` actually emits per
+        // weighted layer (full tensor shape, e.g. `[out,in,3,3]`); `shape`
+        // is kept as a fallback for the synthetic fixtures in this module's
+        // own tests, which predate that trainer.
         let shape: Vec<u32> = l
-            .get("shape")
+            .get("weight_shape")
+            .or_else(|| l.get("shape"))
             .and_then(Json::as_array)
             .map(|a| a.iter().filter_map(Json::as_u32).collect())
             .unwrap_or_default();
@@ -125,11 +153,11 @@ pub fn load_spec(dir: &Path) -> Result<TrainerSpec, String> {
 
     let charset_sha256 = read_string_field(&v, "charset_sha256")?;
     let feature_extractor = v.get("feature_extractor").and_then(Json::as_u32).ok_or("spec.json missing feature_extractor")?;
-    let manifest_id = read_string_field(&v, "manifest_id")?;
+    let manifest_id = read_string_field_any(&v, &["manifest_id", "training_manifest_id"])?;
     let seed = v.get("seed").and_then(Json::as_i64).ok_or("spec.json missing seed")?;
     let torch_version = read_string_field(&v, "torch_version")?;
     let python_version = read_string_field(&v, "python_version")?;
-    let lock_hash = read_string_field(&v, "lock_hash")?;
+    let lock_hash = read_string_field_any(&v, &["lock_hash", "lock_file_sha256"])?;
 
     Ok(TrainerSpec {
         nn_version,
