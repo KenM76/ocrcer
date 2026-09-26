@@ -9272,3 +9272,50 @@ Python trainer, and by the probe result.
    filter accepts stand in for chunk 13's alignment. That filter already
    picks the non-path lattice candidates inside those words. The source is
    labelled in `meta.nn`.
+
+### 2026-09-25 — Chunk 12c: the rule was misapplied; the kept set is A+B, re-run under the same rule
+
+**Measured.** Source: `docs/measurements/2026-09-25_chunk12c_train.md`
+(branch `chunk-12c`). Train is stride 2, 214 of 427 pages; E2E is end-to-end
+CER and LM is line-matched CER.
+
+| config | E2E | LM | ms/page |
+|---|---|---|---|
+| F | 21.441 | 24.029 | 12299 |
+| F+A | 21.323 | 23.905 | 13261 |
+| F+B | 21.407 | 23.905 | 12257 |
+| F+C | 21.593 | 24.224 | 11085 |
+| F+A+B+C | 21.425 | 23.960 | 12026 |
+
+The five runs ran at the same time, so the wall times are noisy. Val was
+103 of 103 pages: F 22.082 / 26.902, A+B+C 21.934 / 26.931 (LM +0.029, more
+than EPS).
+
+**What went wrong.** Step 2 dropped C, because alone it costs +0.152 E2E
+and +0.195 LM. The run then carried A+B+C into step 3 and val anyway,
+reading "the combined set" as all three reverts. That contradicts step 2.
+The val result above belongs to a set the rule never chose, so it decides
+nothing.
+
+**The rule's wording was the cause, and it is fixed here.** Step 1 only
+ran the all-three combination, which silently assumed step 2 keeps every
+revert. From now on, "the combined set" in step 3 means **the reverts kept
+in step 2**. If that combination was not run in step 1, it is run on train
+before step 3 is judged.
+
+**The correct application.**
+- Kept set: {A, B}.
+- Step 3: run F+A+B on train, stride 2, and judge it against F by the same
+  EPS test. If it fails, drop B.
+- Step 4: val once, the kept set against F. The measured F val numbers
+  above are reused.
+- Then steps 5 and 6 as written.
+
+**Why this second val run is not tuning on val.** The set that goes to val
+is fixed by train alone, under a rule written before any number was run.
+The A+B+C val reading chose nothing, and it cannot change what goes to val.
+The re-run is recorded here so the reason stays visible.
+
+**C (`valley_fraction`) stays at 0.65. The M→IV1 mechanism stays open.** It
+needs a structural fix, such as gating `interior_cuts()` on stroke context,
+and not a revert. The candidate is unscheduled.
