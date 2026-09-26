@@ -273,28 +273,15 @@ pub fn line_matched_score(reference: &str, read: &str) -> LineScore {
         return LineScore { char_errors: o.iter().map(Vec::len).sum(), chars: 0 };
     }
 
-    // Raw (unnormalised) distance is what gets charged; the normalised value
-    // is only for ranking which pairs are claimed first.
+    // Raw (unnormalised) distance is what gets charged; the ranking that
+    // decides which pairs are claimed first lives in `greedy_line_pairs`.
     let mut raw = vec![vec![0usize; o.len()]; t.len()];
-    let mut pairs: Vec<(f64, usize, usize)> = Vec::with_capacity(t.len() * o.len());
     for (i, ti) in t.iter().enumerate() {
         for (j, oj) in o.iter().enumerate() {
-            let d = levenshtein(ti, oj);
-            raw[i][j] = d;
-            let denom = ti.len().max(oj.len()).max(1) as f64;
-            pairs.push((d as f64 / denom, i, j));
+            raw[i][j] = levenshtein(ti, oj);
         }
     }
-    pairs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap().then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
-
-    let mut match_of_t: Vec<Option<usize>> = vec![None; t.len()];
-    let mut used_o = vec![false; o.len()];
-    for (_, i, j) in &pairs {
-        if match_of_t[*i].is_none() && !used_o[*j] {
-            match_of_t[*i] = Some(*j);
-            used_o[*j] = true;
-        }
-    }
+    let (match_of_t, used_o) = greedy_line_pairs(&t, &o);
 
     // Per read-line group: which read index owns each truth line, the
     // truth-index span it currently covers, its accumulated merged text, and
@@ -475,6 +462,108 @@ pub fn line_matched_score(reference: &str, read: &str) -> LineScore {
     let chars = r.chars().count();
 
     LineScore { char_errors, chars }
+}
+
+/// One step of a character-level edit path between a reference sequence `a`
+/// and a hypothesis sequence `b`.
+///
+/// Added for the chunk-15 loss-decomposition diagnostic
+/// (`docs/measurements/2026-09-26_c15_decomp.md`): several bench-only
+/// consumers need the full alignment, not just its cost, and
+/// [`align`] is the one place that walks it so no second backtrace can drift
+/// from this one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Edit {
+    /// The aligned characters are equal.
+    Match,
+    /// The aligned characters differ: `Sub(reference_char, read_char)`.
+    Sub(char, char),
+    /// A character `b` has that `a` does not, at this point in the path.
+    Ins(char),
+    /// A character `a` has that `b` does not, at this point in the path.
+    Del(char),
+}
+
+/// The full backtrace of the Levenshtein alignment between `a` and `b`,
+/// oldest edit first. `None` when the full O(`a.len()*b.len()`) matrix would
+/// exceed 16M cells (a few page-sized strings' worth) — the same cap
+/// `ocr`'s own confusion tally uses, for the same reason: correct, not
+/// approximated, and skipped rather than guessed at when it would be too
+/// large to hold.
+///
+/// Tie-break order (substitution, then deletion, then insertion) matches
+/// `ocr`'s pre-existing `align_substitutions`, which now calls this function
+/// instead of keeping its own copy of the same backtrace — one alignment,
+/// used everywhere its cost is used.
+pub fn align(a: &[char], b: &[char]) -> Option<Vec<Edit>> {
+    let (n, m) = (a.len(), b.len());
+    if n.saturating_mul(m) > 16_000_000 {
+        return None;
+    }
+    let at = |i: usize, j: usize| i * (m + 1) + j;
+    let mut d = vec![0u32; (n + 1) * (m + 1)];
+    for i in 0..=n {
+        d[at(i, 0)] = i as u32;
+    }
+    for j in 0..=m {
+        d[at(0, j)] = j as u32;
+    }
+    for i in 1..=n {
+        for j in 1..=m {
+            let sub = d[at(i - 1, j - 1)] + u32::from(a[i - 1] != b[j - 1]);
+            d[at(i, j)] = sub.min(d[at(i - 1, j)] + 1).min(d[at(i, j - 1)] + 1);
+        }
+    }
+    let mut path = Vec::with_capacity(n + m);
+    let (mut i, mut j) = (n, m);
+    while i > 0 || j > 0 {
+        if i > 0 && j > 0 && d[at(i, j)] == d[at(i - 1, j - 1)] + u32::from(a[i - 1] != b[j - 1]) {
+            path.push(if a[i - 1] == b[j - 1] { Edit::Match } else { Edit::Sub(a[i - 1], b[j - 1]) });
+            i -= 1;
+            j -= 1;
+        } else if i > 0 && d[at(i, j)] == d[at(i - 1, j)] + 1 {
+            path.push(Edit::Del(a[i - 1]));
+            i -= 1;
+        } else {
+            path.push(Edit::Ins(b[j - 1]));
+            j -= 1;
+        }
+    }
+    path.reverse();
+    Some(path)
+}
+
+/// The greedy nearest-first, one-to-one line pairing [`line_matched_score`]
+/// starts from, before its two fold passes run. Extracted so a second
+/// consumer (the chunk-15 decomposition probe) can ask "which read line did
+/// this truth line pair with", without either reimplementing the same
+/// distance-ranked greedy assignment or reaching into
+/// `line_matched_score`'s internals — this is the only place that computes
+/// it, and `line_matched_score` itself calls it below.
+///
+/// Returns `(match_of_t, used_o)`: `match_of_t[i]` is the read-line index
+/// truth line `i` claimed, if any; `used_o[j]` is whether read line `j` was
+/// claimed by anyone.
+pub fn greedy_line_pairs(t: &[Vec<char>], o: &[Vec<char>]) -> (Vec<Option<usize>>, Vec<bool>) {
+    let mut pairs: Vec<(f64, usize, usize)> = Vec::with_capacity(t.len() * o.len());
+    for (i, ti) in t.iter().enumerate() {
+        for (j, oj) in o.iter().enumerate() {
+            let d = levenshtein(ti, oj);
+            let denom = ti.len().max(oj.len()).max(1) as f64;
+            pairs.push((d as f64 / denom, i, j));
+        }
+    }
+    pairs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap().then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
+
+    let mut match_of_t: Vec<Option<usize>> = vec![None; t.len()];
+    let mut used_o = vec![false; o.len()];
+    for (_, i, j) in &pairs {
+        if match_of_t[*i].is_none() && !used_o[*j] {
+            match_of_t[*i] = Some(*j);
+            used_o[*j] = true;
+        }
+    }
+    (match_of_t, used_o)
 }
 
 /// Multiset token overlap between `reference` and `read`.
