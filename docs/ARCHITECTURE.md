@@ -9610,3 +9610,52 @@ unseen pages. For every output character, classify its fate:
 The 2→8, 0→3, C→S and M→C events are counted by fate. The result names the
 mechanism. Any fix then gets its own entry and a measurement rule fixed in
 advance.
+
+### 2026-09-26 — Chunk 15 trace: plumbing is clean; the trace's explanation is not accepted; the loss has to be decomposed
+
+**Measured** (`docs/measurements/2026-09-26_c15_trace.md`; the probe and its
+core hooks stay on branch `c15-trace` and are not merged, since core
+changes made for a probe don't belong in core). 160 unseen pages:
+- No plumbing bug in mode 1. The class mapping, junk exclusion, sort order
+  and distance sign are all correct.
+- The decoder overrides the classifier on 5.3% of characters under mode 0
+  and 0.5% under mode 1. Under mode 0 three quarters of those overrides
+  come from the confusion table.
+- The mean top-1/top-2 match gap is 1.90 (matcher) vs 10.88 (net at √2).
+- Fate C, where the path's cut differs from the truth, is close: 16.5% vs
+  15.9%.
+
+**The trace's reading is rejected.** The trace reads the loss as "the
+net's large margins stop the decoder from correcting it". Two measurements
+contradict it:
+1. **The scale grid.** At `nn.scale` 0.25–0.5 the net's gap is at or below
+   the matcher's, which gives the decoder the room to correct it. CER got
+   worse there (24.57 / 21.53), not better.
+2. **Magnitude.** The seven named pairs add about 160 events under mode 1
+   compared with mode 0. The loss is about 1.1 pp of roughly 400k
+   reference characters (inferred from about 2.5k characters per page),
+   i.e. thousands of edits. The named pairs are a symptom that shows up in
+   top-N lists, not the cause.
+
+Also, "Fate A" means the output equals the classifier's argmax, not that it
+is correct. The trace never measured correctness.
+
+**A clue the earlier reports under-weighted:** WER is *better* under mode 1
+(34.355 vs 34.442), while CER is 1.1 pp worse and both recall and precision
+fall. More words come out right, and the character errors are
+concentrated. Candidate reading, inferred: a small number of long
+multi-character errors, such as the net emitting confident characters on
+non-text ink (rules, graphics, stamps, noise) that the matcher's distance
+rejects, or whole lines misaligned.
+
+**Decision: decompose before explaining.** A bench measurement on the same
+160 pages, both modes, with no parameter changes:
+1. The distribution of per-page CER deltas. Is the loss spread out, or
+   concentrated in a few pages or lines?
+2. Edit operations per mode: substitutions, insertions and deletions.
+3. The top 40 substitution, insertion and deletion rows ranked by *count
+   difference* (mode 1 − mode 0), not by top-N per mode.
+4. On ground-truth-aligned edges, the rate at which output equals truth for
+   each mode.
+5. For the ten worst-delta pages, a categorisation of the delta by region
+   type, with no text committed.
