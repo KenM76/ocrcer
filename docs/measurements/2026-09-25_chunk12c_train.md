@@ -155,3 +155,93 @@ report's decision.
   need its own single val shot under the same never-tune-on-test discipline
   — that is a decision for whoever owns the next round, not something this
   report resolves by re-spending val.
+
+## Re-run under the fixed rule: kept set is A+B (2026-09-25)
+
+Source of the fix: `ARCHITECTURE.md` §11, "Chunk 12c: the rule was misapplied;
+the kept set is A+B, re-run under the same rule." **One line on what the
+earlier A+B+C val shot decided: nothing.** Step 2 (above) dropped C on train;
+the run then carried A+B+C into val anyway, contradicting its own step 2. The
+rule's wording is now fixed to read "the combined set" in step 3 as *the
+reverts kept in step 2* — here, {A, B} — and this section is that corrected
+re-run.
+
+Same worktree, same binary (`target-12c/release/ocr.exe`, unchanged since the
+earlier section — no rebuild, no code touched), same model
+(`model/out/ocrcer.ocrw`). Raw stdout for every run below is committed at
+`docs/measurements/2026-09-25_chunk12c/fitlogs/` (`FAB.log`, `F2.log`,
+`val_AB.log`).
+
+### Step 3 (corrected) — F+A+B on train, stride 2, judged against F
+
+F+A+B was not run in step 1, so per the fixed rule it is run now, alone (not
+concurrently with anything else), with F re-run immediately after for a clean
+(uncontended) wall-time reading:
+
+`ocr model/out/ocrcer.ocrw D:/Dev/ExcludedPrivate/ocrcer/pages/finfilings-train --stride 2 [--set ...]`,
+214 of 427 pages, 526,775 reference chars.
+
+| config | end-to-end CER | line-matched CER | WER | F1 | wall | ms/page |
+|---|---|---|---|---|---|---|
+| F (re-run, clean) | 21.441% | 24.029% | 35.336% | 77.747% | 2443.4 s | 11418 |
+| F+A+B (`top_k=5`, `pitch_tolerance=0.15`) | 21.287% | 23.809% | 35.289% | 78.403% | 2670.8 s | 12480 |
+
+F's re-run CER/WER/F1 are bit-for-bit identical to the original step-1 F row
+(21.441 / 24.029 / 35.336 / 77.747) — the engine is deterministic, and this
+is a useful cross-check that nothing drifted between the two sessions. The
+wall-time reading is now clean (each config ran alone): F+A+B costs about 9%
+more latency than F alone (12480 vs 11418 ms/page) when not sharing a machine
+with four other processes, in contrast to the noisy five-way-concurrent
+readings in step 1 where F+A alone appeared to be the slowest of the five.
+
+| revert set | dCER vs F | dLM vs F | costs > EPS (0.02)? | verdict |
+|---|---|---|---|---|
+| F+A+B | −0.154 | −0.220 | no | **passes** |
+
+F+A+B improves on both measures on train, comfortably inside EPS. Per the
+fixed rule, the drop-B fallback is not invoked — there is no train
+measurement of A-alone in this section, because it is only called for if
+A+B fails, and it did not.
+
+**Kept set going to val: {A, B}** — `match.top_k=5`, `words.pitch_tolerance=0.15`.
+C (`valley_fraction`) is not part of the kept set, unchanged from the original
+step 2 verdict.
+
+### Step 4 (corrected) — val, once, kept set only
+
+`ocr model/out/ocrcer.ocrw D:/Dev/ExcludedPrivate/ocrcer/pages/finfilings-val`,
+full corpus (103 of 103 pages, 258,129 reference chars, stride 1). F's val
+numbers are **reused** from the original step 4 above (22.082% / 26.902%,
+1134.4 s, 11014 ms/page) — not re-run — per the task's explicit instruction
+and consistent with never re-spending a held-out set beyond what's needed.
+
+| config | end-to-end CER | line-matched CER | WER | F1 | wall | ms/page |
+|---|---|---|---|---|---|---|
+| F (reused from step 4 above) | 22.082% | 26.902% | 39.597% | 74.139% | 1134.4 s | 11014 |
+| A+B (kept set) | 21.762% | 26.767% | 39.075% | 75.631% | 1298.5 s | 12607 |
+
+Delta, A+B vs F: **dCER = −0.320** (improves) — **dLM = −0.135** (improves).
+Both measures improve and both are well inside EPS = 0.02.
+
+**Fold condition: PASSES.** Unlike the original (misapplied) A+B+C val
+reading, which improved on end-to-end CER but cost +0.029 on line-matched CER
+(over EPS), the correctly-scoped A+B set improves on *both* measures at val.
+This is the first val result for chunk 12c that the fixed rule actually
+licenses — the earlier A+B+C number above decided nothing, and this one
+decides the fold passes.
+
+### What this section does and does not decide
+
+- Steps 3 and 4 (corrected) are complete. The kept set {A, B} —
+  `match.top_k=5`, `words.pitch_tolerance=0.15` — folds under the
+  pre-registered EPS=0.02 rule on both end-to-end and line-matched CER, at
+  both train and val scale.
+- **No edit was made to `params.rs` or `model/params.tsv` in this worktree.**
+  Applying the fold (steps 5 and 6 of §11: identifier gates, the three
+  synthetic repros, `cargo test`, then the one-shot finfilings/pages-cov
+  score) is out of scope for this measurement task and belongs to whoever
+  owns turning this pass/fail result into a parameter change —
+  `ocrcer-runtime` per the agent roster, gated on this report.
+- `segment.valley_fraction` (C) stays at its current value; nothing here
+  revisits that. The M→IV1 mechanism ARCHITECTURE.md §11 already flagged
+  stays open and unscheduled.
