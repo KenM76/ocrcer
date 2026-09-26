@@ -9426,3 +9426,43 @@ rule.
 
 **Cleanup item:** `ocrcer-build`'s spec reader accepts two key spellings.
 It should accept one, the trainer's.
+
+### 2026-09-26 — Chunk 15 step 2 fails: the network loses end to end; the default stays 0
+
+**Measured.** Source: `docs/measurements/2026-09-26_c15_measure.md` (branch
+`c15-measure`). The pages are the 160 unseen finfilings-train pages at
+stride 2, each run alone.
+
+| | end-to-end | line-matched | F1 | ms/page |
+|---|---|---|---|---|
+| classifier 0 | 19.954 | 21.660 | 78.374 | 11441 |
+| classifier 1, `nn.scale` √2 | 21.048 | 23.896 | 76.690 | 13348 |
+
+- `nn.scale` barely matters between 1 and 4: line-matched spans
+  23.90–24.12. Scale is not the lever.
+- The single wanted win carries through end to end: `0→O` (796 under
+  classifier 0) and `i→ï` (204) leave the net's top 80 confusions.
+- The net adds its own digit and uppercase confusions, none of them in the
+  matcher's top 80: 2→8, 0→3, 4→0, 8→6, C→S, M→C, T→t. On isolated crops
+  it is 95.75 vs 91.99. The gap between those two results is the finding.
+
+**The report mis-states the tolerance, and the verdict does not change.**
+EPS is 0.02 percentage points, as in 12b and 12c, where +0.029 failed. It
+is not 2 pp. Under the correct EPS, both measures fail step 2 (+1.09 and
++2.24). S* is √2 either way, because it is the literal minimum.
+
+**Decision.** The default stays 0 and the network stays opt-in. Val is not
+used, so it stays unspent for this decision. Steps 3–6 do not run.
+
+**Next is diagnosis only, not another fit.** A classifier that wins on
+isolated crops and loses in the pipeline has three candidate causes:
+1. **Train/serve skew.** The parity fixture checks the forward pass on
+   stored inputs. It does not check that the pipeline builds the same G and
+   normalised X as `nn15_dump` does for the same glyph.
+2. **Candidates the net never saw.** Lattice fragments or merges that the
+   junk class did not cover get confident digit or letter labels.
+3. **Decoder terms tuned to prototype distances.** `-log p` is a
+   differently shaped distribution; one scalar cannot remap it.
+
+The diagnosis measures (1) first. It is the cheapest, and it is the one
+that would make every other number meaningless.
