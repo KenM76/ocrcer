@@ -214,7 +214,28 @@ pub fn meta(bank: &Bank, classes: &[Class], sizes: &[f32]) -> String {
     }
     s.push_str("],");
 
-    s.push_str("\"charset\":[");
+    s.push_str("\"charset\":");
+    s.push_str(&charset_array_json(classes));
+
+    // The identifier last, over everything above it, so it changes when
+    // anything the file claims about itself changes.
+    let id = crc32(s.as_bytes());
+    s.push_str(&format!(",\"build_id\":\"{id:08x}\"}}"));
+    s
+}
+
+/// The `meta.charset` array's JSON text, exactly as [`meta`] writes it: `[` +
+/// one object per class in index order + `]`.
+///
+/// Pulled out of [`meta`] rather than reimplemented so this text and what a
+/// file's `charset` field actually holds can never drift (`CLAUDE.md` rule
+/// 4). This is also the byte string [`charset_sha256`] hashes: a trainer
+/// building the `nn` table's weights (`ARCHITECTURE.md` section 11, the
+/// 2026-09-25 chunk 15 interfaces entry) hashes the same text independently,
+/// so the two sides can compare a hash rather than ship a charset twice.
+pub fn charset_array_json(classes: &[Class]) -> String {
+    let mut s = String::new();
+    s.push('[');
     for (i, c) in classes.iter().enumerate() {
         if i > 0 {
             s.push(',');
@@ -228,9 +249,35 @@ pub fn meta(bank: &Bank, classes: &[Class], sizes: &[f32]) -> String {
         ));
     }
     s.push(']');
+    s
+}
 
-    // The identifier last, over everything above it, so it changes when
-    // anything the file claims about itself changes.
+/// The digest an `nn`-table trainer's `spec.json` must carry as
+/// `charset_sha256` for this build's charset. `ocrcer-build write --nn`
+/// refuses the trainer output if the two disagree, rather than writing a
+/// model whose network and whose prototype bank silently disagree about what
+/// class index 137 means (`CLAUDE.md` rule 1's "a plausible-looking number is
+/// not a number", applied to a whole table rather than one field of it).
+pub fn charset_sha256(classes: &[Class]) -> String {
+    crate::sha256::hex(charset_array_json(classes).as_bytes())
+}
+
+/// As [`meta`], but with an `"nn":{...}` block spliced in before `build_id`,
+/// so the identifier changes when the network changes too. `nn_json` is the
+/// complete `{...}` object [`crate::nn::meta_json`] builds; this function
+/// does not interpret it.
+///
+/// # Panics
+/// Same as [`meta`].
+pub fn meta_with_nn(bank: &Bank, classes: &[Class], sizes: &[f32], nn_json: &str) -> String {
+    let base = meta(bank, classes, sizes);
+    // `meta` ends with `,"build_id":"xxxxxxxx"}`; splice the nn block in
+    // just before that suffix, then recompute the identifier over the whole
+    // thing so it still covers everything the file claims about itself.
+    let cut = base.rfind(",\"build_id\":").expect("meta always ends with build_id");
+    let mut s = base[..cut].to_string();
+    s.push_str(",\"nn\":");
+    s.push_str(nn_json);
     let id = crc32(s.as_bytes());
     s.push_str(&format!(",\"build_id\":\"{id:08x}\"}}"));
     s
