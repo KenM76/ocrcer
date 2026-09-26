@@ -9466,3 +9466,57 @@ isolated crops and loses in the pipeline has three candidate causes:
 
 The diagnosis measures (1) first. It is the cheapest, and it is the one
 that would make every other number meaningless.
+
+### 2026-09-26 — Chunk 15 diagnosis: skew is real but does not explain the loss; mode 2 is pre-registered
+
+**Measured** (`docs/measurements/2026-09-26_c15_skew.md`):
+- **Train/serve skew exists, which breaks rule 4.** It sits in one function
+  of `nn15_dump.rs`, on the real-positive path, and has two sources:
+  - the ink is a flat rectangular copy, where the runtime uses the
+    label-filtered `segment::crop`;
+  - the baseline is rebuilt from a rounded public value.
+- On 124 matched training rows the skew fired on 3 (ink only; the baseline
+  dims were identical). It changed the net's top-1 on none: 96.77% either way.
+- **Mis-segment share of winning edges is close:** 5.88% under the matcher,
+  6.47% under the net.
+- **The net's score does not see segmentation.**
+  - Mean confidence on clean edges vs merge/split edges: 0.983 vs 0.980 for
+    the net; 0.734 vs 0.681 for the matcher.
+  - Characters over 0.8: 99.3% under the net; 52.8% under the matcher.
+  - Mode-1 confidence was never calibrated (step 3 did not run), so the
+    absolute values mean little. The absence of separation is the point.
+
+**Reading** (inferred, not proven per error): the decoder chooses cuts
+partly on the classifier's distance. The matcher's distance falls when a
+crop looks like no glyph at all. The net's `-log p` stays near 0 for almost
+any crop, so under mode 1 the decoder loses its segmentation evidence. The
+`nn.scale` sweep being flat from 1 to 4 fits this reading. Isolated-crop
+accuracy does not measure this, which is why the two results disagreed.
+
+**Decisions.**
+1. **Rule-4 fix, without a retrain.** The dump's real-positive path calls
+   the same crop and `Glyph::input` construction as the runtime. The shipped
+   test weights stay as they are. Their `training_manifest_id` already
+   identifies the dump they came from. The next retrain uses the fixed path.
+2. **Mode 2 (fusion) is defined here, before any number.** For each lattice
+   edge:
+   - `d_seg` is the matcher's best (minimum) distance over all classes, as
+     mode 0 computes it.
+   - Candidate classes are the net's top `match.top_k` non-junk classes.
+   - Each candidate's distance is `d_seg + nn.scale · (-log p_c)`.
+   - The junk class is handled as in mode 1.
+
+   The matcher says whether the edge is a glyph; the net says which glyph.
+   The matcher term keeps weight 1 so that the decoder weights, which were
+   fitted to matcher distances, keep their meaning. `nn.scale` is the only
+   free parameter.
+3. **Measurement rule for mode 2.** It is the rule of 2026-09-26 (chunk 15
+   integrated), steps 1–2, unchanged:
+   - Fit `nn.scale` on the same 160 unseen train pages at stride 2. Grid
+     {0.25, 0.5, 1, 2, 4}, then ×√2 around the best. Lowest line-matched
+     CER wins; ties go to end-to-end CER.
+   - Step 2: mode 2 must be no worse than mode 0 on both measures, with
+     EPS 0.02 pp.
+   - If it passes, steps 3–6 (calibrate, val once, gates, score once) follow
+     under a separate review. If it fails, mode 2 is recorded as failed and
+     the default stays 0.
