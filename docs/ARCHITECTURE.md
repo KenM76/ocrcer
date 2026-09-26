@@ -9319,3 +9319,48 @@ The re-run is recorded here so the reason stays visible.
 **C (`valley_fraction`) stays at 0.65. The M→IV1 mechanism stays open.** It
 needs a structural fix, such as gating `interior_cuts()` on stroke context,
 and not a revert. The candidate is unscheduled.
+
+### 2026-09-25 — Chunk 12c closed without a fold: A+B passes val but fails every identifier gate
+
+**Measured.**
+- A+B passed train and val. On val it moves 22.082 / 26.902 to
+  21.762 / 26.767 (end-to-end / line-matched), and costs about 9% in wall
+  time (12,480 vs 11,418 ms/page, each run alone).
+- The step-5 gates on the folded build:
+  - `cargo test`: 211 pass, and no fixture moved.
+  - Synthetic repros: the monospace "i" and both word-fusion lines are
+    fixed. M8x1.25 is still wrong, as expected.
+  - Identifier gates, against the fitted baseline and its ceiling:
+
+| gate | fitted | A+B | limit |
+|---|---|---|---|
+| LEXICON-HARM | 0 | 1 | 0 (hard) |
+| REWRITTEN | 1271 | 1287 | ≤1271 |
+| REWRITTEN at confidence ≥0.9 | 67 | 70 | ≤67 |
+
+The new harm case is `R2.1` → `I` with the lexicon on and `t` with it off.
+Off is also wrong, but the on-output is a lexicon word, so it meets the
+definition.
+
+**Decision: no fold. F stays on master.** A gate that fails means the chunk
+is not done (CLAUDE.md rule 8).
+
+**Two things were refused, and why.**
+- **Redefining LEXICON-HARM to exclude this case.** Writing the definition
+  after seeing the one result it catches is how a gate gets blessed away.
+  The definition stands. If it is too broad, that is argued on its own
+  merits in a later entry, not to rescue this fold.
+- **Trying A alone or B alone against the identifier corpus.** That corpus
+  is scoring-only. Using it to pick a variant would make it a tuning set.
+
+**What happens next.** The three mechanisms stay open. Each moves to a
+structural fix, not a parameter revert:
+- **i → í/î** (candidate truncation): chunk 15's network ranks candidates
+  differently. It is measured there before anything else is tried.
+- **Word fusion:** a guard in the fixed-pitch branch of
+  `pitch_estimate()`, such as a minimum token count or a check for
+  proportional gaps. Unscheduled.
+- **M → IV1:** stroke-context gating in `interior_cuts()`. Unscheduled.
+
+The measurement doc is `docs/measurements/2026-09-25_chunk12c_train.md`.
+The folded diff was never committed.
