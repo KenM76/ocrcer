@@ -1,0 +1,42 @@
+model   D:/Dev/OCRcer/wt-12c/model/out/ocrcer.ocrw — 187 classes, 54 faces, 50095 prototypes, lexicon 2477 nodes, bigrams 188 rows, confusions 76
+built   engine binary t=1790377338, model file t=1790377499  ** STALE: this binary is older than the model file it just read. A parameter the file carries and this build does not know is dropped silently, so any figure below may be measuring a configuration nobody authored. Rebuild with --features vs-ocrs,pages and re-run. **
+pages   214 of 427 in D:/Dev/ExcludedPrivate/ocrcer/pages/finfilings-train (stride 2, offset 0)
+
+end-to-end   CER 21.441%  WER 35.336%  recall 80.166%  precision 75.471%  F1 77.747%
+line-matched CER 24.029%  (reading-order-independent)
+
+speed       2631.9s for 214 pages, 12299 ms/page, 0.3 Mpixel/s (recognition only; loading, scoring and rendering excluded)
+
+by px/em
+    0px   CER 21.441%  WER 35.336%  (526775 chars)
+
+by face
+  21.441%  filing (526775 chars)
+
+top confusions (aligned, end-to-end)
+   18286  "\n" -> " "
+    5240  "" -> " "
+    3283  "." -> ""
+    2363  " " -> ""
+    1350  "," -> " "
+    1255  "i" -> ""
+    1184  "0" -> "O"
+    1182  "t" -> ""
+    1075  "e" -> ""
+    1065  "o" -> ""
+    1041  "\n" -> ""
+     987  "n" -> ""
+
+worst pages
+  100.00%  filing__s6__r000595
+   99.85%  filing__s5__r000045
+   99.76%  filing__s5__r000056
+   81.24%  filing__s4__r000782
+   80.16%  filing__s4__r000858
+   78.93%  filing__s4__r000777
+   78.38%  filing__s4__r000833
+   78.20%  filing__s4__r000820
+   77.28%  filing__s6__r000868
+   77.00%  filing__s5__r000011
+   77.00%  filing__s4__r000886
+   75.66%  filing__s4__r000767
