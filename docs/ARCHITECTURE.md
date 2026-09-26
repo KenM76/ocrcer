@@ -9566,3 +9566,47 @@ runtime crop path.
   mechanism.
 
 Both outcomes are decided by this entry in advance.
+
+### 2026-09-26 — Chunk 15: the net generalises; the loss is downstream of classification; a stage trace comes next
+
+**Measured** (`docs/measurements/2026-09-26_c15_generalisation.md`): top-1
+accuracy on ground-truth-aligned crops built through the runtime crop path.
+
+| | net | matcher | n |
+|---|---|---|---|
+| train-fold pages (20) | 99.50% | 92.72% | 14,389 |
+| unseen pages (20) | 99.27% | 93.16% | 10,914 |
+
+Under the previous entry's pre-decided branch, generalisation is ruled
+out. On correctly cut glyphs the net makes about one error in ten of the
+matcher's.
+
+**This changes what "paused" means.** The same net, on the same kind of
+pages, loses 1–2 pp end to end. A 6-point per-glyph lead turning into a
+loss is too large for a scale or margin tweak to be the natural
+explanation. Something between "the crop's argmax" and "the emitted
+character" discards the net's answer. Candidates, none of them measured:
+- the decoder's bigram, lexicon or confusion terms outvoting the net;
+- a post-decode rewrite, such as a confusion or case rule tuned to matcher
+  errors;
+- a mode-1 plumbing fault in the class index, junk handling or candidate
+  ordering;
+- the path choosing different cuts, so that correct crops never reach the
+  output.
+
+Proposing a formula (for example, the reporting agent's top1-vs-top2
+margin) before the loss is located would be fitting blind.
+
+**Decision: one trace, diagnosis only.** Run mode 1 at √2 and mode 0 on
+unseen pages. For every output character, classify its fate:
+1. Its chosen edge matches a ground-truth crop and the output equals the
+   net's argmax on that crop.
+2. The edge matches, but the output differs, attributed to the stage where
+   it changed: candidate list, Viterbi choice (with the dominant term), or
+   a post-decode rule.
+3. The edge does not match any ground-truth crop (the segmentation
+   differs).
+
+The 2→8, 0→3, C→S and M→C events are counted by fate. The result names the
+mechanism. Any fix then gets its own entry and a measurement rule fixed in
+advance.
