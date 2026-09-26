@@ -109,6 +109,49 @@ pub fn dequantise(values: &[i8], scales: &[f32], rows: usize, cols: usize) -> Ve
     out
 }
 
+/// As [`quantise`], but with one scale **per row** rather than per column.
+///
+/// The prototype bank quantises per *feature dimension* (a column) because
+/// the 107 feature dimensions have independent natural ranges (section 7).
+/// The `nn` table's weight matrices (`ARCHITECTURE.md` section 11, the
+/// 2026-09-25 chunk 15 interfaces entry) quantise per *output channel* (a
+/// row) for the same reason turned ninety degrees: one output channel's
+/// learned weights can have a very different dynamic range than another's,
+/// and a single scale across the whole matrix would waste precision on
+/// whichever channel happens to have the largest range.
+pub fn quantise_per_row(values: &[f32], rows: usize, cols: usize) -> (Vec<i8>, Vec<f32>) {
+    assert_eq!(values.len(), rows * cols);
+    let mut scales = vec![1.0f32; rows];
+    for r in 0..rows {
+        let row = &values[r * cols..(r + 1) * cols];
+        let peak = row.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+        if peak > 0.0 {
+            scales[r] = peak / 127.0;
+        }
+    }
+    let mut out = vec![0i8; values.len()];
+    for r in 0..rows {
+        for c in 0..cols {
+            let q = (f64::from(values[r * cols + c]) / f64::from(scales[r])).round();
+            out[r * cols + c] = q.clamp(-127.0, 127.0) as i8;
+        }
+    }
+    (out, scales)
+}
+
+/// Dequantises what [`quantise_per_row`] produced.
+pub fn dequantise_per_row(values: &[i8], scales: &[f32], rows: usize, cols: usize) -> Vec<f32> {
+    assert_eq!(values.len(), rows * cols);
+    assert_eq!(scales.len(), rows);
+    let mut out = vec![0.0f32; values.len()];
+    for r in 0..rows {
+        for c in 0..cols {
+            out[r * cols + c] = f32::from(values[r * cols + c]) * scales[r];
+        }
+    }
+    out
+}
+
 /// CRC-32 over the table blob, re-exported from the reader.
 ///
 /// The writer stamps it and the reader checks it, so two implementations
@@ -236,6 +279,41 @@ mod tests {
     fn an_all_zero_column_gets_unit_scale() {
         let values = vec![0.0f32; 12];
         let (q, scales) = quantise(&values, 4, 3);
+        assert_eq!(scales, vec![1.0, 1.0, 1.0]);
+        assert!(q.iter().all(|&v| v == 0));
+    }
+
+    /// The per-row variant, checked against a matrix whose rows have
+    /// deliberately different magnitudes -- exactly the case a single
+    /// whole-matrix scale would waste precision on.
+    #[test]
+    fn per_row_quantising_stays_within_one_step_per_row() {
+        let mut values = Vec::new();
+        for r in 0..20usize {
+            let scale = 1.0 + r as f32; // rows have very different ranges
+            for c in 0..5usize {
+                values.push(scale * (c as f32 - 2.0) / 2.0);
+            }
+        }
+        let (q, scales) = quantise_per_row(&values, 20, 5);
+        let back = dequantise_per_row(&q, &scales, 20, 5);
+        for r in 0..20 {
+            for c in 0..5 {
+                let i = r * 5 + c;
+                assert!(
+                    (values[i] - back[i]).abs() <= scales[r] / 2.0 + 1e-6,
+                    "row {r} col {c}: {} vs {}",
+                    values[i],
+                    back[i]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn an_all_zero_row_gets_unit_scale() {
+        let values = vec![0.0f32; 12];
+        let (q, scales) = quantise_per_row(&values, 3, 4);
         assert_eq!(scales, vec![1.0, 1.0, 1.0]);
         assert!(q.iter().all(|&v| v == 0));
     }

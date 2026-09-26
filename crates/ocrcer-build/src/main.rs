@@ -79,8 +79,15 @@ fn main() -> ExitCode {
         ["bank", build, eval, gate, "--local"] => report(run_bank(build, eval, gate, true)),
         ["style", build, eval, fields] => report(run_style(build, eval, fields, false)),
         ["style", build, eval, fields, "--local"] => report(run_style(build, eval, fields, true)),
-        ["write", build, eval, out] => report(run_write(build, eval, out, false)),
-        ["write", build, eval, out, "--local"] => report(run_write(build, eval, out, true)),
+        ["write", build, eval, out, rest @ ..] => match parse_write_flags(rest) {
+            Some(flags) => report(run_write(build, eval, out, flags)),
+            None => {
+                eprintln!(
+                    "write flags: [--local] [--nn <trainer-dir>] [--nn-dequant-out <dir>]"
+                );
+                ExitCode::FAILURE
+            }
+        },
         ["inspect", path] => report(run_inspect(path)),
         ["aspect"] => report(run_aspect(false)),
         ["aspect", "--local"] => report(run_aspect(true)),
@@ -99,7 +106,9 @@ fn main() -> ExitCode {
             eprintln!(
                 "       ocrcer-build style <build-sizes> <eval-sizes> <field-lengths> [--local]"
             );
-            eprintln!("       ocrcer-build write <build-sizes> <eval-sizes> <out.ocrw> [--local]");
+            eprintln!(
+                "       ocrcer-build write <build-sizes> <eval-sizes> <out.ocrw> [--local] [--nn <trainer-dir>] [--nn-dequant-out <dir>]"
+            );
             eprintln!("       ocrcer-build inspect <model.ocrw>");
             eprintln!("       ocrcer-build pages <out-dir> <sizes> [--local]");
             eprintln!("       ocrcer-build metrics [--local]");
@@ -922,8 +931,53 @@ fn run_metrics(local: bool) -> Result<(), String> {
     Ok(())
 }
 
-fn run_write(build_sizes: &str, eval_sizes: &str, out: &str, local: bool) -> Result<(), String> {
+/// `write`'s optional flags, parsed by [`parse_write_flags`]. Kept as one
+/// struct rather than four positional bools/options so a caller cannot
+/// transpose `--nn`'s directory with `--nn-dequant-out`'s.
+struct WriteFlags<'a> {
+    local: bool,
+    nn_dir: Option<&'a str>,
+    nn_dequant_out: Option<&'a str>,
+}
+
+/// Parses `write`'s flags after the three required positional arguments.
+/// `None` means the flags did not parse -- an unknown flag, or `--nn` /
+/// `--nn-dequant-out` with no value after it -- and the caller prints usage.
+///
+/// `--nn-dequant-out` without `--nn` is accepted here (order-independence is
+/// the point of a flag parser) but refused later in [`run_write`], because
+/// there is nothing to dequantise without a trainer directory to quantise
+/// from first.
+fn parse_write_flags<'a>(args: &[&'a str]) -> Option<WriteFlags<'a>> {
+    let mut flags = WriteFlags { local: false, nn_dir: None, nn_dequant_out: None };
+    let mut i = 0;
+    while i < args.len() {
+        match args[i] {
+            "--local" => {
+                flags.local = true;
+                i += 1;
+            }
+            "--nn" => {
+                flags.nn_dir = Some(*args.get(i + 1)?);
+                i += 2;
+            }
+            "--nn-dequant-out" => {
+                flags.nn_dequant_out = Some(*args.get(i + 1)?);
+                i += 2;
+            }
+            _ => return None,
+        }
+    }
+    Some(flags)
+}
+
+fn run_write(build_sizes: &str, eval_sizes: &str, out: &str, flags: WriteFlags) -> Result<(), String> {
     use ocrcer_core::feature::{extract, GlyphInput};
+
+    if flags.nn_dequant_out.is_some() && flags.nn_dir.is_none() {
+        return Err("--nn-dequant-out requires --nn <trainer-dir>: there is nothing to dequantise without it".into());
+    }
+    let local = flags.local;
 
     let build_px = sizes(build_sizes)?;
     let eval_px = sizes(eval_sizes)?;
@@ -951,7 +1005,6 @@ fn run_write(build_sizes: &str, eval_sizes: &str, out: &str, local: bool) -> Res
     }
 
     let path = std::path::Path::new(out);
-    let meta = emit::meta(&b, &classes, &build_px);
     let mut all = emit::tables(&b);
     // A failure to compile the authored tables is reported and the file is
     // still written. The alternative -- refusing to emit a recogniser because
@@ -962,6 +1015,40 @@ fn run_write(build_sizes: &str, eval_sizes: &str, out: &str, local: bool) -> Res
         Ok(mut t) => all.append(&mut t),
         Err(e) => eprintln!("authored tables not written: {e}"),
     }
+
+    // The `nn` table is opt-in per invocation, not per model: without --nn
+    // this file is byte-identical to a build that predates chunk 15
+    // (`docs/ARCHITECTURE.md` section 11, the 2026-09-25 interfaces entry).
+    let meta = match flags.nn_dir {
+        None => emit::meta(&b, &classes, &build_px),
+        Some(nn_dir) => {
+            let want_hash = emit::charset_sha256(&classes);
+            let built = ocrcer_build::nn::build(
+                std::path::Path::new(nn_dir),
+                &want_hash,
+                ocrcer_core::feature::FEATURE_VERSION,
+            )?;
+            println!(
+                "nn      {} weighted layer(s) from {nn_dir}; manifest {}, seed {}",
+                built.weighted_layers,
+                built.spec().manifest_id,
+                built.spec().seed,
+            );
+            if let Some(s) = &built.quant_sample {
+                println!(
+                    "nn quantisation: layer {} max abs error {:.6} (bound {:.6})",
+                    s.layer_index, s.max_abs_error, s.bound
+                );
+            }
+            if let Some(dequant_dir) = flags.nn_dequant_out {
+                built.write_dequantised(std::path::Path::new(dequant_dir))?;
+                println!("nn dequantised tensors written to {dequant_dir}");
+            }
+            let meta = emit::meta_with_nn(&b, &classes, &build_px, &built.meta_json);
+            all.push(built.table);
+            meta
+        }
+    };
     // What the file says about its own thresholds and weights, printed at
     // write time rather than left to be discovered. CLAUDE.md rule 1 asks for
     // a guess to be labelled a guess; a build that never says how many
