@@ -9520,3 +9520,49 @@ accuracy does not measure this, which is why the two results disagreed.
    - If it passes, steps 3–6 (calibrate, val once, gates, score once) follow
      under a separate review. If it fails, mode 2 is recorded as failed and
      the default stays 0.
+
+### 2026-09-26 — Chunk 15 mode 2 fails; the code is not merged; one diagnostic decides whether the net continues
+
+**Measured** (`docs/measurements/2026-09-26_c15_mode2.md`; code on branch
+`c15-mode2`, not merged). Pages: the 160 unseen train pages at stride 2.
+Best `nn.scale` = 1, a clear line-matched minimum.
+
+| | end-to-end | line-matched | ms/page |
+|---|---|---|---|
+| classifier 0 | 19.954 | 21.660 | 11441 |
+| classifier 2 @ 1 | 20.840 | 23.646 | 19827 (+73%) |
+
+Step 2 fails by 44× EPS end to end and by 99× EPS line-matched.
+- The 0→O, o→O and i→ï wins remain.
+- The net's own class confusions remain almost unchanged (2→8, C→S, )→h).
+  `d_seg` is constant within an edge, so it cannot change which class wins
+  there. That makes the formula a segmentation signal only, and the
+  measured loss is a class-choice loss. §11's framing ("the matcher says
+  whether, the net says which") was right about the mechanism. It was wrong
+  about which of the two was failing.
+
+**Decision.**
+- The default stays 0.
+- The mode-2 implementation is **not merged**. A failed mode adds core
+  surface and a load-time behaviour change (the refusal of value 2 goes
+  away) for no measured benefit. The branch stays for reference.
+- Mode 2 is recorded as failed under this definition.
+
+**The open contradiction is now the whole question.** The net scored 95.75%
+per crop on its internal val fold and 96.77% through the runtime path on
+training-fold rows. Through the decoder it makes class errors the matcher
+never makes. Candidate reading, inferred: the net generalises across
+*documents* worse than its cluster-disjoint val suggests. Its real crops
+come from 107 pages; the matcher is built from rendered fonts. The next
+step is one diagnostic: per-crop top-1 accuracy of the net and of the
+matcher on **unseen-page** crops, aligned to ground truth, through the
+runtime crop path.
+- If the net's accuracy on unseen crops falls clearly below its val figure,
+  or below the matcher's: generalisation. The route is training data
+  (more fonts rendered through the same crop path, more real pages under a
+  new fixed split), not decoder formulas.
+- If it stays above the matcher's: the loss sits in the decoder interaction
+  (hypothesis 3). The net is paused until someone proposes a specific
+  mechanism.
+
+Both outcomes are decided by this entry in advance.
