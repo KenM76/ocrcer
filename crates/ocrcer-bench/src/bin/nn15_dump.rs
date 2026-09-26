@@ -22,13 +22,13 @@
 //! - `charset-hash <model.ocrw> <out-file>` -- writes the hex SHA-256
 //!   `spec.json`'s `charset_sha256` field needs (`ARCHITECTURE.md` section 11,
 //!   "Chunk 15 interfaces", item 1). Hashed over a canonical reconstruction of
-//!   `meta.charset` -- `[{"index":I,"cp":C}, ...]` compact JSON, ascending by
-//!   index, built from `Model::load`'s already-parsed `classes` field so this
-//!   can never disagree with what the loader itself reads. **This exact
-//!   canonicalisation is this dumper's own choice**, not read from the
-//!   `c15-nn-table` writer (a parallel, unmerged branch this session cannot
-//!   see) -- it must be checked against that writer's own hash at merge time,
-//!   flagged in `tools/nn/README.md`.
+//!   `meta.charset` -- `[{"index":I,"cp":C,"category":CAT,"twin":T}, ...]`
+//!   compact JSON, ascending by index, built from `Model::load`'s
+//!   already-parsed `classes` field so this can never disagree with what the
+//!   loader itself reads. Verified 2026-09-25 against branch `c15-nn-table`'s
+//!   `ocrcer_build::emit::charset_array_json`/`charset_sha256` (read via
+//!   `git show`, since that branch is unmerged) -- field order, escaping and
+//!   the `twin: -1` sentinel all match; see `charset_sha256_of`'s doc comment.
 //!
 //! ## (a) Bank renders + damage
 //!
@@ -115,6 +115,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::time::Instant;
 
 const NONE_CLASS: u16 = 0xFFFF;
 const TOPK: usize = 5;
@@ -168,12 +169,19 @@ fn run_charset_hash(args: &[String]) -> ExitCode {
 
 /// `spec.json`'s `charset_sha256` (`ARCHITECTURE.md` section 11, "Chunk 15
 /// interfaces", item 1) -- SHA-256 over a canonical reconstruction of
-/// `meta.charset` as the loaded model actually stores it: `[{"index":I,
-/// "cp":C}, ...]` compact JSON, ascending by index, built from `Model::load`'s
-/// already-parsed `classes` field. See the module doc comment's caveat: this
-/// canonicalisation is this dumper's own choice, not read from the
-/// `c15-nn-table` writer, and must be cross-checked against that writer's own
-/// hash at merge time.
+/// `meta.charset` as the loaded model actually stores it, built from
+/// `Model::load`'s already-parsed `classes` field.
+///
+/// Verified 2026-09-25 against branch `c15-nn-table`'s
+/// `ocrcer_build::emit::charset_array_json` / `charset_sha256` (the actual
+/// writer, read via `git show c15-nn-table:crates/ocrcer-build/src/emit.rs`
+/// -- that branch is unmerged, so this can't just call it): the writer's
+/// canonical text is `[{"index":I,"cp":C,"category":CAT,"twin":T}, ...]`
+/// compact JSON, ascending by index, `CAT` JSON-string-escaped the same way
+/// as `ocrcer_build::ocrw::json_string`, `T` = `case_twin` as `i32` or `-1`
+/// when absent. The previous form here (`{"index":I,"cp":C}`, no category or
+/// twin) omitted two of the four fields and would have produced a
+/// non-matching hash on every model; fixed to match byte-for-byte.
 fn charset_sha256_of(model: &Model) -> String {
     let mut classes: Vec<&ocrcer_core::ocrw::Class> = model.classes.iter().collect();
     classes.sort_by_key(|c| c.index);
@@ -182,10 +190,39 @@ fn charset_sha256_of(model: &Model) -> String {
         if i > 0 {
             canonical.push(',');
         }
-        canonical.push_str(&format!("{{\"index\":{},\"cp\":{}}}", c.index, c.codepoint as u32));
+        let twin = c.case_twin.map_or(-1i32, i32::from);
+        canonical.push_str(&format!(
+            "{{\"index\":{},\"cp\":{},\"category\":{},\"twin\":{}}}",
+            c.index,
+            c.codepoint as u32,
+            json_string(&c.category),
+            twin
+        ));
     }
     canonical.push(']');
     sha256_hex(canonical.as_bytes())
+}
+
+/// Escapes a string into a JSON string literal, quotes included. Copied
+/// verbatim from `ocrcer_build::ocrw::json_string` (unmerged on
+/// `c15-nn-table`, not callable directly) so `charset_sha256_of`'s
+/// `category` field matches the writer's escaping exactly.
+fn json_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 /// SHA-256 (FIPS 180-4), written from scratch rather than adding a crate
@@ -432,12 +469,21 @@ fn run_dump(args: &[String]) -> ExitCode {
         Err(e) => return fail(&e),
     };
 
+    // Wall-clock per phase, stderr only -- never affects output bytes.
+    // Phase (a) is a fixed cost (the whole bank, independent of page count
+    // or stride); phase (b) is the one that scales with how many pages are
+    // in the split file, so the two need reporting separately to project a
+    // full-run cost from a small sample.
+    let t0 = Instant::now();
     eprintln!("nn15-dump: (a) bank renders + damage");
     let bank_summary = match dump_bank(&model, &classes, &out_dir) {
         Ok(s) => s,
         Err(e) => return fail(&e),
     };
+    let t_a = t0.elapsed();
+    eprintln!("nn15-dump: (a) done in {:.1}s", t_a.as_secs_f64());
 
+    let t1 = Instant::now();
     eprintln!("nn15-dump: (b) real crops + (c)(ii) non-path negatives");
     let (real_summary, nonpath_summary, class_ratios) = match dump_real_and_nonpath(
         &engine,
@@ -451,12 +497,21 @@ fn run_dump(args: &[String]) -> ExitCode {
         Ok(x) => x,
         Err(e) => return fail(&e),
     };
+    let t_b = t1.elapsed();
+    eprintln!(
+        "nn15-dump: (b) done in {:.1}s ({} pages read)",
+        t_b.as_secs_f64(),
+        real_summary.pages_read
+    );
 
+    let t2 = Instant::now();
     eprintln!("nn15-dump: (c)(i) rendered-line negatives");
     let render_summary = match dump_render_junk(&engine, &model, &out_dir) {
         Ok(s) => s,
         Err(e) => return fail(&e),
     };
+    eprintln!("nn15-dump: (c)(i) done in {:.1}s", t2.elapsed().as_secs_f64());
+    eprintln!("nn15-dump: total {:.1}s", t0.elapsed().as_secs_f64());
 
     let medians = class_medians(&class_ratios);
     let nonpath_share = real_shape_share(&nonpath_summary.rows, &medians);

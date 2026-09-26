@@ -115,6 +115,66 @@ def load_junk_group(data_dir: Path, prefix: str, junk_index: int) -> Group:
     return Group(g, x, y, prefix)
 
 
+def load_classes(data_dir: Path) -> dict[int, tuple[int, str]]:
+    """`classes.tsv`: `index\\tcodepoint_u32\\tcategory`, one row per charset
+    class (`nn15_dump.rs`'s `write_classes_tsv`)."""
+    out: dict[int, tuple[int, str]] = {}
+    lines = (data_dir / "classes.tsv").read_text(encoding="utf-8").splitlines()
+    for line in lines[1:]:
+        idx, cp, cat = line.split("\t")
+        out[int(idx)] = (int(cp), cat)
+    return out
+
+
+def group_of(codepoint: int, category: str) -> str | None:
+    """The probe's class-group buckets (`tools/nnprobe/train.py`'s
+    `group_of`), reused verbatim so deliverable 4's per-group report stays
+    comparable to the probe result it follows up on (`ARCHITECTURE.md`
+    section 11, "The neural probe's result")."""
+    ch = chr(codepoint)
+    if ch in ("0", "O", "o"):
+        return "0/O/o"
+    if ch in ("l", "1", "I"):
+        return "l/1/I"
+    if category == "digit":
+        return "digits"
+    if category == "lower":
+        return "lowercase"
+    if category == "upper":
+        return "uppercase"
+    if category == "punct":
+        return "punctuation"
+    return None
+
+
+def per_group_accuracy(
+    true_idx: np.ndarray, pred_idx: np.ndarray, classes: dict[int, tuple[int, str]]
+) -> dict:
+    groups: dict[str, list[int]] = {}
+    for t, p in zip(true_idx.tolist(), pred_idx.tolist()):
+        cp, cat = classes.get(int(t), (0, "?"))
+        grp = group_of(cp, cat) or "_other"
+        b = groups.setdefault(grp, [0, 0])
+        b[0] += 1
+        if int(t) == int(p):
+            b[1] += 1
+    return {grp: {"n": n, "correct": c, "acc": (c / n if n else float("nan"))} for grp, (n, c) in groups.items()}
+
+
+@torch.no_grad()
+def predict_argmax(model: Net, device: str, g: np.ndarray, x: np.ndarray, batch_size: int) -> np.ndarray:
+    if g.shape[0] == 0:
+        return np.zeros((0,), dtype=np.int64)
+    model.eval()
+    dev = torch.device(device)
+    out_all = []
+    for start in range(0, g.shape[0], batch_size):
+        gb = torch.from_numpy(g[start : start + batch_size].reshape(-1, 1, GRID_SIDE, GRID_SIDE)).to(dev)
+        xb = torch.from_numpy(x[start : start + batch_size]).to(dev)
+        out_all.append(model(gb, xb).argmax(dim=1).cpu().numpy())
+    return np.concatenate(out_all, axis=0)
+
+
 def load_matcher_top1(data_dir: Path, prefix: str) -> np.ndarray:
     """Matcher comparison column dumped alongside a val group, where present
     (`bank_val_top1.u16`, `real_{train,val}_top1.u16`). Absent for junk
@@ -498,11 +558,28 @@ def main() -> int:
         model, args.device, render_val.g, render_val.x, junk_index, args.batch_size
     )
 
+    # Deliverable 4: per-group internal-val top-1, network vs. the prototype
+    # matcher, on the same crops (`ARCHITECTURE.md` section 11, the probe's
+    # groups: digits, 0/O/o, l/1/I, lower, upper, punct).
+    classes = load_classes(args.data_dir)
+    net_pred_real = predict_argmax(model, args.device, real_val.g, real_val.x, args.batch_size)
+    net_pred_bank = predict_argmax(model, args.device, bank_val.g, bank_val.x, args.batch_size)
+    per_group_real_net = per_group_accuracy(real_val.y, net_pred_real, classes)
+    per_group_real_matcher = (
+        per_group_accuracy(real_val.y, matcher_top1_real_col, classes) if matcher_top1_real_col.size else {}
+    )
+    per_group_bank_net = per_group_accuracy(bank_val.y, net_pred_bank, classes)
+    per_group_bank_matcher = (
+        per_group_accuracy(bank_val.y, matcher_top1_bank_col, classes) if matcher_top1_bank_col.size else {}
+    )
+
     report = {
         "net_top1_bank_val": net_top1_bank,
         "matcher_top1_bank_val": matcher_acc_bank,
         "net_top1_real_val": net_top1_real,
         "matcher_top1_real_val": matcher_acc_real,
+        "per_group_real_val": {"net": per_group_real_net, "matcher": per_group_real_matcher},
+        "per_group_bank_val": {"net": per_group_bank_net, "matcher": per_group_bank_matcher},
         "junk_nonpath_val": junk_nonpath_report,
         "junk_render_val": junk_render_report,
         "train": train_meta,

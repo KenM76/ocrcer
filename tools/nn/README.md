@@ -21,8 +21,11 @@ directory is not part of the Rust workspace and never ships (same status as
    `bench/splits/nn15_page_split.tsv` is committed -- the fixed,
    cluster-disjoint internal train/val split of the sampled `finfilings-train`
    pages (`#stem\tfold\tcluster_id`, fold `B` = internal validation).
-   `<dump-out-dir>` is not (`D:/Dev/ExcludedPrivate/ocrcer/nn15/` in this
-   session).
+   `<dump-out-dir>` is not committed (`D:/Dev/ExcludedPrivate/ocrcer/nn15b/`
+   in this session -- `nn15/`, a prior dump, was left corrupt by a DEBUG
+   build and two concurrent writers into the same directory; treated as
+   unusable, never read, never deleted; see
+   `docs/measurements/2026-09-25_c15_trainer.md`).
 
 2. **Train**:
    ```
@@ -51,25 +54,26 @@ for both modes satisfies that without a second multi-GB install. Trade-off,
 not a gap: a genuine CPU-only wheel might differ at the bit level from the
 `+xpu` wheel's CPU codepath; this was not required and was not checked.
 
-## Two things this trainer cannot verify alone
+## Cross-branch contracts (verified 2026-09-26 against unmerged branches)
 
-- **`charset_sha256` canonicalisation.** `model_meta.json`'s `charset_sha256`
-  (and `spec.json`'s copy of it) is computed by
-  `crates/ocrcer-bench/src/bin/nn15_dump.rs`'s `charset_sha256_of`: SHA-256
-  over `[{"index":I,"cp":C}, ...]` compact JSON, ascending by index, built
-  from the loaded model's own parsed `classes`. This is this dumper's own
-  choice of canonical form, not read from the `c15-nn-table` writer (a
-  parallel, unmerged branch this work could not see). **Cross-check the two
-  hashes at merge time** -- if the `nn` table writer hashes a different
-  serialisation of `meta.charset`, the writer's refusal check ("writer refuses
-  a `charset_sha256`... that does not match") will reject every model this
-  trainer produces until one side adopts the other's convention.
-- **Tensor file indexing.** `spec.json`'s layer list numbers all 11 layers
-  (0..10, including `relu`/`maxpool2`/`flatten`/`concat_features`); only
-  layers 0, 3, 8, 10 (the two convs and two denses) have
-  `<layer_index>.<weight|bias>.f32` files. Also this trainer's own choice --
-  cross-check against what the `c15-nn-table` writer and `c15-forward`'s
-  parity fixture expect to find on disk.
+- **`charset_sha256` canonicalisation.** Checked against `c15-nn-table`'s
+  `emit::charset_array_json` via `git show c15-nn-table:crates/ocrcer-build/src/emit.rs`.
+  That writer serialises each class as `{"index":I,"cp":C,"category":CAT,"twin":T}`
+  (four fields, `twin` = `-1` for no case twin), not the two-field form
+  (`{"index":I,"cp":C}`) `nn15_dump.rs`'s `charset_sha256_of` originally used.
+  **Fixed**: `charset_sha256_of` now builds the same four-field canonical
+  form, JSON-escaping `category` with a `json_string` helper copied verbatim
+  from `ocrcer_build::ocrw::json_string`. Re-verify at actual merge time in
+  case either branch's writer moves again before then; this was checked by
+  reading source, not by running the two writers side by side (they are on
+  different unmerged branches and cannot both build in one tree).
+- **Tensor file indexing.** Checked against `c15-nn-table:crates/ocrcer-build/src/nn.rs`
+  and `c15-forward:crates/ocrcer-core/src/nn.rs`. Both use the same
+  convention this trainer already had: `layer_index` is the position in the
+  *full* ordered layer list (0..10, including non-parametric `relu`/
+  `maxpool2`/`flatten`/`concat_features`), and only 0, 3, 8, 10 (the two
+  convs and two denses) get `<layer_index>.<weight|bias>.f32` files. No
+  mismatch found; no change made.
 
 ## Negative-to-positive ratio
 
