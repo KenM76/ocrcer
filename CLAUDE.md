@@ -140,3 +140,11 @@ output.
 The budget model in `PLAN.md` section 1 is a planning model, not a measurement.
 Chunk 1 calibrates it against `/usage`, and `ocrcer-librarian` rescales the
 estimates when reality diverges.
+
+## Standing operator permissions (2026-09-26)
+
+- Old experiment folders (stale worktrees, `target-*` build dirs, probe
+  scratch) may be deleted without asking. Branches are kept.
+- Finished commits on `master` may be pushed to `origin` without asking,
+  after a check that nothing private is in the delta: no finfilings page text,
+  no font data, no SolidWorks tooling.
