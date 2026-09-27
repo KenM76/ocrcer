@@ -9897,3 +9897,40 @@ Steps and gates are identical to L1:
 2. Mode 0 on the 160 unseen pages against control, with the same EPS rule.
 3. Gates: identifier, cargo test, wasm32, wall ≤ +5%.
 4. Val once, under the same criterion.
+
+### 2026-09-27 — W1: accuracy passes; the wall gate as run cannot resolve 5%; the timing protocol is replaced
+
+Measured on branch `W1-split` (`docs/measurements/2026-09-27_W1.md`, not
+merged). `words.short_split_x_heights` = 0.70, authored.
+- The distribution is not bimodal, unlike L1's. The value sits at a four-fold
+  jump in the histogram, and it equals the existing `lone_gap_x_heights`
+  ceiling, above which a gap is always a space. That is weaker evidence than
+  L1's, and it is accepted as authored on that basis.
+- Step 2 passes: end-to-end CER −0.239 pp, line-matched −0.033 pp.
+- The identifier gate passes. The offender lists for control and W1 are
+  byte-identical, so no merged-token damage was found. Fixtures and wasm32
+  are unchanged.
+- **Wall time failed as run: +7.14%** (10,589 → 11,345 ms/page, one solo
+  run each).
+
+**The gate itself is the problem, and I noticed this only after W1 failed.**
+The new code is linear per line and trivially cheap. The existing data shows
+single-run timing cannot resolve 5%: mode 0 with identical code, parameters
+and pages measured 10,173 ms/page in the L1 re-time and 11,283 in the
+chunk 15 re-measure, which are 10.9% apart. L1's pass was inside that noise
+as well.
+
+**Decision: the timing protocol is replaced for every wall gate from now on.**
+The +5% threshold does not change.
+- **Protocol:** a fixed 32-page subset (the 160-page cohort at stride 5),
+  single thread, idle machine. Control and candidate alternate, ABABABABAB,
+  5 runs each.
+- **Gate:** the median of the 5 per-pair candidate/control ratios must be
+  ≤ 1.05. The range is reported alongside it.
+- Deterministic work counts (lattice edges and matcher calls per page) are
+  reported next to the timing, so a real cost increase is visible even when
+  timing is noisy.
+
+W1 is timed once under this protocol. If it passes, val runs once under the
+step-2 criterion. If it fails, W1 fails as it stands. The L1 decision stands
+and is not re-timed.
