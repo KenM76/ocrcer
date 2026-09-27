@@ -9741,3 +9741,53 @@ per-line x-height source, rules or boxes attached to glyphs, touching
 digits, and binarisation at small sizes. Measure Fate C with
 `descender_cap_check` 0 against 1 on those pages. The fix, if any, gets
 its own entry and its own measurement rule.
+
+### 2026-09-26 — Dense-table segmentation: line finding first; fix L1 (isolated marks) pre-registered
+
+**Measured** (`docs/measurements/2026-09-26_c15_tableseg.md`; the probe
+hooks stay on branch `c15-tableseg`). 631 table rows on 17 of the 18
+worst pages, heuristically classified and spot-checked on 6 rows. First
+failing stage:
+
+| stage | rows |
+|---|---|
+| line finding | 248: about 194 small marks such as thousands separators promoted to their own line, and about 54 wrapped two-line names glued out of reading order |
+| word splitting | 200: short identifier-shaped cells split in two |
+| per-line x-height lock (`diag-zero`) | 70 |
+| no anomaly | 113 |
+| binarisation, fused rules, touching-digit cuts | 0 |
+
+- `lines.descender_cap_check` = 1 is flat to slightly worse on these
+  pages: table-row Fate C 92.00 → 92.45 (mode 0), and whole-page mode-0
+  CER on the 18 pages 49.88 → 50.05. Record this against the pending xh-desc
+  gate. It is not a fix for this loss.
+
+**A caveat on the Fate C rates.** The fate probes compare against the
+truth by line index. Every row-order fault shifts every later comparison on
+the page, so 82–92% overstates how many characters are actually mis-cut.
+The per-mode *difference* is unaffected; the absolute level is not a
+segmentation rate. It is not used as one from here on.
+
+**Decision: fix L1 first.** L1 covers the dominant mechanism, it is general
+(every numeric table has thousands separators), and it helps both
+classifiers. **The rule for L1 is fixed now:** in `layout/lines.rs`, a
+component (or small cluster) too small to be a line on its own is attached
+to the line it overlaps vertically, or failing that the nearest line,
+instead of founding a new line. The implementer chooses the smallness
+criterion in x-height or cap-height units, labels it authored, and justifies
+it from the measured mark sizes.
+1. Unit test on a synthetic numeric-table line with separators.
+   Stage-fixture changes come to me for adjudication before any blessing.
+2. Mode 0 on the same 160 unseen pages at stride 2 against control. It must
+   improve on at least one of end-to-end and line-matched CER by more than
+   EPS (0.02 pp), and be no worse than EPS on the other.
+3. Gates: identifier (the three thresholds), cargo test, wasm32, and wall
+   time ≤ +5% (this change should cost nothing).
+4. Val once, same criterion. Scoring comes later, batched, under the usual
+   score-once rule.
+
+**Also pre-registered now, before any L1 number exists:** if L1 folds,
+chunk 15 step 2 (mode 1 @ √2 against mode 0) is re-measured once on the
+same pages with the same rule. The upstream engine will have changed, so
+this is a new condition, not a rescue. Word splitting (W1) and row-band
+ordering (L2) come after, each with its own entry.
