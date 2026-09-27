@@ -9846,3 +9846,54 @@ bands are the reach-capped cases. As pre-registered, chunk 15 step 2
 (mode 1 @ √2 against mode 0) is now re-measured once on the same 160 pages
 under the same rule, as a new condition. W1 and L2 follow, each with its
 own entry.
+
+### 2026-09-27 — Chunk 15 step 2 re-measured after L1: it fails again, and the gap is unchanged
+
+This is the pre-registered re-measure, run once
+(`docs/measurements/2026-09-27_c15_remeasure.md`). It uses the same 160
+unseen pages at stride 2, mode 1 @ √2 against mode 0.
+
+- End-to-end CER: 19.933 → 21.026 (+1.093 pp).
+- Line-matched CER: 21.617 → 23.825 (+2.208 pp).
+- **Both are well past EPS, so step 2 fails.** The default stays
+  `match.classifier` = 0.
+- L1 moved both modes by the same amount. The gap between them moved by
+  −0.001 / −0.028 pp, which is nothing.
+- The loss is still concentrated: 6 pages carry 50% of it and 18 carry 80%,
+  while 91 pages improve under the net. The substitution cluster is unchanged
+  too: digits and case inside dense table rows.
+- One secondary reading: the net's wall-time overhead fell from +16.7% to
+  +5.2%. The cause is not established.
+
+**Decision.** Chunk 15 is parked, not closed. The net stays unmerged as a
+default. The segmentation plan continues because it helps both modes: W1
+next, then L2. A mode 1 re-measure is **not** pre-registered after each
+segmentation fix. One more re-measure is allowed once, after W1 and L2 have
+both been decided, as a new condition. If that also fails, the next net step
+is branch A: training data covering dense small-font digit rows, under a new
+entry. Rescaling or re-weighting the decoder has no evidence behind it and is
+not a lever.
+
+### 2026-09-27 — Fix W1 (over-split short cells) pre-registered
+
+Evidence: `docs/measurements/2026-09-26_c15_tableseg.md` found 200 of 631
+classified dense-table rows whose first failure is word splitting. In those
+rows, short identifier or abbreviation runs are split by a `Valley`-sourced
+cut into sub-words of 3 characters or fewer.
+
+**The rule, fixed now.** In `layout/words.rs`, a split whose only evidence
+is a valley, inside a compact run of components, is suppressed unless its
+gap exceeds an authored threshold in x-height units. A split backed by a
+real space-sized gap is unchanged.
+- The implementer measures the gap distribution of valley splits on
+  finfilings-train-unseen and chooses the threshold from that distribution.
+  It is labelled authored and justified the same way as L1's.
+- **The identifier gate matters most here.** Merging two real tokens is the
+  mirror-image error, and the identifier corpus is where it would show.
+
+Steps and gates are identical to L1:
+1. Unit test. Fixture changes come to me for adjudication before any
+   blessing.
+2. Mode 0 on the 160 unseen pages against control, with the same EPS rule.
+3. Gates: identifier, cargo test, wasm32, wall ≤ +5%.
+4. Val once, under the same criterion.
