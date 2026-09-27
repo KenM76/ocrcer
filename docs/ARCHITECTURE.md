@@ -9823,3 +9823,26 @@ parameter, no host-selection order, no retune.
 
 The thin end-to-end margin is noted. It is a pass under the rule as written,
 and it is not reinterpreted after the fact.
+
+### 2026-09-27 — L1 folds: isolated marks join their line
+
+The speed fix (`docs/measurements/2026-09-26_L1.md` addendum) is accepted.
+It computes medians once per round and skips candidates bounded out by the
+round's maximum median. It is a valid prune: the output on the 160 pages is
+byte-identical before and after it, checked by sha256.
+
+- **Re-time, run once:** 10,499 → 10,173 ms/page, −3.11%, so the ≤ +5% gate
+  passes. The likely reason L1 is now faster than control is that it leaves
+  fewer spurious lines for later stages. That was not profiled, so it is a
+  reading, not a finding.
+- **Val, run once (103 pages):** end-to-end CER 22.082 → 22.050 (−0.032 pp),
+  line-matched 26.902 → 26.860 (−0.042 pp). Both clear EPS, so it passes.
+- Identifier, cargo test and wasm32 pass. No fixtures changed.
+
+**L1 is merged, and `lines.isolated_mark_height_fraction` = 0.95 ships as
+the default (authored).** The gain is small. L1 fixes a real, general
+mechanism, but it is not the whole dense-table loss: the residual singleton
+bands are the reach-capped cases. As pre-registered, chunk 15 step 2
+(mode 1 @ √2 against mode 0) is now re-measured once on the same 160 pages
+under the same rule, as a new condition. W1 and L2 follow, each with its
+own entry.
