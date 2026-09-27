@@ -10129,3 +10129,66 @@ non-character negatives drawn from the lattice's own partial and merged
 edges, so that it rejects them as the matcher does. That is the one lever
 this chunk's evidence supports. Reopening it needs its own PLAN entry and
 pre-registration.
+
+### 2026-09-27 — Operator directive: the neural reader continues as a router, not a replacement (chunk 15b pre-registered); office-format export recorded as a direction
+
+**Operator, verbatim:** "Keep working on the neural reader. After all if it
+is better at some things then we should be able to find a way to alternate
+between the two where appropriate." This supersedes the chunk-15 closure
+above for the net's future. The closure stands as the record of what
+failed.
+
+**Why routing, and why not fusion again.** Every failed mode (1, 2 and
+branch A) let the net score every lattice edge, including partial and
+merged segments that are not characters. Branch A's `:` → `±` loss, 92% of
+its delta, is exactly that. Per glyph on real segments, the net is the
+better reader (97.89 vs 93.31). The net should therefore never choose
+segmentation. It should only relabel glyphs the matcher has already
+committed to.
+
+**Chunk 15b rule, fixed now.**
+1. **Segmentation is unchanged.** Mode 0 runs Viterbi and fixes the path:
+   which edges are glyphs.
+2. **Relabel pass.** For each glyph on that path, the net's label replaces
+   the matcher's only when both hold:
+   - the matcher's calibrated margin is below an authored or fitted
+     threshold `route.matcher_margin`, meaning the matcher is unsure;
+   - the net's probability for its top class is above `route.net_prob`.
+
+   Words containing a relabelled glyph are re-scored by the decoder's
+   existing word terms. The path does not change. Rule 6 still applies:
+   the lexicon is never a constraint.
+3. **Selection is fitted on the train fold only.** That covers which weights
+   (`nn15b` or `nn15c`, chosen by train-fold relabel accuracy) and both
+   thresholds, by a deterministic grid on train-fold pages. The script, grid
+   and split are recorded. It is labelled fitted.
+4. **Step 2, once:** the router against mode 0 on the 160 unseen pages.
+   The same rule applies: at least one of end-to-end and line-matched CER
+   improves by more than EPS, and the other is no worse than +EPS. Then
+   val once, the identifier gate (in router mode), cargo test, wasm32 and
+   v2 timing with its A/A test.
+5. **Confidence (rule 5).** A relabelled glyph's confidence comes from the
+   net's probability, through a calibration fitted on the train fold. It
+   is labelled as such until chunk 8's calibration check covers it.
+6. **The mode.** This becomes `match.classifier` = 3 (router). Default-off
+   until every gate passes.
+
+If 15b fails, the recorded next lever is still non-character negatives
+(previous entry), under its own entry.
+
+**Direction recorded: word-processor and spreadsheet export (operator
+question, 2026-09-27).** Today the engine outputs text lines, words, boxes
+and confidences. It has no table grid output yet: chunk 9a slice i is on a
+branch, and 9c (tables) is unbuilt. pdfcer has no DOCX/XLSX writer either
+(checked by grep of its docs). Position:
+- **Spreadsheet export needs cells.** It becomes possible once 9c produces
+  a grid (rows, columns, spans). The writer is then a straightforward
+  output stage.
+- **Formatted word-processor export needs 9e** (paragraphs, headings,
+  reading order), plus the style signals already recorded under
+  "preserving formatting" (2026-09-23).
+- **Placement:** the writers do not go in `ocrcer-core`. Core stays zero-dep
+  and emits a structured `Page`. A separate crate, or pdfcer itself, writes
+  XLSX/ODS and DOCX/ODT from it. Which one is decided when 9c lands.
+- It is not scheduled ahead of 9b and 9c. It is the consumer those
+  sub-chunks feed.
