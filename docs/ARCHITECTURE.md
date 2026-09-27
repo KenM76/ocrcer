@@ -9972,3 +9972,47 @@ pass is linear per line.
    stated reason (the measuring instrument was shown unfit), not a
    re-roll, and this failed entry stays. If it passes, val runs once. If
    it fails, W1 is closed.
+
+### 2026-09-27 — W1 folds under timing protocol v2; v2 is the standing wall gate; fix L2 pre-registered
+
+Measured (second addendum, `docs/measurements/2026-09-27_W1.md`):
+- **A/A test** (control against control): ratio 0.9957, inside 1 ± 0.02,
+  so protocol v2 is fit.
+- **W1 against control:** ratio 1.0121, so the ≤ 1.05 gate passes.
+- **Val, run once (103 pages):** end-to-end CER 22.050 → 21.597
+  (−0.453 pp), line-matched 26.860 → 26.441 (−0.419 pp). Both pass.
+
+The record now holds three W1 timings under three protocols: +7.14%,
++6.3% and +1.2%. They stay as measured. Only the last came from an
+instrument that had been shown fit.
+
+**W1 is merged, and `words.short_split_x_heights` = 0.70 ships (authored).**
+
+**Protocol v2 is now the wall gate for every change** (`timing_ab`: in
+process, per-page minimum of 5, interleaved). The A/A test is re-run in the
+same session before each candidate, because this machine's background load
+varies. A failed A/A test means the timing is not taken that session.
+
+**Fix L2 (row-band misordering) is pre-registered.** Evidence from
+`docs/measurements/2026-09-26_c15_tableseg.md`: about 54 dense-table rows
+where a band fragment whose own baseline differs from its siblings' by more
+than the within-row tolerance is glued into the row. An example is a
+wrapped second line of a name, 8–9 px lower on a 12–15 px pitch. That
+leaves the fragment out of reading order.
+
+**The rule:** in `layout/lines.rs`, a fragment whose baseline differs from
+the row's by more than an authored tolerance is not joined to the row. It
+becomes its own line at its reading-order position, before word splitting
+runs.
+- The tolerance is in x-height units. It is measured from
+  finfilings-train-unseen baseline differences and justified as for L1 and
+  W1.
+- Existing two-baseline split behaviour (entry of 2026-09-23) must not
+  regress, and the implementer states how the two interact.
+
+Steps are identical to W1: unit test; fixtures come to me; step 2 on the 160
+pages with the EPS rule; identifier, cargo test, wasm32 and v2 timing with
+its A/A test; val once.
+
+After L2 is decided, pass or fail, chunk 15 mode 1 gets its one further
+re-measure, as registered on 2026-09-27.
