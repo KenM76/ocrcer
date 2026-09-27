@@ -9791,3 +9791,35 @@ chunk 15 step 2 (mode 1 @ √2 against mode 0) is re-measured once on the
 same pages with the same rule. The upstream engine will have changed, so
 this is a new condition, not a rescue. Word splitting (W1) and row-band
 ordering (L2) come after, each with its own entry.
+
+### 2026-09-27 — L1: accuracy passes thinly, wall time fails; one output-identical speed fix is allowed, then one re-time
+
+Measured (`docs/measurements/2026-09-26_L1.md`, branch `L1-marks`, not
+merged). Smallness criterion: `isolated_mark_height_fraction` = 0.95,
+authored, set in an empty gap of a bimodal measurement (7,523 singleton
+bands; stray marks ≤ 0.9412, real lines ≥ 1.0).
+
+- Step 2 passes. End-to-end CER −0.021 pp, which clears EPS by only 0.001.
+  Line-matched CER −0.043 pp. Comma confusion rows −6.2%.
+- Fixtures unchanged. Identifier, cargo test and wasm32 gates pass.
+- **The wall-time gate fails: +5.99% (1633.6 → 1731.4 s over 160 pages)
+  against ≤ +5%.** L1 is not done.
+
+The likely cause is visible in the diff. `merge_isolated_marks` rescans
+every band pair after each merge, which is O(n²) per round and up to
+O(n³) per page. **Decision:** one speed fix is allowed, on the condition
+that it produces byte-identical output. Examples: skip bands that cannot
+qualify against any host in this round, or avoid the full rescan without
+changing which (small, host) pair is chosen. Nothing else may change: no
+parameter, no host-selection order, no retune.
+
+- The implementer proves identity by showing that OCR output text on the
+  160 pages is identical to the current `L1-marks` build.
+- The implementer then re-times against control once. Repeating the timing
+  until it passes is not allowed.
+- If the re-time is ≤ +5%, L1 proceeds to val once under the step-2
+  criterion. If it is > +5%, L1 fails as it stands and this log records
+  that.
+
+The thin end-to-end margin is noted. It is a pass under the rule as written,
+and it is not reinterpreted after the fact.
