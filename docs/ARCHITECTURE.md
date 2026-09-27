@@ -10016,3 +10016,30 @@ its A/A test; val once.
 
 After L2 is decided, pass or fail, chunk 15 mode 1 gets its one further
 re-measure, as registered on 2026-09-27.
+
+### 2026-09-27 — L2 fails; row-band misordering is closed for now; the chunk 15 final re-measure is triggered
+
+Measured (`docs/measurements/2026-09-27_L2.md`; the code stays on branch
+`L2-order` and is not merged). Tolerance `0.45` x-heights, authored, taken
+from a shallow valley. On the 160 pages:
+- end-to-end CER −0.002 pp;
+- **line-matched CER +2.414 pp.**
+
+**Step 2 fails**, by far more than EPS on the "no worse" side. Val was not
+run. The identifier, cargo test, wasm32 and v2 timing gates all passed
+(A/A 0.9924, candidate 0.9955). They do not rescue a failed accuracy gate.
+
+The implementer's hypothesis is not confirmed. It is that the rule seats
+fragments as their own lines, which no longer pair one-for-one with the
+truth's lines. The +2.4 pp regression is large for a target of about 54
+rows, so the rule probably fires far outside the dense-table case it was
+meant for.
+
+**Decision: L2 is closed as it stands.** It is not retuned: a new tolerance
+chosen after seeing this result would be a re-roll. The target was the
+smallest of the three causes. Row-band ordering may be reopened only under
+a new entry backed by a trigger-rate measurement, meaning how often the rule
+fires outside dense tables, taken before any rule is written.
+
+As registered, chunk 15 mode 1 now gets its one further re-measure on
+current master (L1 and W1 in), on the same pages under the same rule.
