@@ -10091,3 +10091,41 @@ the weaker reader. The remaining lever with evidence behind it is branch A.
 5. **If step 2 fails, chunk 15 closes.** The net and its code stay on
    branches. `match.classifier` 0 remains the only shipped mode, and master
    continues to refuse 2.
+
+### 2026-09-27 — Branch A fails; chunk 15 closes; the network's missing lever is recorded for a future chunk
+
+Measured (`docs/measurements/2026-09-27_c15_branchA.md`; code on branch
+`c15-branchA`; weights in `nn15c`, not merged). On the 160 unseen pages,
+retrained net against mode 0:
+- end-to-end CER 19.694 → 20.396 (**+0.702 pp**);
+- line-matched **+1.267 pp**;
+- 59 pages improve and 100 worsen.
+
+**Step 2 fails.** Val, the identifier gate and timing were not run.
+
+**As pre-registered, chunk 15 closes.** `match.classifier` = 0 remains the
+only shipped mode. The net, the mode 1 and 2 code and the weights stay on
+branches. Master still refuses mode 2.
+
+What this attempt measured, recorded for whoever reopens it:
+- **Per glyph, the net is clearly the better reader:** 97.89% against the
+  matcher's 93.31% on the same unseen segments.
+- **About 92% of this run's end-to-end loss comes from one confusion.**
+  `:` is read as `±` 2,460 times, and it happens on partial or merged
+  lattice segments that no per-glyph probe scores. The net has not learned
+  to reject a segment that is not a character. The matcher's distance does
+  this implicitly.
+- **This attempt is confounded.** The data mix changed two ways. The
+  dense-row oversampling was tiny: 132 rows, under 0.5%, because only 22
+  crops aligned. Also, 13,833 edge-misaligned rows were excluded, leaving
+  27,421 real rows against the previous 33,138. The `±` failure may come
+  from that exclusion rather than from the oversampling. Training ran on
+  an XPU and is not bit-reproducible.
+- The dense-table oversampling barely engaged, so branch A did not test its
+  own hypothesis well. That is recorded, and it does not reopen the chunk.
+
+**For a future chunk, not scheduled:** a network trained with explicit
+non-character negatives drawn from the lattice's own partial and merged
+edges, so that it rejects them as the matcher does. That is the one lever
+this chunk's evidence supports. Reopening it needs its own PLAN entry and
+pre-registration.
