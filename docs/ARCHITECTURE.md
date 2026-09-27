@@ -10043,3 +10043,51 @@ fires outside dense tables, taken before any rule is written.
 
 As registered, chunk 15 mode 1 now gets its one further re-measure on
 current master (L1 and W1 in), on the same pages under the same rule.
+
+### 2026-09-27 — Chunk 15 final re-measure fails; branch A (dense-table training data) pre-registered as the net's last attempt
+
+Measured (`docs/measurements/2026-09-27_c15_final.md`), run once on master
+with L1 and W1 in, on the same 160 pages, mode 1 @ √2 against mode 0:
+- end-to-end CER **+1.127 pp**;
+- line-matched **+2.125 pp**;
+- WER −0.105 pp.
+
+**Step 2 fails for the third time.** The gap has stayed between +1.09 and
++1.13 / +2.13 and +2.24 pp across pre-L1, post-L1 and post-L1+W1. The
+worsened set is the same 57 pages each time. 6 pages carry 50% of the loss
+and 18 carry 80%. The cluster is digits, case and punctuation inside
+dense small-font table rows. The net's 0/O wins persist.
+
+On timing, the `timing_ab` A/A test failed in this session, so its
+overhead figures are uninformative and are not used.
+
+**Conclusion.** The segmentation fixes were worth doing for the matcher
+(W1 val −0.45 pp). They were not the cause of the net's loss. On the
+matcher's own dense-table glyphs, which are the same segments, the net is
+the weaker reader. The remaining lever with evidence behind it is branch A.
+
+**Branch A is pre-registered as the net's last attempt in chunk 15.**
+1. **Data.** Oversample dense small-font table-row glyphs. Every source
+   page must be in the train fold of `bench/splits/nn15_page_split.tsv`.
+   Nothing may come from finfilings-train-unseen, val, scoring, pages-cov,
+   fixtures or `bench/ident`.
+   - Row selection is authored and fixed before any training run: numeric
+     share of the row, and the line's x-height in pixels at or below the
+     measured dense-table median, both recorded.
+   - Positives are cut by the runtime's own segmentation (`nn15_dump`,
+     rule 4).
+   - Optional synthetic rows may be added, rendered from bank font faces
+     already cleared for licence. They are labelled as such.
+2. **Training.** Same architecture, same recipe and a fixed seed. Only the
+   data mix changes, and the oversampling factor is authored and recorded.
+   `nn.scale` is re-fitted by the existing script on the train fold only.
+   Each run uses the GPU, capped at 10 GB VRAM.
+3. **Pre-gate, informational.** Per-glyph accuracy on the train fold and on
+   the unseen pages. Accuracy on dense-table glyphs is reported against the
+   matcher's accuracy on the same segments.
+4. **Step 2, once.** Mode 1 against mode 0 on the 160 unseen pages, with
+   the same rule. If it passes, run val once, then the identifier gate and
+   v2 timing (with its A/A test).
+5. **If step 2 fails, chunk 15 closes.** The net and its code stay on
+   branches. `match.classifier` 0 remains the only shipped mode, and master
+   continues to refuse 2.
