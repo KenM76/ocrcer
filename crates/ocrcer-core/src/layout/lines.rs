@@ -1366,21 +1366,41 @@ fn fold_marks(bands: &mut Vec<Band>, p: &Params) {
 /// and the measurement behind its value. Runs to a fixed point, same
 /// termination argument as `fold_marks`: every round that changes anything
 /// removes a band.
+///
+/// A round's medians are read fresh from `bands` and cannot change until
+/// this round's chosen merge is applied, so they are computed once per round
+/// rather than once per (m, h) pair -- `medians[h]` is exactly `bands[h].median()`
+/// at every point it is read below. `max_med`, the largest of them, bounds
+/// every host's median a candidate `m` could possibly clear this round
+/// (`fraction * host.median() <= fraction * max_med` for every host, `m`'s
+/// own band included, which only makes the bound looser, never wrong), so a
+/// candidate whose own tallest member already fails against `max_med` fails
+/// against every real host too and the O(bands) host scan for it is skipped
+/// outright. Neither changes which `(small, host)` pair the round picks --
+/// only how much work the round does to find it.
 fn merge_isolated_marks(bands: &mut Vec<Band>, p: &Params) {
+    let mut medians: Vec<u32> = Vec::with_capacity(bands.len());
     loop {
+        medians.clear();
+        medians.extend(bands.iter().map(Band::median));
+        let Some(&max_med) = medians.iter().max() else { return };
+        let fraction = f64::from(p.isolated_mark_height_fraction);
+        let reach = f64::from(p.mark_reach_fraction);
+
         let mut chosen: Option<(usize, usize)> = None; // small band, host
         'outer: for m in 0..bands.len() {
             let small = &bands[m];
+            if f64::from(small.max_height()) > fraction * f64::from(max_med) {
+                continue;
+            }
             let mut overlap_host: Option<usize> = None;
             let mut nearest_host: Option<(usize, u32)> = None;
             for (h, host) in bands.iter().enumerate() {
                 if h == m {
                     continue;
                 }
-                let median = host.median();
-                if f64::from(small.max_height())
-                    > f64::from(p.isolated_mark_height_fraction) * f64::from(median)
-                {
+                let median = medians[h];
+                if f64::from(small.max_height()) > fraction * f64::from(median) {
                     continue;
                 }
                 if overlap_host.is_none() && small.overlaps_y(host) {
@@ -1393,7 +1413,7 @@ fn merge_isolated_marks(bands: &mut Vec<Band>, p: &Params) {
                 // tallest band on it. Reusing mark_reach_fraction rather
                 // than adding a second guess about the same thing -- "how
                 // far may an undersized band sit from the host it joins".
-                if gap <= (f64::from(p.mark_reach_fraction) * f64::from(median)) as u32 {
+                if gap <= (reach * f64::from(median)) as u32 {
                     match nearest_host {
                         None => nearest_host = Some((h, gap)),
                         Some((_, bg)) if gap < bg => nearest_host = Some((h, gap)),
