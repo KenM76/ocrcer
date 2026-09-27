@@ -9706,3 +9706,38 @@ rows on those 18 pages, per mode.
   the loss sits in Fate C (merged or split digits):** the route is
   training junk on touching-digit merges, or segmentation work on dense
   tables. Which one is chosen from the measured split.
+
+### 2026-09-26 — Chunk 15 size check: branch B is selected; the dense-table loss is a segmentation failure shared by both classifiers
+
+**Measured** (`docs/measurements/2026-09-26_c15_size.md`; probe on branch
+`c15-size`, which carries `c15-trace`'s hooks, so only the document is
+merged):
+- **On the 18 pages that carry 80% of the delta**, 82–92% of ground-truth
+  characters sit on cuts that do not align. In table rows (x-height ≤ 9 px)
+  that is 92.00% under the matcher and 91.92% under the net, against about
+  16% corpus-wide. The two modes differ by less than 0.1 pp.
+- **On the few aligned crops of those pages**, both classifiers are poor
+  (53–91%). The net trails by 0.9–5.6 pp in every x-height bucket, and the
+  gap is not digit-specific.
+- **On all 160 pages**, the net wins or ties in 9 of 12 x-height buckets.
+
+**Reading.** On these pages segmentation is broken for both classifiers
+alike. What remains is how each one labels mis-cut pieces, and the net's
+labels for them cost more substitutions. Branch A's trigger technically
+fires (the net trails on small crops there), but the gap is small and
+confined to pages where almost nothing is cut right. **Branch B is
+selected**: segmentation on dense small-font tables, which also helps
+mode 0. No retrain is scheduled on this evidence.
+
+**A lead already on disk.** Branch `diag-zero` traced leading-zero misreads
+to a per-line x-height that locks to the digit band on digit-heavy lines.
+Branch `xh-desc` (`lines.descender_cap_check`) corrected it on the
+synthetic repros. Numeric table rows are exactly the digit-heavy case, and
+segmentation thresholds are expressed in x-heights.
+
+**Decision: a segmentation diagnosis on the 18 pages, stage by stage.**
+Classify the causes of misalignment: line finding (rows merged or split),
+per-line x-height source, rules or boxes attached to glyphs, touching
+digits, and binarisation at small sizes. Measure Fate C with
+`descender_cap_check` 0 against 1 on those pages. The fix, if any, gets
+its own entry and its own measurement rule.
