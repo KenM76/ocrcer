@@ -9934,3 +9934,41 @@ The +5% threshold does not change.
 W1 is timed once under this protocol. If it passes, val runs once under the
 step-2 criterion. If it fails, W1 fails as it stands. The L1 decision stands
 and is not re-timed.
+
+### 2026-09-27 — W1 fails the paired timing gate as registered; that protocol was unfit; the timing gate must pass an A/A test before it is used again
+
+Measured (addendum to `docs/measurements/2026-09-27_W1.md`, branch
+`W1-split`). Under the paired protocol from the previous entry, the median
+W1/control ratio is **1.063, so the gate fails.** The five pair ratios range
+from 0.820 to 1.269. **As pre-registered, W1 fails as it stands, and this
+entry does not reverse that.** Val was not run.
+
+That protocol was my design, and it was unfit. A ±25% spread per pair
+cannot resolve a 5% threshold. Smaller runs were noisier, not cleaner. This
+is a desktop machine with background load (Dropbox, indexers and
+interactive apps observed). The deterministic work counts disagree with the
+timing:
+- lattice edges: 92,992 in both runs;
+- matcher calls: 92,992 in both runs;
+- words: −1.18%.
+
+W1 changes word grouping only. It adds no recognition work, and its own
+pass is linear per line.
+
+**Decision.**
+1. **Timing protocol v2.** One process loads the model once. It loops
+   the 32-page subset, and for each page runs control and candidate
+   alternately, 5 times each. The page time is the minimum of its 5
+   repeats; per page, minimum-of-5 rejects bursts. The ratio is the sum of
+   the candidate minima over the sum of the control minima. Process CPU
+   time is reported beside it.
+2. **Protocol v2 must pass an A/A test before any candidate is timed**
+   (control against itself): the ratio must be within 1 ± 0.02. If it
+   fails, the wall gate for layout-stage fixes becomes the deterministic
+   work counts plus a no-new-superlinear-pass code review, and this log
+   records that.
+3. **W1 is resubmitted once, as a new attempt**, under v2 after the A/A
+   test passes. The gate is unchanged: ≤ +5%. It is a resubmission with a
+   stated reason (the measuring instrument was shown unfit), not a
+   re-roll, and this failed entry stays. If it passes, val runs once. If
+   it fails, W1 is closed.
