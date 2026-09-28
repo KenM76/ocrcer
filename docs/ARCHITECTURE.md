@@ -10370,3 +10370,48 @@ open:
 
 Until the operator chooses, in-flight work (chunk 15b router) finishes and
 reports under its pre-registration. No new accuracy chunk is started.
+
+### 2026-09-28 — Chunk 15b (router, mode 3) fails step 2; the neural-reader line closes pending the direction decision
+
+**Measurement:** `docs/measurements/2026-09-27_c15b_router.md`. The code
+stays on the `c15b-router` branch, unmerged.
+
+**Setup, run to its pre-registration:**
+- Route thresholds were fitted on training fold A only: margin 0.95, net
+  probability 0.50, with the nn15c weights.
+- On the training fold, relabel accuracy rose from 94.10% to 98.77%.
+- With the router off, mode 0 output is byte-identical to master.
+
+**Step 2, run once on the 160 unseen pages:**
+
+| metric | mode 0 | mode 3 (router) | change |
+|---|---|---|---|
+| end-to-end CER | 19.694% | 19.769% | +0.075 pp |
+| line-matched CER | 21.584% | 22.107% | +0.523 pp |
+| WER | — | — | −1.168 pp |
+| F1 | — | — | −0.207 pp |
+
+Both CER measures got worse, so the gate **fails**. Val, ident and timing
+were not run.
+
+**What changed underneath:**
+- Pages: 98 improved, 43 got worse, 19 unchanged. A few large regressions
+  outweigh them.
+- The `0→O` confusion class disappears.
+- Insertions of `,`, `t` and `i` grow. That is an inference from the
+  confusion diff, not a proven cause.
+
+**Reading:**
+1. This is the fourth time a per-glyph gain on training crops has failed
+   to become an end-to-end gain. That is consistent with the chunk 15
+   finding: the net's accuracy lives on well-aligned crops, while
+   end-to-end loss is dominated by segmentation and non-character lattice
+   edges.
+2. Bolting a per-glyph net onto the constructed pipeline does not close
+   the gap to a trained recogniser. The PaddleOCR entry above measured
+   that gap.
+3. No further attempts are made under chunk 15/15b. The direction question
+   in the PaddleOCR entry is now the only open path for neural work, and
+   it is the operator's to decide.
+
+`match.classifier` stays at 0.
