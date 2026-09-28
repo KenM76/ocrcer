@@ -10469,3 +10469,73 @@ reused.**
 
 The new parameters are `guess`-labelled until fitted. `match.classifier` 3
 stays default-off until every gate passes.
+
+### 2026-09-28: Chunk 15c passes on accuracy, fails on speed; the router ships opt-in, not default
+
+**The run.** Measured on branch `c15c-router` (6a73f3e); the report is
+`docs/measurements/2026-09-28_c15c_router.md`.
+
+**Step 0, diagnosis on fold B at 15b's point.** This confirmed reading 1 of
+the pre-registration:
+- relabels on aligned words helped, −0.083 pp CER;
+- relabels on unaligned words hurt, +0.159 pp;
+- the net effect was +0.076 pp, which reproduces 15b's loss.
+
+**Step 1, fit on fold A by page CER.**
+- **Winning setting:** `route.matcher_margin` 0.7 and `route.net_prob` 0.7,
+  with the nn15b weights.
+- **The two new gates fitted to off.** `route.max_junk` came out at 1.0,
+  which is off and on its grid boundary. `route.same_category` came out at
+  0. So the gain came from moving to a stricter, interior operating point,
+  not from the gates.
+- **The fixed objective is what mattered:** tuning against page CER rather
+  than crop accuracy.
+- **The gates stay in the code** as inert, fitted-off parameters.
+
+**Step 2, once on the 160 unseen pages: PASS.**
+
+| Measure | Before | After | Change |
+|---|---|---|---|
+| End-to-end CER | 19.694 % | 19.109 % | −0.585 pp |
+| Line-matched CER | 21.584 % | 20.954 % | −0.630 pp |
+| WER | — | — | −3.157 pp |
+
+Pages improved/worsened: 121/14 end-to-end.
+
+**Remaining checks, all run once:**
+- **finfilings-val: PASS**, −0.776 / −0.842 pp.
+- **Ident: mixed.** Rewrites fell from 619 to 477, and lexicon harm stayed at
+  0. But confident-wrong rewrites (confidence ≥ 0.9) rose from 32 to 53.
+- **Timing v2: FAIL.** The A/A run was 1.016. The A/B run was 1.281 against
+  the 1.05 gate, and every page was slower. The `ocr` speed column
+  corroborates it at 1.27 and 1.37.
+
+**Decision.**
+1. **The default stays mode 0.** The pre-registration required every gate,
+   and the timing gate failed decisively. This is not re-argued after the
+   fact.
+2. **The router code merges to master as opt-in mode 3,** conditional on a
+   pages-cov sha256 check showing mode-0 output is byte-identical to master.
+   Parameters are only read under mode 3, but the pre-registration asked
+   for proof, not construction. A caller that accepts about 28% more time
+   gets −0.6 pp CER and −3 pp WER.
+   - Mode 3 needs a model built with the `nn` table. The shipped v0.1.0 file
+     has none, so no release changes until such a model is built and
+     manifested.
+3. **The rise in confident-wrong rewrites is a rule-5 defect in mode 3.**
+   Relabelled glyphs take their confidence from the net's own calibration,
+   which has never been fitted against truth. Before mode 3 is offered to
+   pdfcer, relabel confidence gets its own calibration measurement. Until
+   then it is labelled uncalibrated.
+4. **Next levers, each needing its own pre-registration:**
+   - speed of the routed forward pass: batching crops per line, or a
+     smaller net for the router role, with the timing gate unchanged;
+   - relabel confidence calibration.
+   Retraining with lattice-edge negatives is not needed to justify the
+   router. It remains the lever for the unaligned-word harm that step 0
+   measured.
+5. **This reverses 15b's closure of the neural-reader line.** That closure
+   was pending the direction decision. The neural reader is now a measured
+   accuracy gain in the router role. The operator's four-way direction
+   decision (2026-09-27) is still owed, and this result is an input to it,
+   not a substitute.
