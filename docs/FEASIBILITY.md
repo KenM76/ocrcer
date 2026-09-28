@@ -203,6 +203,32 @@ a missing projection, and it is `ARCHITECTURE.md` §9's to close;
 and what instrument would.
 
 
+**Measured against a modern trained recogniser, 2026-09-27: the first bullet
+is not met either, and the gap is not small.** PaddleOCR (PP-OCRv6 default
+detection and recognition, CPU, Apache-2.0, used as a baseline only) was run
+on OCRcer's own scoring pages, the ones the project was built to win.
+
+| corpus | OCRcer CER | PaddleOCR CER |
+|---|---|---|
+| synthetic digital-born pages, including CAD `drawing` and `technical` | 5.32% | 0.71% |
+| real financial filings | 11.34% | 4.98% |
+
+PaddleOCR is ahead in every category and on every metric.
+
+- The corpus biases favour OCRcer: the pages are confined to its charset,
+  and they are clean, not scanned.
+- Whether Paddle's training data overlaps these pages is unknown.
+- Report: `docs/measurements/2026-09-27_paddle_h2h.md`.
+
+This does not touch the per-word confidence bullet or the licence, size and
+wasm posture. It does falsify §6's summary that "the engine is very likely to work well on
+clean print and CAD text", when "well" means competitive with a current
+trained recogniser.
+
+§6 condition 3 still names `ocrs`, not PaddleOCR, as the bar for success.
+That comparison has still not been run. See `ARCHITECTURE.md` §11,
+2026-09-27.
+
 **Expected to be worse than the alternative**
 
 - Degraded scans, heavy noise, sub-150 DPI, fax-grade: **85–93%**, and this is

@@ -10302,3 +10302,71 @@ tag and a new manifest.
 
 **No change to vendoring:** pdfcer still vendors local HEAD (its decision
 160). The tag is a named, hashed point, not a new sync path.
+
+### 2026-09-27 — PaddleOCR head-to-head: OCRcer loses everywhere, by 2× to 14× CER
+
+**Measurement:** `docs/measurements/2026-09-27_paddle_h2h.md`, merged from
+`paddle-h2h`. PaddleOCR is a comparison baseline only; nothing from it
+enters any OCRcer crate or the model.
+
+**Result (measured):**
+
+| corpus | OCRcer CER | PaddleOCR CER |
+|---|---|---|
+| pages-cov | 5.322% | 0.713% |
+| finfilings | 11.340% | 4.980% |
+
+- Paddle wins every pages-cov category, including `drawing` (3.47% vs
+  0.22%) and `technical` (5.86% vs 1.72%).
+- Identifier preservation: Paddle kept 96.3% of identifier tokens on a
+  third of `bench/ident`, measured by page presence. That is an easier bar
+  than OCRcer's aligned harness, so the numbers are **not comparable**.
+  Sampled Paddle misses were character confusions (Ø→0, O→0, x→×), not
+  rewrites into dictionary words.
+- Paddle calibration was not measured.
+
+**Caveats that stand:**
+- The corpus biases favour OCRcer: it is limited to OCRcer's charset, and
+  there are no scans.
+- Paddle's training-set overlap with these pages is unknown.
+- Paddle ran on CPU with oneDNN off. That is a crash workaround and does not
+  affect accuracy.
+- I have not re-run any number here.
+
+**Architect's reading:**
+- The gap is not the shape of anything the glyphs or linguist levers
+  close. Every score-once round so far has moved CER by fractions of a
+  point.
+- The gap is consistent with chunk 15's finding that a trained per-glyph
+  net is far better at recognition (97.89% vs 93.31%) than the prototype
+  matcher.
+- The constructed matcher's ceiling on digital-born print is below a
+  current trained recogniser's. FEASIBILITY §5 now records this as
+  measured.
+
+**What still holds, measured or structural:**
+- MIT licence, zero-dependency safe Rust, and wasm32 support.
+- Per-word confidence calibrated by rule 5.
+- Lexicon-harm 0 on identifiers.
+- An about 5.6 MB model rebuilt byte-identically from committed inputs.
+
+§6 condition 3's bar (`ocrs` on pdfcer's corpus) is still unmeasured.
+
+**Decision owed to the operator, not taken here.** Four directions are
+open:
+
+1. **Continue as is.** OCRcer's value is posture: licence, wasm,
+   calibrated confidence and identifier safety, not raw accuracy. Run the
+   `ocrs` head-to-head to find out where it actually stands against the
+   stated bar.
+2. **Make a trained recogniser the core.** Rule 1 permits fitting, and
+   chunk 15's net is the seed. For example, a line-level recogniser fitted
+   on licence-clean training data, with the prototype bank kept for
+   CAD symbols and confidence. This is a large re-plan of PLAN.md.
+3. **pdfcer calls PaddleOCR out of process** as an optional engine, the way
+   it calls Tesseract. That is pdfcer's decision, and Apache-2.0 permits
+   it. OCRcer's own plan is unaffected.
+4. Some combination of these.
+
+Until the operator chooses, in-flight work (chunk 15b router) finishes and
+reports under its pre-registration. No new accuracy chunk is started.
