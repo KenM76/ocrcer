@@ -72,6 +72,11 @@ name = "nn-probe3-matcherA"
 path = "src/bin/nn_probe3_matcherA.rs"
 required-features = ["pages"]
 
+[[bin]]
+name = "route-fit"
+path = "src/bin/route_fit.rs"
+required-features = ["pages"]
+
 [features]
 # ocrcer-core now exposes the documented GlyphInput / FEATURE_DIMS /
 # extract (ARCHITECTURE.md section 3.1), so this is on by default. See

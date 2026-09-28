@@ -47,6 +47,7 @@ pub struct Params {
     pub confidence: Confidence,
     pub decode: Decode,
     pub nn: Nn,
+    pub route: Route,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -154,7 +155,14 @@ pub struct Matching {
     /// loaded network falls back to `0`'s behaviour and reports why (see
     /// `crate::pipeline::Engine::classifier_fallback`). `2`: fused scoring,
     /// refused outright at load time (`crate::Error::UnsupportedClassifier`)
-    /// — the fusion rule is undecided.
+    /// — the fusion rule is undecided. `3`: the router (chunk 15b,
+    /// `ARCHITECTURE.md` §11, 2026-09-27, "the neural reader continues as a
+    /// router") — segmentation and decode are unchanged from `0`, and the
+    /// network only relabels a glyph on the already-decided path when the
+    /// matcher's own calibrated confidence is below `route.matcher_margin`
+    /// and the network's top-class probability is at or above
+    /// `route.net_prob`. A model with `classifier == 3` and no loaded
+    /// network falls back to `0`, exactly as `1` does.
     pub classifier: u32,
 }
 
@@ -168,6 +176,25 @@ pub struct Nn {
     /// scorer produced a `Cand`'s `distance`. Guess, to be fitted on the
     /// train split once the network exists.
     pub scale: f32,
+}
+
+/// The router's own thresholds (chunk 15b, `ARCHITECTURE.md` §11,
+/// 2026-09-27). Unused, and therefore inert, whenever
+/// `matching.classifier != 3`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Route {
+    /// The matcher is judged unsure below this calibrated confidence
+    /// (the same value `confidence::character` already produces for the
+    /// winning candidate). Fitted on fold A of `bench/splits/
+    /// nn15_page_split.tsv` by a deterministic grid search,
+    /// `crates/ocrcer-bench/src/bin/route_fit.rs`; see
+    /// `docs/measurements/2026-09-27_c15b_router.md` for the grid and the
+    /// resulting train-fold relabel accuracy.
+    pub matcher_margin: f32,
+    /// The network's own top-charset-class probability (junk excluded)
+    /// must be at or above this before a relabel is even considered.
+    /// Fitted alongside `matcher_margin`, same split, same script.
+    pub net_prob: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -519,6 +546,15 @@ impl Params {
         // fitted on train once the network exists. Inert while
         // `matching.classifier != 1`.
         nn: Nn { scale: 1.0 },
+        // Fitted, `ARCHITECTURE.md` §11, 2026-09-27 ("chunk 15b pre-registered"):
+        // deterministic grid search on fold A of `bench/splits/
+        // nn15_page_split.tsv`, `crates/ocrcer-bench/src/bin/route_fit.rs`,
+        // 28,796 aligned crops from 54 pages. Best point across the joint
+        // grid `MATCHER_MARGIN_GRID x NET_PROB_GRID`, ties broken toward
+        // higher `net_prob` then higher `matcher_margin`. Inert while
+        // `matching.classifier != 3`. See
+        // `docs/measurements/2026-09-27_c15b_router.md`.
+        route: Route { matcher_margin: 0.95, net_prob: 0.50 },
     };
 
     /// Overrides from a `params` table, returning how many rows were applied.
@@ -648,6 +684,8 @@ impl Params {
             "decode.w_confusion" => &mut self.decode.w_confusion,
             "decode.case_shape_penalty" => &mut self.decode.case_shape_penalty,
             "nn.scale" => &mut self.nn.scale,
+            "route.matcher_margin" => &mut self.route.matcher_margin,
+            "route.net_prob" => &mut self.route.net_prob,
             _ => return false,
         };
         *slot = v;
@@ -683,7 +721,7 @@ impl Params {
 
     /// Every name this build understands, for a loader that wants to report
     /// which ones a file left at their defaults.
-    pub const NAMES: [&'static str; 82] = [
+    pub const NAMES: [&'static str; 84] = [
         "binarize.window",
         "binarize.k",
         "binarize.r",
@@ -766,6 +804,8 @@ impl Params {
         "decode.case_shape_penalty",
         "decode.beam_width",
         "nn.scale",
+        "route.matcher_margin",
+        "route.net_prob",
     ];
 
     /// The value a name currently holds, as an `f32`. For a report, and for
@@ -814,7 +854,7 @@ fn find_changed_u32(before: &Params, after: &Params) -> f32 {
     f32::NAN
 }
 
-fn f32_fields(p: &Params) -> [f32; 64] {
+fn f32_fields(p: &Params) -> [f32; 66] {
     [
         p.binarize.k,
         p.binarize.r,
@@ -880,6 +920,8 @@ fn f32_fields(p: &Params) -> [f32; 64] {
         p.decode.w_confusion,
         p.decode.case_shape_penalty,
         p.nn.scale,
+        p.route.matcher_margin,
+        p.route.net_prob,
     ]
 }
 

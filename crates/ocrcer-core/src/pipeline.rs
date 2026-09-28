@@ -97,14 +97,13 @@ pub struct Rect {
 pub struct Engine {
     model: Model,
     cal: confidence::Calibration,
-    /// `Some(reason)` when `match.classifier == 1` was requested but no
-    /// network is loaded, so every word was read with prototype scoring
-    /// instead of the network the model file asked for. Computed once at
-    /// load rather than per word: the fact is about the model, not about any
-    /// one page, and a per-call counter behind `OCRCER_PROFILE=1` would let
-    /// this go unnoticed on an ordinary run (`CLAUDE.md` rule 5 — a promise
-    /// about confidence extends to a promise about which scorer produced
-    /// it).
+    /// `Some(reason)` when `match.classifier` is `1` or `3` but no network is
+    /// loaded, so every word was read with prototype scoring alone instead of
+    /// what the model file asked for. Computed once at load rather than per
+    /// word: the fact is about the model, not about any one page, and a
+    /// per-call counter behind `OCRCER_PROFILE=1` would let this go unnoticed
+    /// on an ordinary run (`CLAUDE.md` rule 5 — a promise about confidence
+    /// extends to a promise about which scorer produced it).
     classifier_fallback: Option<&'static str>,
 }
 
@@ -117,10 +116,14 @@ impl Engine {
         // disagreeing decoder is allowed to lower a confidence.
         let cal =
             confidence::Calibration { lm_floor: model.params.confidence.lm_floor, ..confidence::AUTHORED };
-        let classifier_fallback = if model.params.matching.classifier == 1 && model.nn.is_none() {
-            Some("match.classifier=1 requested but no nn table is loaded; scoring with prototypes")
-        } else {
-            None
+        let classifier_fallback = match (model.params.matching.classifier, model.nn.is_some()) {
+            (1, false) => {
+                Some("match.classifier=1 requested but no nn table is loaded; scoring with prototypes")
+            }
+            (3, false) => {
+                Some("match.classifier=3 requested but no nn table is loaded; scoring with prototypes")
+            }
+            _ => None,
         };
         Ok(Engine { model, cal, classifier_fallback })
     }
@@ -131,9 +134,9 @@ impl Engine {
     }
 
     /// `Some(reason)` when this engine is scoring with prototypes despite the
-    /// model asking for the network (`match.classifier == 1` with no `nn`
-    /// table loaded). `None` otherwise — including when `classifier == 0`,
-    /// where there is nothing to fall back from.
+    /// model asking for the network (`match.classifier` `1` or `3` with no
+    /// `nn` table loaded). `None` otherwise — including when `classifier ==
+    /// 0`, where there is nothing to fall back from.
     pub fn classifier_fallback(&self) -> Option<&'static str> {
         self.classifier_fallback
     }
@@ -394,14 +397,25 @@ impl Engine {
         let k = p.matching.top_k.max(1) as usize;
         let mut hyps: Vec<Hyp> = Vec::with_capacity(lat.edges.len());
         let mut boxes: Vec<(u32, u32, u32, u32)> = Vec::with_capacity(lat.edges.len());
+        // Only ever populated under `route_on` below, so a mode-0/1 run pays
+        // nothing for it: the router relabels a glyph the matcher has
+        // already committed to, and doing that without a second segmentation
+        // implementation (`CLAUDE.md` rule 4) means re-running the same
+        // extractor on the same crop after decode rather than during it.
+        let mut glyphs: Vec<Option<segment::Glyph>> = Vec::new();
 
         // `use_nn` is decided once, outside the loop, from facts the loop
         // itself cannot change (the loaded model, not any one edge). This is
         // what makes `classifier == 0` byte-identical to every fixture that
         // predates this field by construction rather than by testing alone:
         // whenever it is false, every edge below runs the exact prototype
-        // path this function has always run, untouched.
+        // path this function has always run, untouched. The router
+        // (`classifier == 3`) is deliberately absent from this condition: it
+        // must always build its lattice from the prototype matcher, exactly
+        // as `classifier == 0` does, and only relabels after Viterbi has
+        // already fixed the segmentation (`ARCHITECTURE.md` §11, 2026-09-27).
         let use_nn = p.matching.classifier == 1 && self.model.nn.is_some();
+        let route_on = p.matching.classifier == 3 && self.model.nn.is_some();
 
         for e in &lat.edges {
             let Some(g) = segment::crop(lat, labels, page_width, e) else {
@@ -460,6 +474,9 @@ impl Engine {
                 cands,
             });
             boxes.push((g.x, g.y, g.width, g.height));
+            if route_on {
+                glyphs.push(Some(g));
+            }
         }
         if hyps.is_empty() {
             return None;
@@ -480,21 +497,97 @@ impl Engine {
         decode_t.stop(&crate::prof::COUNTERS.decode_ns);
         let decoded = decoded?;
 
+        // The router's relabel pass: evaluated only on the glyphs Viterbi has
+        // already committed to, on the fixed path above — never on a
+        // partial or merged lattice edge, which is where every earlier
+        // fused/network-only attempt lost (`ARCHITECTURE.md` §11,
+        // 2026-09-27). `class`, when it differs from `c.class`, is a
+        // relabel; `conf_override` is the network's own calibrated
+        // confidence for it, computed before the word-level agreement term
+        // below, exactly the two-stage shape `confidence::adjust` expects.
+        let lookup_glyph = |x0: u32, x1: u32| -> Option<&segment::Glyph> {
+            cuts.iter().position(|c| *c == (x0, x1)).and_then(|i| glyphs.get(i)).and_then(|g| g.as_ref())
+        };
+        let mut relabel: Vec<(u16, Option<f32>)> = Vec::with_capacity(decoded.chars.len());
+        if route_on {
+            for c in &decoded.chars {
+                let mut class = c.class;
+                let mut conf_override = None;
+                let matcher_conf = confidence::character(&self.cal, c.ratio);
+                if matcher_conf < p.route.matcher_margin {
+                    if let Some(g) = lookup_glyph(c.x0, c.x1) {
+                        let extract_t = crate::prof::start();
+                        let (raw, grid) = crate::feature::extract_with_grid(&g.input(line));
+                        extract_t.stop(&crate::prof::COUNTERS.extract_ns);
+                        // Same normalisation the matcher and mode 1 both use
+                        // (`CLAUDE.md` rule 4).
+                        let normalised = self.model.standardise(&raw);
+                        // `route_on` implies `self.model.nn` is `Some(..)`.
+                        let net = self.model.nn.as_ref().expect("route_on implies a loaded network");
+                        let match_t = crate::prof::start();
+                        let forward = net.forward(&grid, &normalised);
+                        match_t.stop(&crate::prof::COUNTERS.match_ns);
+                        if crate::prof::enabled() {
+                            crate::prof::add(&crate::prof::COUNTERS.match_calls, 1);
+                        }
+                        // `k = 1, scale = 1.0`: only the top charset class's
+                        // own log-probability is wanted here, junk excluded
+                        // and ties to the lowest class index, reusing
+                        // `nn_candidates` rather than a second sort
+                        // (`CLAUDE.md` rule 4). `distance` is `-log p`
+                        // un-scaled, so `(-distance).exp()` is the raw
+                        // probability `route.net_prob` thresholds against.
+                        if let Ok(log_probs) = forward {
+                            if let Some(top) = nn_candidates(net, &log_probs, 1, 1.0).into_iter().next() {
+                                let net_prob = (-top.distance).exp();
+                                if net_prob >= p.route.net_prob && top.class != c.class {
+                                    class = top.class;
+                                    conf_override = Some(confidence::character(&self.cal, top.ratio));
+                                }
+                            }
+                        }
+                    }
+                }
+                relabel.push((class, conf_override));
+            }
+        }
+
         let mut text = String::new();
         let mut chars = Vec::with_capacity(decoded.chars.len());
         let mut scores = Vec::with_capacity(decoded.chars.len());
-        for c in &decoded.chars {
-            let Some(ch) = self.model.char_of(c.class) else {
+        let mut final_classes: Vec<u16> = Vec::with_capacity(decoded.chars.len());
+        let mut any_relabel = false;
+        for (i, c) in decoded.chars.iter().enumerate() {
+            let (class, conf_override) = relabel.get(i).copied().unwrap_or((c.class, None));
+            let Some(ch) = self.model.char_of(class) else {
                 continue;
             };
             text.push(ch);
-            let conf = confidence::character(&self.cal, c.ratio);
+            final_classes.push(class);
+            any_relabel |= class != c.class;
+            let conf = conf_override.unwrap_or_else(|| confidence::character(&self.cal, c.ratio));
             scores.push(conf);
             let (x, y, w, h) = lookup(c.x0, c.x1).unwrap_or((c.x0, line.y0, c.x1 - c.x0, line.height()));
             chars.push(CharBox { ch, rect: Rect { x, y, width: w, height: h }, confidence: conf });
         }
         if chars.is_empty() {
             return None;
+        }
+        // "Words containing a relabelled glyph are re-scored by the
+        // decoder's existing word terms. The path does not change."
+        // (`ARCHITECTURE.md` §11, 2026-09-27.) `word_agreement` re-runs the
+        // lexicon-tier test `decode_word` already computes at a word's end,
+        // against the relabelled string, without touching the beam search
+        // that chose the segmentation. Every character in the word is
+        // adjusted, not only the relabelled one, because the lexicon term it
+        // reuses is itself a whole-word quantity.
+        if any_relabel {
+            let agreement =
+                viterbi::word_agreement(&final_classes, &self.model.class_info, tables, &p.decode);
+            for (score, ch) in scores.iter_mut().zip(chars.iter_mut()) {
+                *score = confidence::adjust(&self.cal, *score, agreement);
+                ch.confidence = *score;
+            }
         }
         let x0 = chars.iter().map(|c| c.rect.x).min().unwrap_or(0);
         let x1 = chars.iter().map(|c| c.rect.x + c.rect.width).max().unwrap_or(0);
@@ -520,7 +613,12 @@ impl Engine {
 /// returned candidate, the same shape `crate::r#match::nearest`'s single
 /// `Match::ratio()` takes — it is a property of the edge's top two charset
 /// classes, not of any one candidate within it.
-fn nn_candidates(net: &crate::nn::Nn, log_probs: &[f32], k: usize, scale: f32) -> Vec<Cand> {
+///
+/// `pub` (chunk 15b, `ARCHITECTURE.md` §11, 2026-09-27): the router's fit
+/// script (`ocrcer-bench`) is a third caller, alongside the two uses inside
+/// this file, and reuses this function rather than re-deriving the same
+/// sort-and-margin logic outside the crate (`CLAUDE.md` rule 4).
+pub fn nn_candidates(net: &crate::nn::Nn, log_probs: &[f32], k: usize, scale: f32) -> Vec<Cand> {
     let junk_index = net.junk_index as usize;
     let mut charset: Vec<(u16, f32)> = log_probs
         .iter()
