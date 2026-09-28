@@ -563,18 +563,19 @@ impl Params {
         // fitted on train once the network exists. Inert while
         // `matching.classifier != 1`.
         nn: Nn { scale: 1.0 },
-        // Fitted, `ARCHITECTURE.md` §11, 2026-09-27 ("chunk 15b pre-registered"):
-        // deterministic grid search on fold A of `bench/splits/
-        // nn15_page_split.tsv`, `crates/ocrcer-bench/src/bin/route_fit.rs`,
-        // 28,796 aligned crops from 54 pages. Best point across the joint
-        // grid `MATCHER_MARGIN_GRID x NET_PROB_GRID`, ties broken toward
-        // higher `net_prob` then higher `matcher_margin`. Inert while
+        // Fitted, `ARCHITECTURE.md` §11, 2026-09-28 ("chunk 15c pre-registered"):
+        // re-fitted from 15b's crop-accuracy point on end-to-end page CER,
+        // `crates/ocrcer-bench/src/bin/route_probe.rs`, whole-page replay
+        // grid search on fold A of `bench/splits/nn15_page_split.tsv` (54
+        // pages, 124,502 truth characters), joint grid `matcher_margin x
+        // net_prob x max_junk x same_category x {nn15b, nn15c}`. `nn15b`
+        // (weights/cpu_det_run1) wins over `nn15c`: CER 0.194776 vs
+        // 0.195017 at each weight set's own optimum, against a 0.200953
+        // route-off baseline. `max_junk` sits on its grid's off boundary
+        // (1.0); `matcher_margin`/`net_prob` do not. Inert while
         // `matching.classifier != 3`. See
-        // `docs/measurements/2026-09-27_c15b_router.md`.
-        // `max_junk`/`same_category`: guess, `ARCHITECTURE.md` §11,
-        // 2026-09-28 ("chunk 15c pre-registered"), until step 1's fit on
-        // fold A of `bench/splits/nn15_page_split.tsv` names a value.
-        route: Route { matcher_margin: 0.95, net_prob: 0.50, max_junk: 1.0, same_category: 0 },
+        // `docs/measurements/2026-09-28_c15c_router.md`.
+        route: Route { matcher_margin: 0.7, net_prob: 0.7, max_junk: 1.0, same_category: 0 },
     };
 
     /// Overrides from a `params` table, returning how many rows were applied.
