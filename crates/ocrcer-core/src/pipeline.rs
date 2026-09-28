@@ -33,7 +33,7 @@
 //! needs told (`CLAUDE.md` rule 5).
 
 use crate::confidence;
-use crate::decode::viterbi::{self, Cand, Hyp, Tables, WordLattice};
+use crate::decode::viterbi::{self, Cand, Char, ClassInfo, Hyp, Tables, WordLattice};
 use crate::image::{binarize, components, deskew};
 use crate::layout::{lines, segment, underline, words};
 use crate::ocrw::Model;
@@ -55,6 +55,46 @@ pub struct CharBox {
     pub ch: char,
     pub rect: Rect,
     pub confidence: f32,
+}
+
+/// One decoded character's router inputs, in Viterbi's committed-path order
+/// within its word — the exact numbers `read_word`'s relabel pass computes,
+/// captured before any `route.*` threshold decides anything with them.
+///
+/// Exists for the chunk 15c fit harness (`ARCHITECTURE.md` §11, 2026-09-28,
+/// "chunk 15c pre-registered"), so a grid search over
+/// `route.matcher_margin`/`route.net_prob`/`route.max_junk`/
+/// `route.same_category` can replay the router's own three-line decision at
+/// every grid point from numbers computed **once** per page, rather than
+/// re-running segmentation, matching and the network forward pass per point
+/// (`CLAUDE.md` rule 4 — the same "replay from cached numbers, never a
+/// second implementation of the decision" precedent `route_fit.rs` set in
+/// chunk 15b, extended from aligned crops to whole decoded words).
+/// `net` is `Some` only when [`Engine::recognize_lines_route_probe`]'s
+/// caller configured `route.matcher_margin` high enough (the grid's own
+/// maximum, so every point the grid could query is covered) that this
+/// glyph's matcher confidence fell below it and a network query actually
+/// ran; a glyph the matcher was already confident about at that ceiling
+/// carries `None` and no grid point below the ceiling can ever query it
+/// either, so nothing is lost.
+#[derive(Debug, Clone, Copy)]
+pub struct RouteProbe {
+    pub matcher_class: u16,
+    pub matcher_conf: f32,
+    pub net: Option<NetProbe>,
+}
+
+/// The network's own numbers for one queried glyph, all read directly off
+/// its log-softmax output (`crate::nn::Nn::forward`) with no second
+/// computation: `prob` is `nn_candidates(..., k=1, scale=1.0)`'s top
+/// candidate's `(-distance).exp()`, exactly what `route.net_prob`
+/// thresholds against; `junk_prob` is `log_probs[net.junk_index].exp()`,
+/// exactly what `route.max_junk` thresholds against.
+#[derive(Debug, Clone, Copy)]
+pub struct NetProbe {
+    pub class: u16,
+    pub prob: f32,
+    pub junk_prob: f32,
 }
 
 /// A recognised line of text: the words on it, left to right.
@@ -218,6 +258,26 @@ impl Engine {
 
     /// Recognises a page, keeping the line grouping.
     pub fn recognize_lines(&self, img: crate::Gray<'_>) -> Result<Vec<Line>, Error> {
+        Ok(self.recognize_lines_impl(img)?.into_iter().map(|(l, _)| l).collect())
+    }
+
+    /// [`Engine::recognize_lines`], plus each word's [`RouteProbe`]s.
+    ///
+    /// Bench-only (chunk 15c, `ARCHITECTURE.md` §11, 2026-09-28): the
+    /// production reading path never calls this — `recognize_lines` above
+    /// discards exactly the same probes this returns, so the two cannot
+    /// disagree about anything but which of a `read_word` call's two return
+    /// values the caller kept (`CLAUDE.md` rule 4). The per-word probe
+    /// vectors are aligned index-for-index with the returned `Line`'s
+    /// `words`, each inner vector aligned with that word's `chars`.
+    pub fn recognize_lines_route_probe(
+        &self,
+        img: crate::Gray<'_>,
+    ) -> Result<Vec<(Line, Vec<Vec<RouteProbe>>)>, Error> {
+        self.recognize_lines_impl(img)
+    }
+
+    fn recognize_lines_impl(&self, img: crate::Gray<'_>) -> Result<Vec<(Line, Vec<Vec<RouteProbe>>)>, Error> {
         let p = &self.model.params;
         if img.data.len() != img.width as usize * img.height as usize {
             return Err(Error::BadTable {
@@ -289,7 +349,7 @@ impl Engine {
             let spans_by_line = words::split_band_with(&group, &comps, &word_p);
             split_t.stop(&crate::prof::COUNTERS.binarize_layout_ns);
             for (line, spans) in group.iter().zip(spans_by_line) {
-                let mut got: Vec<Word> = Vec::new();
+                let mut got: Vec<(Word, Vec<RouteProbe>)> = Vec::new();
                 for span in spans {
                     // Slant is measured once per word, ahead of segmentation,
                     // per `ARCHITECTURE.md` section 11 (2026-09-24 decision):
@@ -334,7 +394,7 @@ impl Engine {
                         crate::prof::add(&crate::prof::COUNTERS.words, 1);
                         crate::prof::add(&crate::prof::COUNTERS.edges, lat.edges.len() as u64);
                     }
-                    let Some(w) = self.read_word(
+                    let (w, probe) = self.read_word(
                         &lat,
                         line,
                         &labels,
@@ -342,19 +402,19 @@ impl Engine {
                         &tables,
                         italic_ok,
                         slanted,
-                    )
-                    else {
+                    );
+                    let Some(w) = w else {
                         continue;
                     };
                     if !w.text.is_empty() {
-                        got.push(w);
+                        got.push((w, probe));
                     }
                 }
                 if got.is_empty() {
                     continue;
                 }
                 let weighted: Vec<(f32, u32)> =
-                    got.iter().map(|w| (w.confidence, w.chars.len() as u32)).collect();
+                    got.iter().map(|(w, _)| (w.confidence, w.chars.len() as u32)).collect();
                 let rect = Rect {
                     x: line.x0,
                     y: unshear(line.y0, line.x0, slope, page.height),
@@ -363,14 +423,18 @@ impl Engine {
                 };
                 let baseline =
                     unshear(line.baseline.round().max(0.0) as u32, line.x0, slope, page.height);
-                out.push(Line {
-                    words: got,
-                    rect,
-                    baseline: baseline as f32,
-                    x_height: line.x_height,
-                    confidence: confidence::line(&weighted),
-                    band,
-                });
+                let (words, probes): (Vec<Word>, Vec<Vec<RouteProbe>>) = got.into_iter().unzip();
+                out.push((
+                    Line {
+                        words,
+                        rect,
+                        baseline: baseline as f32,
+                        x_height: line.x_height,
+                        confidence: confidence::line(&weighted),
+                        band,
+                    },
+                    probes,
+                ));
             }
         }
         Ok(out)
@@ -392,7 +456,7 @@ impl Engine {
         tables: &Tables<'_>,
         italic_ok: bool,
         slanted: bool,
-    ) -> Option<Word> {
+    ) -> (Option<Word>, Vec<RouteProbe>) {
         let p = &self.model.params;
         let k = p.matching.top_k.max(1) as usize;
         let mut hyps: Vec<Hyp> = Vec::with_capacity(lat.edges.len());
@@ -479,7 +543,7 @@ impl Engine {
             }
         }
         if hyps.is_empty() {
-            return None;
+            return (None, Vec::new());
         }
 
         // The box of the edge a decoded character came from. Matching on the
@@ -495,7 +559,9 @@ impl Engine {
         let decode_t = crate::prof::start();
         let decoded = viterbi::decode_word(&lattice, &self.model.class_info, tables, &p.decode, slanted);
         decode_t.stop(&crate::prof::COUNTERS.decode_ns);
-        let decoded = decoded?;
+        let Some(decoded) = decoded else {
+            return (None, Vec::new());
+        };
 
         // The router's relabel pass: evaluated only on the glyphs Viterbi has
         // already committed to, on the fixed path above — never on a
@@ -509,11 +575,21 @@ impl Engine {
             cuts.iter().position(|c| *c == (x0, x1)).and_then(|i| glyphs.get(i)).and_then(|g| g.as_ref())
         };
         let mut relabel: Vec<(u16, Option<f32>)> = Vec::with_capacity(decoded.chars.len());
+        // Captured alongside `relabel` for `Engine::recognize_lines_route_probe`
+        // (chunk 15c, `ARCHITECTURE.md` §11, 2026-09-28): the raw matcher and
+        // net readings behind every relabel decision, so the fit harness can
+        // replay `route.*` thresholds in memory instead of re-running
+        // segmentation, matching and decode once per grid point
+        // (`CLAUDE.md` rule 4 — the pipeline that produces these numbers is
+        // still written exactly once). Empty whenever `route_on` is false, so
+        // classifier mode 0 pays nothing for this and cannot diverge from it.
+        let mut probe: Vec<RouteProbe> = Vec::with_capacity(if route_on { decoded.chars.len() } else { 0 });
         if route_on {
-            for c in &decoded.chars {
+            for (i, c) in decoded.chars.iter().enumerate() {
                 let mut class = c.class;
                 let mut conf_override = None;
                 let matcher_conf = confidence::character(&self.cal, c.ratio);
+                let mut net_probe: Option<NetProbe> = None;
                 if matcher_conf < p.route.matcher_margin {
                     if let Some(g) = lookup_glyph(c.x0, c.x1) {
                         let extract_t = crate::prof::start();
@@ -538,16 +614,47 @@ impl Engine {
                         // un-scaled, so `(-distance).exp()` is the raw
                         // probability `route.net_prob` thresholds against.
                         if let Ok(log_probs) = forward {
+                            // `route.max_junk` (chunk 15c, `ARCHITECTURE.md`
+                            // §11, 2026-09-28): `forward`'s log-softmax
+                            // already normalises over every output
+                            // including junk, so `log_probs[junk_index]` is
+                            // the crop's junk log-probability with no
+                            // second computation (`CLAUDE.md` rule 4).
+                            // Default `1.0` never vetoes, since a
+                            // probability cannot exceed it.
+                            let junk_prob = log_probs
+                                .get(net.junk_index as usize)
+                                .copied()
+                                .unwrap_or(f32::NEG_INFINITY)
+                                .exp();
+                            // The top candidate is read unconditionally
+                            // (unrouted by `max_junk`) so the probe carries
+                            // the net's actual answer regardless of which
+                            // grid point vetoes it at replay time.
                             if let Some(top) = nn_candidates(net, &log_probs, 1, 1.0).into_iter().next() {
                                 let net_prob = (-top.distance).exp();
-                                if net_prob >= p.route.net_prob && top.class != c.class {
-                                    class = top.class;
-                                    conf_override = Some(confidence::character(&self.cal, top.ratio));
+                                net_probe = Some(NetProbe { class: top.class, prob: net_prob, junk_prob });
+                                if junk_prob <= p.route.max_junk
+                                    && net_prob >= p.route.net_prob
+                                    && top.class != c.class
+                                {
+                                    let vetoed = p.route.same_category == 1
+                                        && category_flip_vetoed(
+                                            &self.model.class_info,
+                                            &decoded.chars,
+                                            i,
+                                            top.class,
+                                        );
+                                    if !vetoed {
+                                        class = top.class;
+                                        conf_override = Some(confidence::character(&self.cal, top.ratio));
+                                    }
                                 }
                             }
                         }
                     }
                 }
+                probe.push(RouteProbe { matcher_class: c.class, matcher_conf, net: net_probe });
                 relabel.push((class, conf_override));
             }
         }
@@ -571,7 +678,7 @@ impl Engine {
             chars.push(CharBox { ch, rect: Rect { x, y, width: w, height: h }, confidence: conf });
         }
         if chars.is_empty() {
-            return None;
+            return (None, probe);
         }
         // "Words containing a relabelled glyph are re-scored by the
         // decoder's existing word terms. The path does not change."
@@ -593,12 +700,15 @@ impl Engine {
         let x1 = chars.iter().map(|c| c.rect.x + c.rect.width).max().unwrap_or(0);
         let y0 = chars.iter().map(|c| c.rect.y).min().unwrap_or(0);
         let y1 = chars.iter().map(|c| c.rect.y + c.rect.height).max().unwrap_or(0);
-        Some(Word {
-            text,
-            rect: Rect { x: x0, y: y0, width: x1 - x0, height: y1 - y0 },
-            confidence: confidence::word(&scores),
-            chars,
-        })
+        (
+            Some(Word {
+                text,
+                rect: Rect { x: x0, y: y0, width: x1 - x0, height: y1 - y0 },
+                confidence: confidence::word(&scores),
+                chars,
+            }),
+            probe,
+        )
     }
 }
 
@@ -642,6 +752,37 @@ pub fn nn_candidates(net: &crate::nn::Nn, log_probs: &[f32], k: usize, scale: f3
         .take(k.max(1))
         .map(|(class, lp)| Cand { class, distance: scale * -lp, ratio })
         .collect()
+}
+
+/// `route.same_category` (chunk 15c, `ARCHITECTURE.md` §11, 2026-09-28): is
+/// this a digit<->letter relabel, and is every *other* decoded character in
+/// the word already in the glyph's original category? A class with neither
+/// flag (punctuation, etc.) is in no category and never triggers or blocks
+/// the veto — the gate only speaks to digit/letter runs.
+fn category_flip_vetoed(class_info: &[ClassInfo], chars: &[Char], i: usize, new_class: u16) -> bool {
+    fn category(ci: ClassInfo) -> Option<bool> {
+        // `Some(true)`: digit. `Some(false)`: letter. `None`: neither.
+        if ci.digit {
+            Some(true)
+        } else if ci.letter {
+            Some(false)
+        } else {
+            None
+        }
+    }
+    let Some(&info) = class_info.get(chars[i].class as usize) else { return false };
+    let Some(&new_info) = class_info.get(new_class as usize) else { return false };
+    let (Some(orig_cat), Some(new_cat)) = (category(info), category(new_info)) else { return false };
+    if orig_cat == new_cat {
+        return false;
+    }
+    chars.iter().enumerate().all(|(j, other)| {
+        j == i
+            || class_info
+                .get(other.class as usize)
+                .and_then(|&ci| category(ci))
+                .is_some_and(|cat| cat == orig_cat)
+    })
 }
 
 /// Maps a y in the deskewed page back to the input image's y.

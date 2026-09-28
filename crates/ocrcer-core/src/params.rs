@@ -195,6 +195,23 @@ pub struct Route {
     /// must be at or above this before a relabel is even considered.
     /// Fitted alongside `matcher_margin`, same split, same script.
     pub net_prob: f32,
+    /// Vetoes a relabel when the network's own junk probability
+    /// (`log_probs[net.junk_index]`, already normalised by `forward`'s
+    /// log-softmax over every output including junk) exceeds this. `1.0`
+    /// (default, `guess` until fitted): off, since a probability can never
+    /// exceed it. Chunk 15c, `ARCHITECTURE.md` §11, 2026-09-28 ("chunk 15c
+    /// pre-registered"), added because 15b's `net_prob` gate only ever saw
+    /// junk mass indirectly.
+    pub max_junk: f32,
+    /// `0` (default, `guess` until fitted): off, a relabel is judged on
+    /// `matcher_margin`/`net_prob`/`max_junk` alone. `1`: a relabel that
+    /// would move a glyph between the digit and letter categories
+    /// (`decode::viterbi::ClassInfo::digit`/`letter`) is refused when every
+    /// *other* glyph decoded in the same word is already in the glyph's
+    /// original category — the "all-digit run, one ambiguous letter-shaped
+    /// glyph" case chunk 15b's report named as un-modelled (reading 3).
+    /// Chunk 15c, `ARCHITECTURE.md` §11, 2026-09-28.
+    pub same_category: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -554,7 +571,10 @@ impl Params {
         // higher `net_prob` then higher `matcher_margin`. Inert while
         // `matching.classifier != 3`. See
         // `docs/measurements/2026-09-27_c15b_router.md`.
-        route: Route { matcher_margin: 0.95, net_prob: 0.50 },
+        // `max_junk`/`same_category`: guess, `ARCHITECTURE.md` §11,
+        // 2026-09-28 ("chunk 15c pre-registered"), until step 1's fit on
+        // fold A of `bench/splits/nn15_page_split.tsv` names a value.
+        route: Route { matcher_margin: 0.95, net_prob: 0.50, max_junk: 1.0, same_category: 0 },
     };
 
     /// Overrides from a `params` table, returning how many rows were applied.
@@ -686,6 +706,7 @@ impl Params {
             "nn.scale" => &mut self.nn.scale,
             "route.matcher_margin" => &mut self.route.matcher_margin,
             "route.net_prob" => &mut self.route.net_prob,
+            "route.max_junk" => &mut self.route.max_junk,
             _ => return false,
         };
         *slot = v;
@@ -713,6 +734,7 @@ impl Params {
             "match.classifier" => &mut self.matching.classifier,
             "decode.identifier_min_length" => &mut self.decode.identifier_min_length,
             "decode.beam_width" => &mut self.decode.beam_width,
+            "route.same_category" => &mut self.route.same_category,
             _ => return false,
         };
         *slot = v;
@@ -721,7 +743,7 @@ impl Params {
 
     /// Every name this build understands, for a loader that wants to report
     /// which ones a file left at their defaults.
-    pub const NAMES: [&'static str; 84] = [
+    pub const NAMES: [&'static str; 86] = [
         "binarize.window",
         "binarize.k",
         "binarize.r",
@@ -806,6 +828,8 @@ impl Params {
         "nn.scale",
         "route.matcher_margin",
         "route.net_prob",
+        "route.max_junk",
+        "route.same_category",
     ];
 
     /// The value a name currently holds, as an `f32`. For a report, and for
@@ -854,7 +878,7 @@ fn find_changed_u32(before: &Params, after: &Params) -> f32 {
     f32::NAN
 }
 
-fn f32_fields(p: &Params) -> [f32; 66] {
+fn f32_fields(p: &Params) -> [f32; 67] {
     [
         p.binarize.k,
         p.binarize.r,
@@ -922,10 +946,11 @@ fn f32_fields(p: &Params) -> [f32; 66] {
         p.nn.scale,
         p.route.matcher_margin,
         p.route.net_prob,
+        p.route.max_junk,
     ]
 }
 
-fn u32_fields(p: &Params) -> [u32; 18] {
+fn u32_fields(p: &Params) -> [u32; 19] {
     [
         p.binarize.window,
         p.lines.min_area,
@@ -945,6 +970,7 @@ fn u32_fields(p: &Params) -> [u32; 18] {
         p.matching.classifier,
         p.decode.identifier_min_length,
         p.decode.beam_width,
+        p.route.same_category,
     ]
 }
 
