@@ -10415,3 +10415,57 @@ were not run.
    it is the operator's to decide.
 
 `match.classifier` stays at 0.
+
+### 2026-09-28 — Chunk 15c pre-registered: the router, re-fitted on the objective it is judged by
+
+**Operator, verbatim:** "sounds like the neural-reader has value, it just has
+to be engaged for uncertain characters." Chunk 15b already did exactly that.
+It relabelled only glyphs on Viterbi's committed path with calibrated
+matcher confidence below `route.matcher_margin`.
+
+**Why 15b's result says little about the idea (architect's reading of the
+`c15b-router` code and report):**
+1. **The fit objective was biased.** Thresholds were chosen to maximise
+   relabel accuracy on *alignment-gated* crops: truth-aligned words with
+   exact box match, where the net is at its best. On that population
+   relabelling almost always helps, so the fit went to the permissive
+   corner of its grid. margin 0.95 is the grid maximum; net_prob 0.50 is
+   the grid minimum. It never saw the glyphs where relabelling harms:
+   unaligned lines, rule and tick fragments, dense table rows.
+2. **The junk output was not used as a gate.** Junk mass only lowers
+   `net_prob` indirectly. At 0.50 a crop the net thinks is half junk can
+   still be relabelled.
+3. The relabel ignores word context. A digit↔letter flip inside an
+   all-digit run is taken on the net's word alone.
+
+**15c, one attempt, no retraining. The nn15b and nn15c weights are
+reused.**
+- **Step 0: diagnosis, training side only.**
+  - Run the 15b router at its fitted point on fold-B pages of
+    `bench/splits/nn15_page_split.tsv`.
+  - Split relabels into those on aligned words (scored right or wrong
+    against truth) and those on unaligned words.
+  - Report the per-page CER change contributed by each split.
+  - Nothing is chosen from this; it only confirms or refutes reading 1.
+- **Step 1: fit on fold-A pages by end-to-end page CER.**
+  - The objective is the same metric the gate uses, not crop accuracy.
+  - Grid:
+    - `route.matcher_margin` over {0.3 … 0.95};
+    - `route.net_prob` over {0.5 … 0.99};
+    - a new `route.max_junk`, a ceiling on the net's junk probability for
+      the crop, over {0.02, 0.05, 0.1, 0.2, 1.0 (off)};
+    - a new `route.same_category`, a switch: when 1, a relabel is refused
+      if it moves a glyph between digit and letter categories while every
+      other glyph in its word is in the original category.
+  - Tie-break: the fewest relabels.
+  - Both weight sets are tried, and the winner is picked on fold A.
+  - A fitted point on the grid boundary is reported as such.
+- **Step 2: once on the 160 unseen pages,** with the standing EPS rule,
+  then val once, ident, and timing v2 with the A/A test first. All must
+  pass. Mode 0 must be byte-identical to master.
+- **If it fails:** the neural reader in any post-decode role is closed. The
+  remaining lever is retraining with lattice partial and merged-edge
+  negatives, which needs its own pre-registration and the operator's go.
+
+The new parameters are `guess`-labelled until fitted. `match.classifier` 3
+stays default-off until every gate passes.
