@@ -10267,3 +10267,38 @@ reproduces the 12b baseline exactly.
 Until then the `twins` loss stands as a known, published regression.
 `bench/ident` was not present in this run's tree, so ident was not re-run
 here. Ident was gated at W1's fold.
+
+### 2026-09-27 — First tagged release, v0.1.0; the shipping model gets a tracked manifest
+
+**Operator request:** cut a release pdfcer can use. This also answers
+pdfcer's open request "the `.ocrw` model needs a versioned home", with both
+of the options it asked for.
+
+**Tracked manifest `model/MODEL.toml`:**
+- It records the sha256, byte size, container, kind and feature versions,
+  `build_id`, and the build command of the blessed `ocrcer.ocrw`.
+- It changes in the same commit as any change that makes a different model
+  the shipping one.
+
+**Release asset:**
+- Tag `v0.1.0` on `KenM76/ocrcer`, with `ocrcer.ocrw` attached and its hash
+  in the notes.
+- The model is mode 0 only (no `nn` table). It was rebuilt from a clean
+  checkout, and it came out byte-identical to the scoring build
+  (sha256 `1aed06b2…`).
+- Its embedded strings were scanned before publishing: there is no private
+  corpus text and no local path, only face names and licences.
+
+**Gates run on the tagged tree (measured):**
+- `cargo test --workspace --release`: 419 passed, 0 failed.
+- `ocrcer-core` builds for wasm32-unknown-unknown.
+- Accuracy is the score-once of this same configuration (entry above):
+  finfilings CER 11.340%, pages-cov CER 5.322%. The `twins` loss is
+  reported alongside them.
+
+**Versioning:** the crate versions stay at 0.1.0, and the tag names that
+state. A model or recogniser change that pdfcer should pick up gets a new
+tag and a new manifest.
+
+**No change to vendoring:** pdfcer still vendors local HEAD (its decision
+160). The tag is a named, hashed point, not a new sync path.

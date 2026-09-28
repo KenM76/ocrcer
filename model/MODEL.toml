@@ -1,0 +1,18 @@
+# The blessed shipping model. Tracked so a consumer can prove which
+# `ocrcer.ocrw` it holds. `*.ocrw` itself is gitignored; the file is rebuilt
+# byte-identically by the `build` command below, and is also attached to the
+# GitHub release named by `release`. Change this file in the same commit as
+# any change that makes a different model the shipping one.
+
+release           = "v0.1.0"
+file              = "ocrcer.ocrw"
+sha256            = "1aed06b27ca842fb1fe922849ac5929adf278c95a38bf3eda251ccc0adb5cd04"
+bytes             = 5634668
+build_id          = "d2997ef3"
+container_version = 1
+model_kind        = 1        # recogniser
+feature_version   = 1
+nn_table          = false    # mode 0 (prototype matcher) only
+classes           = 187
+prototypes        = 50095
+build             = "ocrcer-build write 16,20,24,32,48 21,26,36,56 model/out/ocrcer.ocrw"
