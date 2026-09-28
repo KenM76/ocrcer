@@ -10192,3 +10192,35 @@ branch, and 9c (tables) is unbuilt. pdfcer has no DOCX/XLSX writer either
   XLSX/ODS and DOCX/ODT from it. Which one is decided when 9c lands.
 - It is not scheduled ahead of 9b and 9c. It is the consumer those
   sub-chunks feed.
+
+### 2026-09-27 — Operator question recorded: drawing lines, dimension lines, DWG export (position, not a schedule)
+
+**The question:** how feasible is it to find lines and dimension lines in CAD
+drawings and export them to DWG? Position:
+- **Vector PDFs are a different, easier problem.** When a drawing arrives
+  as a vector PDF exported from CAD, the lines are already exact paths in
+  the content stream. Reading them is pdfcer's parsing job, not tracing. It
+  is the cheapest high-value path and is not OCRcer's scope.
+- **Scanned or raster drawings: chunk 10 as planned** (PLAN §2b). It covers
+  line tracing, line types from ISO 128 and ASME Y14.2 ratio tables, and
+  circles, arcs, rectangles and polylines. It is feasible, and its token
+  estimate is a projection. It stays deferred behind chunk 9 by operator
+  priority.
+- **Dimension lines are beyond chunk 10's written scope**, which excludes
+  dimension association on purpose. Doing it would be a new chunk:
+  1. arrowhead and terminator detection;
+  2. extension-line and dimension-line pairing;
+  3. attaching the OCR'd value, identifier-safe under rule 6, to its line;
+  4. inferring the drawing scale from the value against the pixel length,
+     which also serves as a consistency check.
+
+  That is a scope extension needing an operator decision and a PLAN entry.
+  It fits the domain (CAD drawing text), so it does not conflict with §6.
+- **DWG is a closed format.** Writing it needs either the ODA SDK
+  (commercial membership) or LibreDWG (GPL, incompatible with this MIT
+  project). **Position: emit DXF**, the open, documented format that
+  AutoCAD, DraftSight and SolidWorks read natively. DXF output is
+  dependency-free text and belongs in a writer crate outside `ocrcer-core`.
+  DWG, if required, is a conversion step outside the project, for example
+  AutoCAD itself or the free-of-charge ODA File Converter. Whether that
+  converter's licence suits the operator's use is **not checked**.
