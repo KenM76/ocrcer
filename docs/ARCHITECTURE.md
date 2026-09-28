@@ -10224,3 +10224,46 @@ drawings and export them to DWG? Position:
   DWG, if required, is a conversion step outside the project, for example
   AutoCAD itself or the free-of-charge ODA File Converter. Whether that
   converter's licence suits the operator's use is **not checked**.
+
+### 2026-09-27 — Score-once of master with L1 and W1 folded: net win; W1 regresses the pages-cov `twins` category; W1 stays
+
+**Measurement:** `docs/measurements/2026-09-27_score_L1W1.md`. One run per
+corpus, with nothing changed as a result. The control (L1 and W1 disabled)
+reproduces the 12b baseline exactly.
+
+**Official numbers (measured):**
+
+| corpus | CER | line-matched CER | WER |
+|---|---|---|---|
+| finfilings | 11.340% (−0.089 pp) | 10.400% (−0.088 pp) | −0.755 pp |
+| pages-cov | 5.322% (−0.100 pp) | — | −1.719 pp |
+
+- finfilings improves on all six metrics; 2 of 60 pages regress, both by tiny amounts.
+- pages-cov F1 is +1.037 pp and recall is −0.415 pp.
+
+**Loss, stated at equal weight:**
+- pages-cov `twins` regresses by +2.230 pp CER: 45 of 90 pages are worse
+  and 1 is better.
+- The diagnostic run puts the whole of that loss on W1 (L1 has no effect on
+  `twins`). The mechanism is inter-word space deletion, which rises from 58
+  to 265 cases. Short separate words built from narrow look-alike glyphs get
+  fused. The look-alike character confusions themselves are unchanged.
+- `technical` regresses by +0.385 pp (9 of 90 pages). Its cause was not
+  isolated.
+
+**Ruling:**
+1. **W1 stays folded.** It was admitted on training-derived evidence plus a
+   one-time val check, and the two scoring corpora net positive.
+   Un-folding it because of a scoring-set category would let the scoring
+   set choose, which rule 1 forbids.
+2. **No refinement may be tuned against `twins`.** pages-cov is
+   scoring-only. Any W1 refinement (a "W1b") must be designed from the
+   training split. That means reproducing the fusion case on training
+   pages or on newly rendered training-side synthetic pages, never on
+   pages-cov.
+3. Such a refinement must be pre-registered here before it runs, and gated
+   by the standing rules: step-2 EPS, val once, ident, and timing v2.
+
+Until then the `twins` loss stands as a known, published regression.
+`bench/ident` was not present in this run's tree, so ident was not re-run
+here. Ident was gated at W1's fold.
