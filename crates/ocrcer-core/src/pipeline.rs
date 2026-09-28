@@ -33,7 +33,7 @@
 //! needs told (`CLAUDE.md` rule 5).
 
 use crate::confidence;
-use crate::decode::viterbi::{self, Cand, Char, ClassInfo, Hyp, Tables, WordLattice};
+use crate::decode::viterbi::{self, Cand, ClassInfo, Hyp, Tables, WordLattice};
 use crate::image::{binarize, components, deskew};
 use crate::layout::{lines, segment, underline, words};
 use crate::ocrw::Model;
@@ -585,6 +585,10 @@ impl Engine {
         // classifier mode 0 pays nothing for this and cannot diverge from it.
         let mut probe: Vec<RouteProbe> = Vec::with_capacity(if route_on { decoded.chars.len() } else { 0 });
         if route_on {
+            // Hoisted so `category_flip_vetoed` (shared with the chunk 15c
+            // fit harness) reads the word's original classes without
+            // reallocating per glyph.
+            let orig_classes: Vec<u16> = decoded.chars.iter().map(|c| c.class).collect();
             for (i, c) in decoded.chars.iter().enumerate() {
                 let mut class = c.class;
                 let mut conf_override = None;
@@ -641,7 +645,7 @@ impl Engine {
                                     let vetoed = p.route.same_category == 1
                                         && category_flip_vetoed(
                                             &self.model.class_info,
-                                            &decoded.chars,
+                                            &orig_classes,
                                             i,
                                             top.class,
                                         );
@@ -759,7 +763,14 @@ pub fn nn_candidates(net: &crate::nn::Nn, log_probs: &[f32], k: usize, scale: f3
 /// the word already in the glyph's original category? A class with neither
 /// flag (punctuation, etc.) is in no category and never triggers or blocks
 /// the veto — the gate only speaks to digit/letter runs.
-fn category_flip_vetoed(class_info: &[ClassInfo], chars: &[Char], i: usize, new_class: u16) -> bool {
+///
+/// Takes the word's *original* (pre-relabel) classes rather than `&[Char]`
+/// so the chunk 15c fit harness (`ocrcer-bench`) can replay this exact
+/// decision from a captured [`RouteProbe`] row's `matcher_class` field,
+/// without a second implementation of the category test (`CLAUDE.md` rule
+/// 4) — `pub` for that one caller, the same reason `nn_candidates` is
+/// `pub`.
+pub fn category_flip_vetoed(class_info: &[ClassInfo], classes: &[u16], i: usize, new_class: u16) -> bool {
     fn category(ci: ClassInfo) -> Option<bool> {
         // `Some(true)`: digit. `Some(false)`: letter. `None`: neither.
         if ci.digit {
@@ -770,18 +781,15 @@ fn category_flip_vetoed(class_info: &[ClassInfo], chars: &[Char], i: usize, new_
             None
         }
     }
-    let Some(&info) = class_info.get(chars[i].class as usize) else { return false };
+    let Some(&info) = classes.get(i).and_then(|&c| class_info.get(c as usize)) else { return false };
     let Some(&new_info) = class_info.get(new_class as usize) else { return false };
     let (Some(orig_cat), Some(new_cat)) = (category(info), category(new_info)) else { return false };
     if orig_cat == new_cat {
         return false;
     }
-    chars.iter().enumerate().all(|(j, other)| {
+    classes.iter().enumerate().all(|(j, &other)| {
         j == i
-            || class_info
-                .get(other.class as usize)
-                .and_then(|&ci| category(ci))
-                .is_some_and(|cat| cat == orig_cat)
+            || class_info.get(other as usize).and_then(|&ci| category(ci)).is_some_and(|cat| cat == orig_cat)
     })
 }
 
