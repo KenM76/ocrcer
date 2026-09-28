@@ -1879,3 +1879,109 @@ the i→î and word-fusion diagnosis (`ocrcer-runtime`, finfilings-train +
 synthetic only); the `nn-probe` neural-probe result, still in flight.
 
 ---
+
+## 2026-09-27 — Batch 8: chunk 15 closes, failed, four times over; neural reader redirected to a router
+
+**Request.** File the 2026-09-26/27 engineering work into `ROADMAP.md` and
+`SESSION_LOG.md`: chunk 15's outcome, the L1/W1/L2 segmentation fixes, the
+in-progress score-once run, and the standing backlog — as `ocrcer-librarian`,
+not as the engineering work itself.
+
+**Reconnaissance performed.** Read `ARCHITECTURE.md` §11's 2026-09-26 and
+2026-09-27 entries in full (the `nn-probe`-successor integration, its four
+step-2 failures, the skew/mode-2/generalisation/trace/decomposition/size/
+table-row diagnosis chain, L1, W1's three timing protocols, L2, branch A,
+and the operator's 2026-09-27 chunk-15b directive). Cross-checked against
+`ROADMAP.md`'s existing chunk-15 bullet (stale — "in flight, not yet
+measured" — now corrected) and the Backlog/Open-questions sections (clippy
+already tracked there, no duplicate needed). Checked `C:\personal_rag\ocr\
+index.md` for existing lessons before writing new ones.
+
+**Chunk 15 — the neural glyph classifier — is closed, failed.** Four gate
+attempts (initial integration, post-L1, post-L1+W1, post-branch-A-retrain)
+all failed the end-to-end CER gate against the prototype matcher, despite
+the network beating the matcher per-crop on truth-aligned glyphs (97.89%
+vs 93.31% unseen, 98.42% vs 93.66% train). The gap traced to one
+substitution, `":"` → `"±"`, on lattice edges the per-crop probe never
+scores (fragments/merges) — the net has no reject class and is confidently
+wrong there, and that alone was ~92% of the end-to-end loss. Branch A's
+retrain-with-oversampling attempt failed for an unrelated reason: of 215
+flagged hard rows, only 22 survived aligner filtering, so oversampling ×6
+moved 0.48% of training — not enough to matter. The recorded future lever
+(train the junk/reject class on the lattice's own partial/merged edges, not
+clean crops) is filed to Backlog, not attempted.
+
+**Segmentation fixes ran in parallel and are the actual net gain of the
+saga.** L1 (a mark-placement fix) folded cleanly, val CER −0.032/−0.042 pp.
+W1 (a split-ordering fix) folded on accuracy (val −0.453/−0.419 pp) but its
+timing gate took three tries: solo timing read +7.14%, a paired protocol
+read 1.063 with individual pairs spanning 0.820–1.269 (noise wider than the
+5% signal), and deterministic work counts (92,992 edges/calls, identical
+both runs) contradicted both readings. A new in-process protocol — model
+loaded once, per-page min-of-5, interleaved, gated by a mandatory
+control-vs-itself A/A test — measured 1.0121 and passed; it is now the
+standing wall-time instrument, with the A/A test required fresh every
+session (one later session's A/A test failed and correctly caused that
+session's timing to be discarded). L2 (a row-band ordering fix) failed:
+end-to-end CER improved marginally but line-matched CER worsened 2.414 pp.
+It was **not retuned** — a new tolerance chosen after seeing this result
+would be searching the gate set, i.e. a re-roll, not a fix — closed
+instead, pending an independent trigger-rate measurement before any new
+value is even proposed.
+
+**Operator directive, 2026-09-27: the neural reader continues as a
+router, not a second matcher.** Chunk 15b (`match.classifier=3`) is
+pre-registered — narrowing the net's role to disambiguating pairs the
+prototype matcher already flags as close, rather than replacing it — but
+is **not yet built or measured**; a background build task was still
+running as of this filing. Office-format (word-processor/spreadsheet)
+export was also recorded as a future direction, contingent on chunks
+9c/9e — a position, not a decision.
+
+**A score-once run of master (L1+W1 folded) on finfilings and pages-cov is
+in progress, not a result.** Its background task's output file exists and
+is empty as of this filing; no CER figures exist for it yet. A second,
+unrelated background task ("PaddleOCR head-to-head accuracy") was also
+observed running — possibly superseding the long-open ocrs/Tesseract
+comparison — likewise no result yet.
+
+**RAG escalation, this role's own remit.** Checked `C:\personal_rag\ocr\
+index.md` first: two of three originally-scoped candidate lessons were
+already written 2026-09-27 by the engineering session itself (per-crop-vs-
+end-to-end substitution loss; oversampling-on-too-few-aligned-rows yields
+nothing). Wrote the two still missing: single-run wall timing cannot
+resolve a 5%-class gate, use in-process min-of-N plus a mandatory A/A test
+(sourced from the W1 saga); and a post-hoc retune after a pre-registered
+gate has already failed is a re-roll, not a fix (sourced from L2's
+closure). Both added to `C:\personal_rag\ocr\index.md` and the master
+`C:\personal_rag\index.md`. No new `C:\Users\Ken\.claude\CLAUDE.md` flag
+needed — `personal_rag/ocr` is already a listed current subject.
+
+**Token spend.** Not measured — no `/usage` reading was taken or supplied
+for the 2026-09-26/27 sessions, and this librarian dispatch had no shell
+tool available to check current spend itself. Calibration debt carried
+forward, same as prior batches; its absence is not filed as zero spend.
+
+**Delivered.** `docs/ROADMAP.md`: the stale chunk-15 bullet corrected to
+point at a new detailed section; a new "Chunk 15 — closed, failed"
+subsection with the full four-failure gate history, the diagnosis chain,
+L1/W1/L2 detail, the operator's chunk-15b redirection, and the two
+in-progress background runs filed explicitly as not-yet-results; seven new
+Backlog items (the non-character-negatives lever, the `xh-desc` gate
+status plus its `descender_cap_check` reading, the merge-train
+ordering gap flagged to the architect rather than resolved here, the
+dual-spelling cleanup, the confirmed `junk_index` runtime-assert gap, the
+head-to-head status, the latency-vs-projection reading, and the
+office-export position); a new Standing Rule for the v2 timing protocol's
+mandatory A/A test; and an updated "last verified git log" footer. This
+`SESSION_LOG.md` entry. Two new `C:\personal_rag\ocr\` lesson files plus
+their index pointers.
+
+**Open, carried into the next session:** the score-once master run and the
+chunk-15b router build, both still in flight with no numbers yet; the
+`xh-desc` corpus gate; the merge-train order gap for `xh-desc`/`diag-zero`
+(flagged to `ocrcer-architect`, not resolved here); the dual key-spelling
+cleanup in `ocrcer-build`'s spec reader; the PaddleOCR/ocrs/Tesseract
+head-to-head, status unclear pending that task's completion; This filing's edits were committed by the architect's session.
+
+---

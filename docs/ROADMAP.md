@@ -1104,8 +1104,9 @@ decision log and no others.
   whether a network beats the prototype matcher on real scanned glyphs by
   enough to justify building chunk 15 at all — full shape in
   `ARCHITECTURE.md` §11, "Candidate: a throwaway neural probe before chunk
-  15, on the extractor's own dumps". In flight as of this filing; not yet
-  measured. Build not yet started.
+  15, on the extractor's own dumps". **Built, measured, and closed as
+  failed 2026-09-26/27 — full history, including the operator's
+  chunk-15b redirection, in "Chunk 15 — closed, failed" below.**
 - **Chunk 16 — the LLM add-on, `ocrcer-llm`, a new workspace crate.**
   Pure safe Rust, `std`-only (GPU is a later, feature-gated relaxation),
   implements exactly the Qwen decoder-only family, ships as one file
@@ -1180,6 +1181,130 @@ reading**: the machine was shared with other jobs during the four runs
 per-page 1.40–1.51x is this chunk's actual measured claim, a pinned-core
 rerun is the outstanding step. `cargo test --workspace --release` green;
 `cargo build -p ocrcer-core --target wasm32-unknown-unknown` clean.
+
+---
+
+### Chunk 15 — closed, failed (2026-09-26/27); neural reader redirected to a router (chunk 15b, pre-registered)
+
+Full numeric detail lives in `ARCHITECTURE.md` §11's 2026-09-26/27 entries
+and `docs/measurements/2026-09-26_c15_*.md` / `2026-09-27_c15_*.md`. This
+entry is the roadmap-level summary; it does not restate §11, it points at
+it.
+
+**Gate failed four times.** `match.classifier=1` (network only) against
+the prevailing prototype matcher, on 160 unseen finfilings-train pages
+(stride-2 sample of 320) plus a 107-page train sample, EPS 0.02 pp:
+1. Initial integration — step 2 (end-to-end CER) failed.
+2. After **L1** folded (segmentation mark fix) — step 2 failed again.
+3. After **L1+W1** folded (segmentation split fix) — step 2 failed again.
+4. **Branch A** (retrain with oversampling on hard rows) — pre-registered
+   as the last attempt, then failed: end-to-end +0.702 pp / line-matched
+   +1.267 pp on finfilings-train-unseen. Branch A's own root cause: the
+   215 flagged "hard" rows yielded only 22 alignable crops after aligner
+   filtering, so oversampling ×6 moved 0.48% of the training set — not
+   enough signal to change the failure mode (personal_rag lesson below).
+
+**Chunk 15 is closed. Not shipped, not on the merge train.**
+
+**Per-crop the net was ahead, end-to-end it was behind — one substitution
+carried the loss.** Net top-1 on truth-aligned crops: 97.89% vs matcher
+93.31% (160 unseen pages), 98.42% vs 93.66% (107 train pages). But wired
+into the lattice decoder, the same net made end-to-end CER worse in every
+attempt above. Diagnosis (2026-09-27): a single substitution, `":"` →
+`"±"`, on non-truth-box lattice edges (fragments/merges the per-crop probe
+never scores) accounted for ~92% of the end-to-end gap (2,460 of 381,534
+characters, ~0.645 of the ~0.702 pp). The net has no reject/"not a
+glyph" behaviour and is confidently wrong on junk crops the decoder still
+has to weigh. Written up as a personal_rag lesson (below).
+
+**Recorded future lever, filed to Backlog, not attempted this chunk:** a
+network trained with explicit non-character negatives drawn from the
+lattice's own partial/merged edges (not a separate synthetic-negative
+generator) — the failure mode above is specifically about non-truth-box
+edges, so training data for the junk/reject class needs to come from the
+same distribution the decoder actually queries at inference, not from
+clean truth-box crops only.
+
+**Diagnosis chain that preceded L1/W1/L2 (2026-09-26):** skew check
+(`_skew.md`) → mode-2 fusion attempt (`_mode2.md`, also failed) →
+generalisation check (`_generalisation.md`, ruled out train/val split
+being the cause) → per-stage trace (`_trace.md`) → loss decomposition
+(`_decomp.md`) → size-bucketed check (`_size.md`) → a fork between
+**Branch A** (net lacks small/dense-glyph coverage → retrain) and
+**Branch B** (a shared segmentation defect feeds both matchers equally
+badly → fix segmentation first) → table-row first-failure-stage
+classification (`_tableseg.md`). **Branch B was selected.** (Note: "branch
+A" is reused later, lower-case, as the name of the retrain attempt above —
+same word, two different decisions; see §11 for the disambiguation.)
+
+**L1 — segmentation mark fix. Folded.** Pre-registered, gate passed: val
+CER −0.032 pp / −0.042 pp (within EPS, i.e. no regression, small
+improvement). Merged.
+
+**W1 — segmentation split fix. Folded, after a three-protocol timing
+saga.** Accuracy gate passed cleanly (val −0.453 pp / −0.419 pp). The
+*timing* gate went through three protocols before it could be trusted:
+solo single run read +7.14% (fail); paired ABABABABAB read a median ratio
+of 1.063 (fail) but individual pairs ranged 0.820–1.269 — noise wider than
+the 5% signal being measured; deterministic work counts (lattice edges,
+matcher calls) were identical in both runs (92,992/92,992), contradicting
+both timing readings. Replacement protocol **v2** (standing as of this
+filing): in-process, model loaded once, per-page minimum of 5,
+interleaved control/candidate over a fixed 32-page subset, ratio = sum of
+candidate minima / sum of control minima, gated by a **mandatory A/A test**
+(control vs itself, ratio within 1±0.02) run fresh every session before
+any candidate is timed. Under v2, W1 measured 1.0121 — passes. Folded.
+One recorded v2 A/A-test failure occurred in a later session (the
+chunk-15-final-remeasure session) and correctly caused that session's
+timing figures to be discarded rather than reported. Personal_rag lesson
+below; new Standing Rule added.
+
+**L2 — row-band ordering fix. Closed, failed, not retuned.** Pre-registered
+tolerance `0.45` x-heights (authored from a valley in the measured
+baseline-difference distribution, before any accuracy number existed).
+Measured: end-to-end CER −0.002 pp (passes) but line-matched CER **+2.414
+pp** (fails EPS badly) — newly-isolated fragment lines no longer pair
+one-for-one with truth lines. **Not retuned**: choosing a new tolerance
+after seeing this result would be searching the gate set, i.e. a re-roll,
+not a fix — closed instead, pending a fresh trigger-rate measurement
+before any new tolerance is even proposed. Personal_rag lesson below.
+
+**Operator directive, 2026-09-27 (`ARCHITECTURE.md` §11, verbatim
+recorded there): the neural reader continues, not as a second full
+matcher, but as a router.** Chunk 15b (`match.classifier=3`) is
+**pre-registered, not yet built or measured**: the net's role narrows to
+disambiguating specific confusable pairs the prototype matcher already
+flags as close, rather than replacing it outright — respects rule 6
+(lexicon/identifier text held fixed) by construction, since it only acts
+inside the matcher's own ambiguous cases. **No result exists for chunk
+15b yet.** A background build/measure task for it was in flight as of
+this filing (task `aa8f407f64e5bb831`, progress last seen: "grepping
+nn.rs for exp/log_softmax usage") — filed here as in-progress, not as a
+result.
+
+**Also recorded 2026-09-27, a position not a decision:** office-format
+(word-processor / spreadsheet) export is noted as a future direction,
+contingent on chunks 9c/9e; no scope or contract has been written for it.
+
+**Score-once run of master (L1+W1 folded) on finfilings and pages-cov —
+IN PROGRESS, not a result.** Background task `a0c027dbfa5fc356e` ("Score
+master once (L1+W1)") was still running as of this filing (last observed
+progress: "waiting on model build to finish"; its output file exists and
+is empty). No CER figures exist yet for this run. Do not treat its
+absence from this filing as a null result — it is simply not done.
+
+**Also in flight as of this filing, unrelated to chunk 15, no numbers
+yet:** a PaddleOCR head-to-head accuracy comparison (background task
+`a7d4b572a065e24ec`, last seen upgrading pip in a venv) — this appears to
+be new/renewed work on the long-open "ocrs/Tesseract head-to-head"
+Backlog item, possibly substituting or adding PaddleOCR as a comparator;
+filed as in-progress only, no result to report.
+
+**Budget actuals — not measured.** No `/usage` reading was taken or
+supplied for the 2026-09-26/27 sessions; this librarian dispatch had no
+shell tool available to check current spend. Carried forward as
+calibration debt, same as every prior filing where this happened; its
+absence is not filed as zero spend.
 
 ---
 
@@ -1635,6 +1760,65 @@ all behind the 12b fold, finfilings-train unless stated:**
   measured 0.40-0.46 confidence drop for real text is a mean, not a
   false-positive rate, and the two are not the same number.
 
+**Added 2026-09-26/27, from the chunk 15 closure:**
+
+- **A network trained with explicit non-character negatives drawn from
+  the lattice's own partial/merged edges** — the recorded future lever
+  from chunk 15's closure (see "Chunk 15 — closed, failed" above). Not
+  attempted this chunk; the net's confident-wrong behaviour on
+  non-truth-box crops (the `":"`→`"±"` finding) is specifically about
+  edges this training scheme has never seen, so any retry should draw
+  negatives from that distribution before anything else changes.
+- **`xh-desc` train/corpus gate — still not run.** The four-page
+  diagnostic fix is independently confirmed on the repro pages (see
+  *Resolved*/2026-09-25 history), but the pages-cov/finfilings corpus gate
+  `xh-desc`'s own commit requires before merge has not been run. A related
+  **reading**, not yet gated: `descender_cap_check=1` measured flat-to-
+  slightly-worse on an 18-page dense-table sample — filed here as a
+  reading against the pending gate, not as the gate result itself.
+- **The merge train order still does not name every accepted branch.**
+  The existing explicit order under *Unmerged branches* ("`llm-speed` →
+  `nbest` → `case-geom` → `conf-margin` (+`conf-tools`) → `width-weight`
+  → `chunk14` → `rescore` (rebased) → `pivot-index` → `structure-9a`
+  last") omits `xh-desc` (accepted in review, awaiting merge per that same
+  table) and `diag-zero`. Not resolved here — inventing a slot for them
+  would be a decision this role does not own; flagged for
+  `ocrcer-architect` to fold into the next inventory update, which should
+  also add the chunk-15-era branches (`L1-marks`, `W1-split`, `L2-order`,
+  `c15-mode2`, `c15-trace`, `c15-size`, `c15-branchA`, `c15-tableseg`) not
+  yet reflected in the 2026-09-25 table.
+- **Dual key-spelling cleanup in `ocrcer-build`'s spec reader.** It
+  currently accepts two spellings of the same key; it should accept only
+  the trainer's spelling. Not yet done.
+- **`junk_index` runtime-assert gap, confirmed.** No direct runtime
+  assertion `junk_index == classes.len()` exists in `ocrcer-core`
+  (`ocrw.rs` has zero occurrences of `junk_index`); the only enforcement
+  is indirect, via `charset_sha256` agreement at build time in
+  `ocrcer-build/src/nn.rs::validate`. Source: `docs/measurements/
+  2026-09-26_c15_trace.md`, which labels this "a soft defense-in-depth
+  gap, not an active bug under the current build pipeline" — filed here
+  as that source's own reading, not independently re-verified this
+  session.
+- **Head-to-head vs. another OCR engine — long-open, possibly moving.**
+  Originally tracked here as an ocrs/Tesseract comparison; a background
+  task titled "PaddleOCR head-to-head accuracy" was observed running as
+  of this filing (see the chunk 15 entry above) with no result yet — this
+  may supersede or add to the existing item rather than being wholly new
+  work. Do not close the ocrs/Tesseract framing until the PaddleOCR task's
+  actual scope is confirmed.
+- **Latency tracking vs. the §4.1 projection.** finfilings-train pages
+  measured at 10.7–14.2 s/page, single-threaded (source: the timing-
+  protocol v2 work under W1 above). `FEASIBILITY.md` §4.1's "well under a
+  second per page" language is a projection, not yet met by a measured
+  figure — filed here as the falsifying reading against that projection,
+  not as a claim that the projection is wrong for the shipped
+  configuration (multi-threaded, optimised builds not yet measured under
+  the same protocol).
+- **Office-format (word-processor/spreadsheet) export — a position, not a
+  decision.** Recorded 2026-09-27 alongside the chunk 15b redirection, as
+  a future direction contingent on chunks 9c/9e. No scope or contract
+  exists yet; not a commitment.
+
 ---
 
 ## Resolved
@@ -1962,10 +2146,24 @@ the memory-pressure reaper while a full real-weights LLM oracle suite ran
 alongside it at ~7 GB. A campaign killed by the reaper is resumed only on
 Ken's own say-so.
 
+**Any wall-time gate must pass an A/A test in the same session before it
+is trusted, added 2026-09-27 after the W1 timing saga** (see "Chunk 15 —
+closed, failed" above). Solo single-run and paired-alternating wall-clock
+timing both proved unfit to resolve a 5%-class gate on this desktop
+(10–25% noise seen from background load alone). The standing instrument is
+protocol **v2**: in-process, model loaded once, per-page minimum of 5,
+interleaved control/candidate, ratio of summed minima. Before timing any
+real candidate in a session, run v2 control-against-itself and require the
+ratio within 1±0.02; a failed A/A test means that session's timing figures
+are not usable and must be filed as such, not reported. (Personal_rag:
+`C:\personal_rag\ocr\lesson_20260927_single_run_wall_timing_cannot_resolve_a_5pct_gate.md`.)
+
 As of the last verified git log (most recent five before this filing:
-`13c422f`, `e01cf6a`, `3816af6`, `e60211a`, `69fa60d`), the tree was clean
-through the atom-merge-overlap ship. Commit activity since then (merge
-`f7757de` for dense-page speed, `49b4df9` for the chunk 16b spec, and
-whatever this filing's own doc commit adds) is per this session's own
-report and not independently re-walked by this filing beyond the two
-named hashes given in the dispatch brief.
+`4d0360e`, `656ba8c`, `f58fc74`, `d6070ed`, `7780ae4` — all chunk 15/L2/W1
+`ARCHITECTURE.md` §11 entries, per this session's git-status snapshot),
+the tree was clean through the chunk-15-closure/operator-directive commit.
+This is a superseding update to the prior footer's five hashes
+(`13c422f`, `e01cf6a`, `3816af6`, `e60211a`, `69fa60d`); commit activity
+between the two snapshots (merge `f7757de` for dense-page speed, `49b4df9`
+for the chunk 16b spec, plus the chunk-15 saga's own commits) is per each
+session's own report, not independently re-walked here. This filing's edits were committed by the architect's session.
